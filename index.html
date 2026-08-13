@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0B1120" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="7amo.pos" />
+    <meta name="description" content="برنامج 7amo.pos لإدارة الماركيت والمبيعات والمخزون أوفلاين كـ تطبيق سطح مكتب" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>7amo.pos - Desktop & Offline POS System</title>
+  </head>
+  <body class="bg-[#0B1120] text-slate-100 antialiased select-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js?v=4.0').then(reg => {
+            console.log('Service Worker registered successfully:', reg.scope);
+            // Trigger an immediate update check
+            reg.update();
+          }).catch(err => {
+            console.warn('Service Worker registration failed:', err);
+          });
+
+          // Automatically reload if a new service worker takes over
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              window.location.reload();
+            }
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,22 @@
+{
+  "short_name": "7amo.pos",
+  "name": "7amo.pos - Offline POS & Inventory System",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0B1120",
+  "theme_color": "#0B1120",
+  "display": "standalone",
+  "orientation": "any",
+  "description": "برنامج 7amo.pos لإدارة الكاشير والمبيعات والمخزون أوفلاين بدون إنترنت كـ تطبيق سطح مكتب"
+}

@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Store configuration and preferences",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" }
+      }
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Product item in inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "barcode": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" }
+      }
+    },
+    "SaleTransaction": {
+      "title": "SaleTransaction",
+      "description": "Completed sale invoice record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "total": { "type": "number" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Supplier information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User account and permission definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/settings/store": {
+      "schema": "StoreSettings",
+      "description": "Global store settings"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Inventory product items"
+    },
+    "/sales/{saleId}": {
+      "schema": "SaleTransaction",
+      "description": "Sales transaction history"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Supplier contacts"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer contacts"
+    },
+    "/orders/{orderId}": {
+      "schema": "SaleTransaction",
+      "description": "Market orders"
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "SaleTransaction",
+      "description": "Purchase invoices"
+    },
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "User account credentials and roles"
+    }
+  }
+}

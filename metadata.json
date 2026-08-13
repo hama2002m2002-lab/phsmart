@@ -1,0 +1,6 @@
+{
+  "name": "7amo.pos",
+  "description": "نظام إدارة الماركيت والمبيعات والمخزون المتكامل مع واجهة سريعة ومظلمة متطورة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
