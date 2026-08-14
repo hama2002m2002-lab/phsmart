@@ -18,8 +18,10 @@ import {
   PackagePlus,
   ClipboardCheck,
   Trash2,
+  Undo2,
   LogOut,
-  User
+  User,
+  X
 } from 'lucide-react';
 import { StoreSettings, UserAccount } from '../types';
 import { getTranslation } from '../lib/translations';
@@ -29,6 +31,7 @@ export type MainNavTab =
   | 'products' 
   | 'inventoryAudit'
   | 'damagedItems'
+  | 'delegateReturns'
   | 'purchases'
   | 'pos' 
   | 'suppliers' 
@@ -47,6 +50,7 @@ interface SidebarProps {
   lowStockCount: number;
   currentUser?: UserAccount | null;
   onLogout?: () => void;
+  onClose?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -56,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   lowStockCount,
   currentUser,
   onLogout,
+  onClose,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -72,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       case 'products': return perms.canManageProducts;
       case 'inventoryAudit': return perms.canManageInventoryAudit ?? perms.canManageProducts;
       case 'damagedItems': return perms.canManageProducts;
+      case 'delegateReturns': return perms.canManageProducts || perms.canManageSuppliers;
       case 'purchases': return perms.canManagePurchases ?? perms.canManageProducts;
       case 'suppliers': return perms.canManageSuppliers;
       case 'customers': return perms.canManageCustomers;
@@ -141,6 +147,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-rose-500/20 text-rose-400 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.3)]',
     },
     {
+      id: 'delegateReturns' as MainNavTab,
+      labelKey: 'delegateReturns',
+      icon: Undo2,
+      color: 'from-amber-500 to-orange-600',
+      badge: isAr ? 'مندوب' : isKu ? 'مەندوب' : 'Delegate',
+      badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.3)]',
+    },
+    {
       id: 'purchases' as MainNavTab,
       labelKey: 'purchases',
       icon: PackagePlus,
@@ -193,21 +207,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return;
     }
     setActiveTab(item.id);
+    if (onClose) {
+      onClose();
+    }
   };
 
   return (
-    <aside className="w-64 bg-[#0B1120] border-r border-blue-500/20 rtl:border-r-0 rtl:border-l p-4 flex flex-col justify-between shrink-0 h-full overflow-y-auto">
+    <aside className="w-full h-full bg-[#0B1120] border-r border-blue-500/20 rtl:border-r-0 rtl:border-l p-4 flex flex-col justify-between overflow-y-auto custom-scrollbar">
       
       {/* Upper Navigation List */}
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         
+        {/* Mobile Header with Close Button */}
+        {onClose && (
+          <div className="lg:hidden flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white font-black text-xs">
+                {settings.storeName.charAt(0)}
+              </div>
+              <span className="text-xs font-bold text-slate-200">
+                {isKu ? 'تەواوی بەشەکان' : isAr ? 'قائمة أقسام النظام' : 'Main Menu'}
+              </span>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white cursor-pointer active:scale-95"
+              aria-label="Close menu"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Navigation Category Label */}
         <div>
-          <p className="text-[11px] font-semibold text-slate-500 tracking-wider uppercase mb-3 px-3">
+          <p className="text-[11px] font-semibold text-slate-500 tracking-wider uppercase mb-2 sm:mb-3 px-2">
             {getTranslation(lang, 'mainMenu')}
           </p>
 
-          <nav className="space-y-1.5">
+          <nav className="space-y-1 sm:space-y-1.5">
             {navItems
               .filter((item) => {
                 // For non-Admin users (like Cashiers), display only the permitted menu lists
@@ -225,7 +263,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => handleTabClick(item)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
+                  className={`w-full flex items-center justify-between px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     isActive
                       ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-cyan-500/40 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
                       : !isAllowed
@@ -245,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     >
                       <Icon className="w-4 h-4" />
                     </div>
-                    <span className="text-right rtl:text-right">
+                    <span className="text-right rtl:text-right font-medium">
                       {getTranslation(lang, item.labelKey)}
                     </span>
                   </div>
@@ -282,7 +320,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 : `${lowStockCount} items are near low threshold.`}
             </p>
             <button
-              onClick={() => setActiveTab('products')}
+              onClick={() => {
+                setActiveTab('products');
+                if (onClose) onClose();
+              }}
               className="mt-2 text-[11px] text-amber-400 underline font-semibold hover:text-amber-300 cursor-pointer"
             >
               {isKu ? 'پشکنینی کاڵاکان ←' : isAr ? 'مراجعة الأصناف ←' : 'Review Items →'}
@@ -307,7 +348,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {onLogout && (
             <button
-              onClick={onLogout}
+              onClick={() => {
+                onLogout();
+                if (onClose) onClose();
+              }}
               className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:brightness-110 text-white text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer border border-rose-400/30"
             >
               <LogOut className="w-3.5 h-3.5 text-rose-100" />
@@ -318,12 +362,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Bottom Cyber Trophy / Store Branding Banner */}
-      <div className="mt-8 p-4 rounded-2xl bg-gradient-to-b from-[#131F37] to-[#0A101D] border border-blue-500/20 text-center relative overflow-hidden group">
+      <div className="mt-6 p-3 sm:p-4 rounded-2xl bg-gradient-to-b from-[#131F37] to-[#0A101D] border border-blue-500/20 text-center relative overflow-hidden group">
         <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all" />
-        <div className="relative z-10 space-y-2">
-          <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-0.5 shadow-lg shadow-cyan-500/20">
+        <div className="relative z-10 space-y-1.5 sm:space-y-2">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-0.5 shadow-lg shadow-cyan-500/20">
             <div className="w-full h-full bg-[#0B1120] rounded-[10px] flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-cyan-400 animate-spin" style={{ animationDuration: '8s' }} />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 animate-spin" style={{ animationDuration: '8s' }} />
             </div>
           </div>
           <p className="text-xs font-bold text-slate-200">
@@ -342,4 +386,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
+
 

@@ -37,6 +37,8 @@ import {
   Lightbulb,
   Send,
   Copy,
+  DollarSign,
+  Undo2,
   Home,
   LogOut
 } from 'lucide-react';
@@ -72,6 +74,8 @@ interface POSTabProps {
   onExitPOS?: () => void;
   onBackToDashboard?: () => void;
   onOpenPrintBarcode?: (product?: Product) => void;
+  onOpenSalesReturn?: () => void;
+  onOpenDelegateReturns?: () => void;
   currentUser?: UserAccount | null;
 }
 
@@ -182,6 +186,9 @@ export const POSTab: React.FC<POSTabProps> = ({
   onOpenMobileSync,
   onExitPOS,
   onBackToDashboard,
+  onOpenPrintBarcode,
+  onOpenSalesReturn,
+  onOpenDelegateReturns,
   currentUser,
 }) => {
   const isLight = settings.themeMode === 'light';
@@ -202,6 +209,9 @@ export const POSTab: React.FC<POSTabProps> = ({
   ]);
   const [activeWindowId, setActiveWindowId] = useState<string>('win-1');
   const [isReturnMode, setIsReturnMode] = useState<boolean>(false);
+  const [mobilePosTab, setMobilePosTab] = useState<'cart' | 'checkout' | 'inventory'>('cart');
+  const [showYellowLineModal, setShowYellowLineModal] = useState<boolean>(false);
+  const [showReturnsActionSheet, setShowReturnsActionSheet] = useState<boolean>(false);
 
   // Active window object & derived states
   const activeWindowIndex = Math.max(0, windows.findIndex(w => w.id === activeWindowId));
@@ -904,13 +914,169 @@ export const POSTab: React.FC<POSTabProps> = ({
   });
 
   return (
-    <div className="h-full flex flex-col justify-between overflow-hidden animate-fadeIn w-full space-y-2.5 min-h-0">
+    <div className="h-full flex flex-col justify-between overflow-hidden animate-fadeIn w-full space-y-2 min-h-0">
       
+      {/* Mobile View Switcher (Visible only on < lg screens) */}
+      <div className="lg:hidden flex items-center bg-[#070D1C] p-1 rounded-2xl border border-cyan-500/30 gap-1 shrink-0 shadow-lg">
+        <button
+          type="button"
+          onClick={() => setMobilePosTab('cart')}
+          className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            mobilePosTab === 'cart'
+              ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <ShoppingCart className="w-3.5 h-3.5" />
+          <span>{isAr ? 'السلة والماسح' : isKu ? 'سەبەتە و بارکۆد' : 'Cart & Scanner'}</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-slate-900/90 text-cyan-300 text-[10px] font-mono border border-cyan-500/40">
+            {cart.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobilePosTab('checkout')}
+          className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            mobilePosTab === 'checkout'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <DollarSign className="w-3.5 h-3.5" />
+          <span>{isAr ? 'الدفع والمجموع' : isKu ? 'پارەدان و کۆی گشتی' : 'Checkout & Total'}</span>
+          <span className="px-1.5 py-0.2 rounded-md bg-emerald-950 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/40">
+            {settings.currencySymbol}{formatNumber(grandTotal)}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobilePosTab('inventory')}
+          className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            mobilePosTab === 'inventory'
+              ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" />
+          <span>{isAr ? 'المخزن' : isKu ? 'کۆگا' : 'Catalog'}</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-slate-900/90 text-amber-300 text-[10px] font-mono border border-amber-500/40">
+            {products.length}
+          </span>
+        </button>
+      </div>
+
+      {/* MOBILE DEDICATED INVENTORY VIEW (When on mobile and inventory tab is active) */}
+      {mobilePosTab === 'inventory' && (
+        <div className="lg:hidden flex-1 cyber-card p-3 rounded-3xl border border-amber-500/30 bg-[#0B1120] flex flex-col justify-between overflow-hidden min-h-0 space-y-2.5">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-2">
+              <Package className="w-4 h-4 text-amber-400" />
+              <h3 className="text-xs font-bold text-white">
+                {isAr ? 'تصفح مخزن المواد السريع' : isKu ? 'گەڕان لە کۆگای کاڵاکان' : 'Quick Stock Catalog'}
+              </h3>
+            </div>
+            <span className="text-[11px] text-amber-300 font-mono font-bold bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-500/30">
+              {filteredProducts.length} {isAr ? 'مادة متوفرة' : isKu ? 'کاڵا' : 'items'}
+            </span>
+          </div>
+
+          {/* Search & Categories */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={isAr ? 'ابحث باسم المادة أو الباركود...' : isKu ? 'گەڕان بەپێی ناو یان بارکۆد...' : 'Search item name or barcode...'}
+                className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-9 rtl:pl-3 rtl:pr-9 pr-3 py-2 rounded-xl border border-amber-500/30 focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="flex gap-1.5 overflow-x-auto pb-1 text-[11px] custom-scrollbar">
+              <button
+                type="button"
+                onClick={() => setSelectedCat('ALL')}
+                className={`px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all ${
+                  selectedCat === 'ALL'
+                    ? 'bg-amber-500 text-slate-950 shadow'
+                    : 'bg-[#070D1C] text-slate-400 hover:text-white'
+                }`}
+              >
+                {isAr ? 'الكل' : isKu ? 'هەموو' : 'All'}
+              </button>
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat.labelEn}
+                  type="button"
+                  onClick={() => setSelectedCat(cat.labelEn)}
+                  className={`px-2.5 py-1 rounded-lg font-semibold shrink-0 transition-all flex items-center gap-1 ${
+                    selectedCat === cat.labelEn
+                      ? 'bg-amber-500 text-slate-950 shadow font-bold'
+                      : 'bg-[#070D1C] text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{isAr ? cat.labelAr : isKu ? cat.labelAr : cat.labelEn}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Product Cards Grid on Mobile */}
+          <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2 custom-scrollbar pr-0.5">
+            {filteredProducts.map(p => {
+              const retailP = p.singleRetailPrice || p.price;
+              const inCartCount = cart.filter(c => c.product.id === p.id).reduce((sum, item) => sum + item.quantity, 0);
+
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    addToCart(p, 'retail');
+                    setMobilePosTab('cart');
+                  }}
+                  className="bg-[#070D1C] hover:bg-[#0E172E] p-2.5 rounded-2xl border border-slate-800 hover:border-amber-500/50 flex flex-col justify-between gap-2 cursor-pointer active:scale-95 transition-all shadow-md relative group"
+                >
+                  {inCartCount > 0 && (
+                    <span className="absolute top-1.5 left-1.5 rtl:left-auto rtl:right-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-mono font-black text-[10px] shadow">
+                      {inCartCount}
+                    </span>
+                  )}
+                  <div className="flex items-start gap-2">
+                    <span className="text-xl p-1 rounded-xl bg-slate-800/80">{p.imageIcon || '📦'}</span>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-bold text-white truncate">{isAr ? p.nameAr : isKu ? p.nameAr : p.name}</h4>
+                      <p className="text-[10px] text-slate-400 font-mono">{p.barcode}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-slate-800/80 pt-1.5">
+                    <span className="text-xs font-mono font-black text-amber-300">
+                      {settings.currencySymbol}{formatNumber(retailP)}
+                    </span>
+                    <button
+                      type="button"
+                      className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-0.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAr ? 'إضافة' : isKu ? 'زیادکردن' : 'Add'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* SALES CART INTERFACE (MAIN SCREEN GRID) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 overflow-hidden min-h-0 h-full">
+      <div className={`flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 overflow-hidden min-h-0 h-full ${mobilePosTab === 'inventory' ? 'hidden lg:grid' : ''}`}>
         
         {/* RIGHT SIDE PANEL IN RTL (lg:col-span-4): Grand Total at Top Edge, Payment & Checkout */}
-        <div className={`lg:col-span-4 cyber-card p-2 sm:p-2.5 rounded-3xl border flex flex-col justify-between shadow-2xl h-full overflow-hidden select-none min-h-0 ${
+        <div className={`lg:col-span-4 ${mobilePosTab === 'checkout' ? 'flex' : 'hidden lg:flex'} cyber-card p-2 sm:p-2.5 rounded-3xl border flex-col justify-between shadow-2xl h-full overflow-hidden select-none min-h-0 ${
           isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B1120] border-emerald-500/40 text-slate-100'
         }`}>
           
@@ -1212,7 +1378,7 @@ export const POSTab: React.FC<POSTabProps> = ({
         </div>
 
         {/* LEFT SIDE PANEL IN RTL (lg:col-span-8): Sales Windows + Barcode Entry + Cart Items List */}
-        <div className="lg:col-span-8 flex flex-col gap-2 h-full min-h-0 overflow-hidden">
+        <div className={`lg:col-span-8 ${mobilePosTab === 'cart' ? 'flex' : 'hidden lg:flex'} flex-col gap-2 h-full min-h-0 overflow-hidden`}>
           
           {/* MULTI-WINDOW SALES TABS BAR (شريط نوافذ البيع المتعددة - أعلى حقل الباركود) */}
           <div className="cyber-card px-2 sm:px-3 py-1.5 rounded-2xl border border-blue-500/30 bg-[#0A101D]/90 shadow-lg shrink-0 flex items-center justify-between gap-2 overflow-x-auto custom-scrollbar z-20">
@@ -1296,14 +1462,19 @@ export const POSTab: React.FC<POSTabProps> = ({
             </div>
           </div>
 
-          {/* BARCODE SCANNER & STORE INVENTORY ENTRY BAR */}
-          <div className="cyber-card p-1 sm:p-1.5 rounded-2xl border border-amber-500/40 shadow-lg shrink-0 flex items-center justify-between gap-2 relative z-20 bg-[#070D1C]/90">
+          {/* BARCODE SCANNER & STORE INVENTORY ENTRY BAR (Yellow Line Container) */}
+          <div className="cyber-card p-1 sm:p-1.5 rounded-2xl border-2 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.25)] shrink-0 flex items-center justify-between gap-1.5 sm:gap-2 relative z-20 bg-[#070D1C]/95">
             
             {/* BARCODE INPUT FORM (Inside Yellow Line Box) */}
             <form onSubmit={handleBarcodeSubmit} className="flex-1 w-full flex items-center relative">
               <div className="relative w-full">
-                <div className="absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-amber-400 pointer-events-none">
-                  <BarcodeIcon className="w-3.5 h-3.5 animate-pulse" />
+                <div 
+                  onClick={() => setShowYellowLineModal(true)}
+                  className="absolute left-2.5 rtl:left-auto rtl:right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-amber-400 cursor-pointer hover:scale-110 transition-all z-10"
+                  title={isAr ? 'انقر لعرض تفاصيل وميزات الخط الأصفر' : isKu ? 'کلیک بکە بۆ بینینی وردەکاریەکانی هێڵی زەرد' : 'Click to inspect yellow line hub'}
+                >
+                  <BarcodeIcon className="w-4 h-4 animate-pulse" />
+                  <Sparkles className="w-3 h-3 text-amber-300 hidden sm:inline" />
                 </div>
                 <input
                   ref={barcodeRef}
@@ -1330,17 +1501,17 @@ export const POSTab: React.FC<POSTabProps> = ({
                   autoFocus={!isBarcodeDisabled}
                   placeholder={
                     isBarcodePaused
-                      ? (isAr ? 'الباركود متوقف مؤقتاً عند كتابة الخصم...' : isKu ? 'بارکۆد ڕاوەستاوە کاتی دیاریکردنی داشکاندن...' : 'Barcode paused while typing discount...')
+                      ? (isAr ? 'الباركود متوقف مؤقتاً عند كتابة الخصم...' : isKu ? 'بارکۆد ڕاوەستاوە کاتی داشکاندن...' : 'Barcode paused while typing discount...')
                       : isBarcodeDisabled 
-                      ? (isAr ? 'الباركود متوقف مؤقتاً عند فتح النوافذ...' : isKu ? 'بارکۆد ڕاوەستاوە...' : 'Barcode paused while modal open...')
-                      : (isAr ? `[${posShortcuts.focusBarcode}] امسح الباركود هنا (نشط)...` : isKu ? `[${posShortcuts.focusBarcode}] بارکۆد لێرە بخوێنەوە...` : `[${posShortcuts.focusBarcode}] Scan barcode here...`)
+                      ? (isAr ? 'الباركود متوقف مؤقتاً عند فتح النوافذ...' : isKu ? 'بارکۆد ڕاوەستاوە کاتی کردنەوەی پەنجەرە...' : 'Barcode paused while modal open...')
+                      : (isAr ? `[${posShortcuts.focusBarcode}] امسح الباركود هنا (نشط)...` : isKu ? `[${posShortcuts.focusBarcode}] لێرە بارکۆد لێبدە (چالاک)...` : `[${posShortcuts.focusBarcode}] Scan barcode here...`)
                   }
-                  className={`w-full text-xs font-mono text-center px-8 py-1.5 sm:py-2 rounded-xl border-2 transition-all ${
+                  className={`w-full text-xs font-mono text-center px-9 py-1.5 sm:py-2 rounded-xl border-2 transition-all ${
                     isBarcodeDisabled
                       ? 'bg-[#050B18] text-cyan-200 border-slate-800 opacity-60 cursor-pointer shadow-none placeholder-slate-500'
                       : scanAlert?.type === 'error'
                       ? 'bg-rose-950/90 text-rose-100 border-rose-500 ring-4 ring-rose-500/50 shadow-[0_0_25px_rgba(244,63,94,0.85)] animate-pulse placeholder-rose-300'
-                      : 'bg-[#050B18] text-cyan-200 border-amber-400/80 focus:border-amber-300 focus:outline-none focus:ring-4 focus:ring-amber-400/30 shadow-[0_0_15px_rgba(251,191,36,0.3)] placeholder-slate-500'
+                      : 'bg-[#050B18] text-cyan-200 border-amber-400/90 focus:border-amber-300 focus:outline-none focus:ring-4 focus:ring-amber-400/30 shadow-[0_0_15px_rgba(251,191,36,0.3)] placeholder-slate-500'
                   }`}
                 />
 
@@ -1354,36 +1525,51 @@ export const POSTab: React.FC<POSTabProps> = ({
               </div>
             </form>
 
-            {/* ACTION BUTTONS (INVENTORY & RETURN MODE) */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* RETURN MODE TOGGLE BUTTON */}
+            {/* ACTION BUTTONS INSIDE YELLOW LINE CONTAINER */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              
+              {/* YELLOW LINE DETAILS & DIAGNOSTICS BUTTON */}
               <button
                 type="button"
-                onClick={() => setIsReturnMode(!isReturnMode)}
-                className={`px-3 py-1 sm:py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border ${
+                onClick={() => setShowYellowLineModal(true)}
+                className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(245,158,11,0.25)] hover:border-amber-400"
+                title={isAr ? 'مركز تفاصيل وتشخيص الخط الأصفر وقارئ الباركود والمخزن' : isKu ? 'ناوەندی وردەکاری و فەرمانەکانی هێڵی زەرد' : 'Yellow Line Hub & Details'}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span className="hidden md:inline">
+                  {isAr ? 'تفاصيل الخط الأصفر' : isKu ? 'وردەکاری هێڵی زەرد' : 'Yellow Line Details'}
+                </span>
+                <span className="md:hidden text-[10px] font-bold">{isAr ? 'تفاصيل' : isKu ? 'وردەکاری' : 'Details'}</span>
+              </button>
+
+              {/* RETURN MODE / RETURNS HUB BUTTON */}
+              <button
+                type="button"
+                onClick={() => setShowReturnsActionSheet(true)}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border ${
                   isReturnMode
                     ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 ring-2 ring-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.6)] animate-pulse'
                     : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-500/40 hover:text-rose-100'
                 }`}
-                title={isAr ? 'التبديل إلى واجهة إرجاع المواد المباشرة' : 'Toggle Sales / Returns Mode'}
+                title={isAr ? 'خيارات وتفاصيل إرجاع المواد والفواتير' : isKu ? 'بژاردەکانی گەڕاندنەوەی کاڵا و پسوولەکان' : 'Returns Mode & Hub'}
               >
                 <RotateCcw className={`w-3.5 h-3.5 ${isReturnMode ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">
-                  {isReturnMode ? (isAr ? 'وضع المرتجعات (نشط)' : 'Returns Mode') : (isAr ? 'إرجاع مواد' : 'Returns')}
+                  {isReturnMode ? (isAr ? 'وضع المرتجعات (نشط)' : isKu ? 'دۆخی گەڕاندنەوە (چالاک)' : 'Returns Mode') : (isAr ? 'إرجاع مواد' : isKu ? 'گەڕاندنەوەی کاڵا' : 'Returns')}
                 </span>
-                <span className="sm:hidden">{isAr ? 'مرتجع' : 'Return'}</span>
+                <span className="sm:hidden">{isAr ? 'مرتجع' : isKu ? 'گەڕاندنەوە' : 'Return'}</span>
               </button>
 
               {/* STORE INVENTORY BUTTON */}
               <button
                 type="button"
                 onClick={() => setShowInventory(true)}
-                className="px-3 py-1 sm:py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/50 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                title={isAr ? `عرض مواد المخزن (${posShortcuts.openInventory})` : `Show Store Inventory (${posShortcuts.openInventory})`}
+                className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/50 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                title={isAr ? `عرض مواد المخزن (${posShortcuts.openInventory})` : isKu ? `پیشاندانی کۆگا (${posShortcuts.openInventory})` : `Show Store Inventory (${posShortcuts.openInventory})`}
               >
                 <Package className="w-3.5 h-3.5 text-emerald-200" />
-                <span className="hidden sm:inline">{getTranslation(lang, 'showInventory')}</span>
-                <span className="sm:hidden">{isAr ? 'المخزن' : 'Inventory'}</span>
+                <span className="hidden sm:inline">{isAr ? 'المخزن' : isKu ? 'کۆگا' : getTranslation(lang, 'showInventory')}</span>
+                <span className="sm:hidden">{isAr ? 'المخزن' : isKu ? 'کۆگا' : 'Inventory'}</span>
                 <span className="bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded text-[10px] font-mono border border-emerald-500/40">
                   {posShortcuts.openInventory}
                 </span>
@@ -1608,6 +1794,25 @@ export const POSTab: React.FC<POSTabProps> = ({
                 })
               )}
             </div>
+
+            {/* Mobile Quick Proceed to Payment Button */}
+            {cart.length > 0 && (
+              <div className="lg:hidden shrink-0 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setMobilePosTab('checkout')}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white font-black text-xs shadow-[0_0_15px_rgba(16,185,129,0.4)] flex items-center justify-between cursor-pointer active:scale-95 transition-all"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <DollarSign className="w-4 h-4" />
+                    <span>{isAr ? 'متابعة للدفع وإنهاء البيع' : isKu ? 'تەواوکردنی پارەدان' : 'Proceed to Payment'}</span>
+                  </span>
+                  <span className="font-mono text-sm font-black bg-emerald-950/80 px-2.5 py-0.5 rounded-xl border border-emerald-300/40">
+                    {settings.currencySymbol}{formatNumber(grandTotal)}
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
 
         </div>
@@ -2011,6 +2216,372 @@ export const POSTab: React.FC<POSTabProps> = ({
         setProducts={setProducts}
         settings={settings}
       />
+
+      {/* YELLOW LINE DETAILS & DIAGNOSTICS HUB MODAL */}
+      {showYellowLineModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <div className="bg-[#0B1120] border-2 border-amber-500/60 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col justify-between shadow-[0_0_35px_rgba(245,158,11,0.25)] overflow-hidden">
+            
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-amber-500/30 flex items-center justify-between bg-[#070D1C]">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+                  <Sparkles className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>{isAr ? 'مركز تفاصيل وميزات الخط الأصفر' : isKu ? 'ناوەندی وردەکاری و تایبەتمەندیەکانی هێڵی زەرد' : 'Yellow Line Hub & Diagnostics'}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-amber-500 text-slate-950">
+                      LIVE
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {isAr 
+                      ? 'تفاصيل محرك الباركود، رصيد المخزن الفوري، النوافذ النشطة والإجراءات السريعة' 
+                      : isKu 
+                      ? 'وردەکاری بزوێنەری بارکۆد، ئاماری ڕاستەوخۆی کۆگا و پەنجەرە چالاکەکان' 
+                      : 'Live barcode engine telemetry, store stock status, active carts, and quick actions'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowYellowLineModal(false)}
+                className="p-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 custom-scrollbar text-xs">
+              
+              {/* Telemetry Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="bg-[#070D1C] p-3 rounded-2xl border border-amber-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>{isAr ? 'حالة الماسح' : isKu ? 'دۆخی سکانەر' : 'Scanner State'}</span>
+                    <BarcodeIcon className="w-3.5 h-3.5 text-amber-400" />
+                  </div>
+                  <div className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    {isAr ? 'متصل وجاهز' : isKu ? 'پەیوەستە و ئامادەیە' : 'Ready / Active'}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {isAr ? `اختصار: [${posShortcuts.focusBarcode}]` : isKu ? `کورتکراوە: [${posShortcuts.focusBarcode}]` : `Shortcut: [${posShortcuts.focusBarcode}]`}
+                  </p>
+                </div>
+
+                <div className="bg-[#070D1C] p-3 rounded-2xl border border-emerald-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>{isAr ? 'أصناف المخزن' : isKu ? 'جۆری کاڵاکان' : 'Total SKUs'}</span>
+                    <Package className="w-3.5 h-3.5 text-emerald-400" />
+                  </div>
+                  <div className="text-sm font-black text-emerald-300 font-mono">
+                    {products.length} {isAr ? 'صنف' : isKu ? 'کاڵا' : 'items'}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {isAr ? 'إجمالي المواد المسجلة' : isKu ? 'کۆی کاڵا تۆمارکراوەکان' : 'Registered in catalog'}
+                  </p>
+                </div>
+
+                <div className="bg-[#070D1C] p-3 rounded-2xl border border-cyan-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>{isAr ? 'نوافذ البيع المفتوحة' : isKu ? 'پەنجەرە کراوەکان' : 'Active Windows'}</span>
+                    <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  </div>
+                  <div className="text-sm font-black text-cyan-300 font-mono">
+                    {windows.length} {isAr ? 'نافذة' : isKu ? 'پەنجەرە' : 'tabs'}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {windows.reduce((sum, w) => sum + w.cart.length, 0)} {isAr ? 'مواد بالسلال' : isKu ? 'کاڵا لە سەبەتەدا' : 'items in carts'}
+                  </p>
+                </div>
+
+                <div className="bg-[#070D1C] p-3 rounded-2xl border border-rose-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>{isAr ? 'وضع المرتجعات' : isKu ? 'دۆخی گەڕاندنەوە' : 'Return Mode'}</span>
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                  </div>
+                  <div className={`text-sm font-black font-mono ${isReturnMode ? 'text-rose-400' : 'text-slate-400'}`}>
+                    {isReturnMode ? (isAr ? 'نشط ومفعل' : isKu ? 'چالاکە' : 'Active') : (isAr ? 'غير مفعل' : isKu ? 'ناچالاکە' : 'Inactive')}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {isReturnMode ? (isAr ? 'السلة تقبل المرتجع' : isKu ? 'گەڕاندنەوە کاردەکات' : 'Restocking mode') : (isAr ? 'وضع البيع العادي' : isKu ? 'دۆخی فرۆشتنی ئاسایی' : 'Standard sale')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Barcode Scanner Tester */}
+              <div className="bg-[#070D1C] p-3.5 sm:p-4 rounded-2xl border border-amber-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BarcodeIcon className="w-4 h-4 text-amber-400" />
+                    <h4 className="font-bold text-white text-xs">
+                      {isAr ? 'فاحص الباركود وباحث الأسعار الفوري' : isKu ? 'تاقیکەرەوەی بارکۆد و بینەری خێرای نرخ' : 'Quick Barcode & Price Lookup'}
+                    </h4>
+                  </div>
+                  <span className="text-[10px] text-amber-300 font-mono bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-500/30">
+                    {isAr ? 'جرّب كتابة أو قراءة أي باركود' : isKu ? 'تاقیبکەرەوە بە خوێندنەوەی بارکۆد' : 'Type or scan barcode'}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={isAr ? 'اكتب اسم المادة أو الباركود لعرض تفاصيلها الكاملة وأسعارها...' : isKu ? 'ناوی کاڵا یان بارکۆد بنووسە بۆ بینینی وردەکاری و نرخەکان...' : 'Search barcode or name...'}
+                    className="w-full bg-[#0B1120] text-xs font-mono text-cyan-200 placeholder-slate-500 pl-9 rtl:pl-3 rtl:pr-9 pr-3 py-2 rounded-xl border border-amber-500/30 focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Match Preview Card */}
+                {search.trim() && filteredProducts.length > 0 && (
+                  <div className="p-3 rounded-2xl bg-[#0B1120] border border-emerald-500/40 flex items-center justify-between gap-3 animate-fadeIn">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-2xl p-1.5 rounded-xl bg-slate-800">{filteredProducts[0].imageIcon || '📦'}</span>
+                      <div className="min-w-0">
+                        <h5 className="font-bold text-white text-xs truncate">
+                          {isAr ? filteredProducts[0].nameAr : isKu ? filteredProducts[0].nameAr : filteredProducts[0].name}
+                        </h5>
+                        <p className="text-[10px] text-slate-400 font-mono">
+                          {isAr ? 'باركود:' : isKu ? 'بارکۆد:' : 'Barcode:'} {filteredProducts[0].barcode} • {isAr ? 'المتوفر:' : isKu ? 'بەردەست:' : 'Stock:'} {filteredProducts[0].stock}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right rtl:text-right ltr:text-left">
+                        <span className="text-xs font-black font-mono text-emerald-400 block">
+                          {settings.currencySymbol}{formatNumber(filteredProducts[0].singleRetailPrice || filteredProducts[0].price)}
+                        </span>
+                        <span className="text-[9px] text-slate-400">
+                          {isAr ? 'سعر المفرد' : isKu ? 'نرخی تاک' : 'Retail Price'}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addToCart(filteredProducts[0], 'retail');
+                          setShowYellowLineModal(false);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{isAr ? 'إضافة للسلة' : isKu ? 'بۆ سەبەتە' : 'Add to Cart'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Instant Quick Actions */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isAr ? 'الإجراءات السريعة الفورية' : isKu ? 'کردارە خێراکان' : 'Instant Quick Actions'}</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowYellowLineModal(false);
+                      setShowInventory(true);
+                    }}
+                    className="p-3 rounded-2xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 font-bold flex items-center gap-2.5 transition-all text-right rtl:text-right ltr:text-left cursor-pointer"
+                  >
+                    <Package className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="text-xs text-white">{isAr ? 'فتح المخزن الشامل' : isKu ? 'کردنەوەی کۆگای گشتی' : 'Open Store Catalog'}</div>
+                      <div className="text-[10px] text-slate-400">{isAr ? 'تصفح كل المواد وإضافتها' : isKu ? 'گەڕان لە هەموو کاڵاکان' : 'Browse & add all items'}</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowYellowLineModal(false);
+                      if (onOpenSalesReturn) {
+                        onOpenSalesReturn();
+                      } else {
+                        setIsReturnMode(!isReturnMode);
+                      }
+                    }}
+                    className="p-3 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold flex items-center gap-2.5 transition-all text-right rtl:text-right ltr:text-left cursor-pointer"
+                  >
+                    <RotateCcw className="w-5 h-5 text-rose-400 shrink-0" />
+                    <div>
+                      <div className="text-xs text-white">{isAr ? 'واجهة إرجاع الفواتير' : isKu ? 'واژەی گەڕاندنەوەی پسوولەکان' : 'Sales Return Hub'}</div>
+                      <div className="text-[10px] text-slate-400">{isAr ? 'استرجاع الفواتير السابقة' : isKu ? 'گەڕاندنەوە لە وەسڵە کۆنەکان' : 'Refund from receipts'}</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowYellowLineModal(false);
+                      handleAddWindow();
+                    }}
+                    className="p-3 rounded-2xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 font-bold flex items-center gap-2.5 transition-all text-right rtl:text-right ltr:text-left cursor-pointer"
+                  >
+                    <Layers className="w-5 h-5 text-cyan-400 shrink-0" />
+                    <div>
+                      <div className="text-xs text-white">{isAr ? 'إضافة نافذة بيع جديدة' : isKu ? 'زیادکردنی پەنجەرەی نوێ' : 'Add Sales Window'}</div>
+                      <div className="text-[10px] text-slate-400">{isAr ? 'فتح كاشير متعدد متزامن' : isKu ? 'پەنجەرەی هاوکات' : 'Parallel cart window'}</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-[#070D1C] flex items-center justify-between">
+              <span className="text-[11px] text-slate-400 font-mono">
+                {isAr ? 'نظام الباركود الذكي نشط وجاهز للعمل' : isKu ? 'سیستەمی بارکۆدی زیرەک چالاکە' : 'Barcode engine online & active'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowYellowLineModal(false)}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer shadow-md transition-all"
+              >
+                {isAr ? 'إغلاق النافذة' : isKu ? 'داخستن' : 'Close'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* RETURNS ACTION SHEET MODAL */}
+      {showReturnsActionSheet && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <div className="bg-[#0B1120] border-2 border-rose-500/60 rounded-3xl w-full max-w-md flex flex-col justify-between shadow-2xl overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-rose-500/30 flex items-center justify-between bg-[#070D1C]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                  <RotateCcw className="w-5 h-5 animate-spin" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    {isAr ? 'خيارات إرجاع واسترداد المواد' : isKu ? 'بژاردەکانی گەڕاندنەوەی کاڵا' : 'Item Return & Refund Options'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {isAr ? 'اختر طريقة الإرجاع المناسبة' : isKu ? 'شێوازی گەڕاندنەوە دیاری بکە' : 'Select preferred return method'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReturnsActionSheet(false)}
+                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2.5">
+              {/* Option 1: Toggle instant return in current cart */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsReturnMode(!isReturnMode);
+                  setShowReturnsActionSheet(false);
+                }}
+                className="w-full p-3.5 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-left rtl:text-right flex items-center justify-between gap-3 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="p-2 rounded-xl bg-rose-500/20 text-rose-400 group-hover:scale-110 transition-transform">
+                    <BarcodeIcon className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <div className="text-xs font-bold text-white">
+                      {isReturnMode 
+                        ? (isAr ? 'إلغاء وضع المرتجعات بالسلة' : isKu ? 'ناچالاککردنی دۆخی گەڕاندنەوە' : 'Disable Cart Return Mode') 
+                        : (isAr ? 'تفعيل وضع الإرجاع المباشر بالسلة' : isKu ? 'چالاککردنی دۆخی گەڕاندنەوە لە سەبەتەدا' : 'Enable Instant Cart Returns')}
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {isAr ? 'مسح الباركود لإرجاع المادة واسترداد قيمتها مباشرة' : isKu ? 'خوێندنەوەی بارکۆد بۆ گەڕاندنەوەی ڕاستەوخۆ' : 'Scan barcode to refund directly'}
+                    </div>
+                  </div>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${isReturnMode ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                  {isReturnMode ? (isAr ? 'مفعل' : isKu ? 'چالاکە' : 'Active') : (isAr ? 'تفعيل' : isKu ? 'چالاککردن' : 'Enable')}
+                </span>
+              </button>
+
+              {/* Option 2: Full Sales Return Modal */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReturnsActionSheet(false);
+                  if (onOpenSalesReturn) {
+                    onOpenSalesReturn();
+                  }
+                }}
+                className="w-full p-3.5 rounded-2xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-left rtl:text-right flex items-center justify-between gap-3 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 group-hover:scale-110 transition-transform">
+                    <FileText className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <div className="text-xs font-bold text-white">
+                      {isAr ? 'واجهة استرجاع الفواتير المكتملة' : isKu ? 'گەڕاندنەوەی پسوولە تەواوکراوەکان' : 'Completed Invoices Return Hub'}
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {isAr ? 'البحث برقم الوصل واسترجاع المواد بالفاتورة الأصلية' : isKu ? 'گەڕان بەپێی ژمارەی پسوولە و گەڕاندنەوە' : 'Lookup receipt number and refund items'}
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-cyan-400 rtl:rotate-180" />
+              </button>
+
+              {/* Option 3: Return to Delegate / Supplier */}
+              {onOpenDelegateReturns && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReturnsActionSheet(false);
+                    onOpenDelegateReturns();
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/40 text-left rtl:text-right flex items-center justify-between gap-3 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
+                      <Undo2 className="w-5 h-5" />
+                    </span>
+                    <div>
+                      <div className="text-xs font-bold text-white">
+                        {isAr ? 'إرجاع واسترداد مواد إلى مندوب / مورد' : isKu ? 'گەڕاندنەوەی کاڵا بۆ مەندوب و کۆمپانیا' : 'Return Items to Delegate / Supplier'}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {isAr ? 'توثيق بضائع المرتجعات للمندوب مع خصم المخزن' : isKu ? 'تۆمارکردنی گەڕاندنەوە لەگەڵ کەمکردنەوە لە کۆگا' : 'Document vendor return slips and deduct inventory'}
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-amber-400 rtl:rotate-180" />
+                </button>
+              )}
+            </div>
+
+            <div className="p-3.5 border-t border-slate-800 bg-[#070D1C] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowReturnsActionSheet(false)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+              >
+                {isAr ? 'إغلاق' : isKu ? 'داخستن' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

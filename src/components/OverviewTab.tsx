@@ -210,17 +210,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   }, [activeSales]);
 
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-4 sm:space-y-6 animate-fadeIn">
       
       {/* Top Banner Hero Section for Dashboard */}
-      <div className="relative rounded-3xl bg-gradient-to-r from-[#0F172A] via-[#13203C] to-[#0A101D] border border-blue-500/30 p-6 shadow-2xl overflow-hidden">
+      <div className="relative rounded-2xl sm:rounded-3xl bg-gradient-to-r from-[#0F172A] via-[#13203C] to-[#0A101D] border border-blue-500/30 p-4 sm:p-6 shadow-2xl overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
-          <div className="flex flex-wrap items-center gap-4 max-w-xl">
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 max-w-xl">
             {/* CASHIER AVATAR CARD */}
-            <div className="flex items-center gap-3 bg-slate-900/90 backdrop-blur-md p-2.5 px-3.5 rounded-2xl border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.2)] shrink-0">
+            <div className="flex items-center gap-3 bg-slate-900/90 backdrop-blur-md p-2 sm:p-2.5 px-3 sm:px-3.5 rounded-2xl border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.2)] shrink-0">
               <div className="relative">
                 <img
                   src={
@@ -228,42 +228,42 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
                   }
                   alt={currentUser?.fullName || 'Cashier Avatar'}
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-cyan-400 object-cover p-0.5 bg-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.5)]"
+                  className="w-10 h-10 sm:w-14 sm:h-14 rounded-full border-2 border-cyan-400 object-cover p-0.5 bg-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.5)]"
                 />
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-[#0F172A] shadow-md animate-pulse" title={isAr ? 'كاشير متصل' : 'Active Cashier'} />
+                <span className="absolute bottom-0 right-0 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-emerald-500 rounded-full border-2 border-[#0F172A] shadow-md animate-pulse" title={isAr ? 'كاشير متصل' : 'Active Cashier'} />
               </div>
 
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                     {currentUser?.role === 'Admin' ? (isAr ? 'مدير النظام' : 'Admin') : currentUser?.role === 'Manager' ? (isAr ? 'مدير' : 'Manager') : (isAr ? 'كاشير مبيعات' : 'Cashier')}
                   </span>
                 </div>
-                <div className="text-sm font-black text-white tracking-tight leading-tight">
+                <div className="text-xs sm:text-sm font-black text-white tracking-tight leading-tight">
                   {currentUser?.fullName || currentUser?.username || (isAr ? 'كاشير نوبة العمل' : 'Active Cashier')}
                 </div>
-                <div className="text-[10px] font-mono font-bold text-slate-400 flex items-center gap-1">
+                <div className="text-[9px] sm:text-[10px] font-mono font-bold text-slate-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   <span>{isAr ? 'متصل - جاهز للبيع' : 'Online & Active'}</span>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center space-x-2 rtl:space-x-reverse px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
-                <Sparkles className="w-3.5 h-3.5" />
+            <div className="space-y-1">
+              <div className="inline-flex items-center space-x-1.5 rtl:space-x-reverse px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[10px] sm:text-xs font-semibold">
+                <Sparkles className="w-3 h-3" />
                 <span>{isKu ? 'داشبۆردی سەرەکی بەڕێوەبردن' : isAr ? 'لوحة التحكم والمراقبة المركزية' : 'Central Store Control Center'}</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight">
                 {isKu ? 'نظرة عامة ومخططات المبيعات' : isAr ? 'لوحة المبيعات والتحليلات العامة' : 'Sales Dashboard & Analytics'}
               </h2>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <button
               onClick={onOpenPOS}
-              className="flex items-center space-x-2 rtl:space-x-reverse px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white text-xs font-bold shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+              className="flex-1 sm:flex-none flex items-center justify-center space-x-2 rtl:space-x-reverse px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white text-xs font-bold shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
             >
               <ShoppingCart className="w-4 h-4" />
               <span>{isKu ? 'کردنەوەی کاشێر (POS)' : isAr ? 'فتح الكاشير (POS)' : 'Launch POS'}</span>
@@ -271,118 +271,118 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
             <button
               onClick={onOpenProductModal}
-              className="flex items-center space-x-2 rtl:space-x-reverse px-4 py-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
+              className="flex-1 sm:flex-none flex items-center justify-center space-x-2 rtl:space-x-reverse px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>{isKu ? 'زیادکردنی کاڵا' : isAr ? 'إضافة منتج جديد' : 'Add Product'}</span>
+              <span>{isKu ? 'زیادکردنی کاڵا' : isAr ? 'إضافة منتج' : 'Add Product'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* KPI Cards Grid (Updated: Replaced Total System Products & System Status with Sales Revenue & Invoices) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards Grid (Updated: Responsive for Mobile) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         
         {/* Today's Sales Revenue Card */}
-        <div className="p-5 rounded-3xl bg-[#0B132B] border border-emerald-500/30 relative overflow-hidden group hover:border-emerald-400 transition-all shadow-xl">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#0B132B] border border-emerald-500/30 relative overflow-hidden group hover:border-emerald-400 transition-all shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <DollarSign className="w-6 h-6" />
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <DollarSign className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
-            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-              {todayInvoicesCount} {isAr ? 'فاتورة اليوم' : 'invoices today'}
+            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+              {todayInvoicesCount} {isAr ? 'اليوم' : 'today'}
             </span>
           </div>
 
-          <div className="mt-4 space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">
-              {isKu ? 'سەرجەمی فرۆشتنی ئەمڕۆ' : isAr ? 'إجمالي مبيعات اليوم' : "Today's Sales Revenue"}
+          <div className="mt-3 sm:mt-4 space-y-0.5">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block truncate">
+              {isKu ? 'سەرجەمی فرۆشتنی ئەمڕۆ' : isAr ? 'مبيعات اليوم' : "Today's Sales"}
             </span>
-            <div className="text-2xl font-black text-emerald-400 font-mono">
-              {formatNumber(todayTotalRevenue)} {settings.currencySymbol}
+            <div className="text-base sm:text-2xl font-black text-emerald-400 font-mono truncate">
+              {formatNumber(todayTotalRevenue)} <span className="text-xs">{settings.currencySymbol}</span>
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center">
-            <span>{isAr ? 'إجمالي المبيعات الكلي:' : 'Overall Sales:'}</span>
-            <span className="font-mono font-bold text-emerald-400">{formatNumber(overallTotalRevenue)} {settings.currencySymbol}</span>
+          <div className="mt-2 sm:mt-3 pt-2 border-t border-slate-800 text-[10px] sm:text-[11px] text-slate-400 flex justify-between items-center">
+            <span className="truncate">{isAr ? 'الكلي:' : 'Total:'}</span>
+            <span className="font-mono font-bold text-emerald-400 truncate">{formatNumber(overallTotalRevenue)}</span>
           </div>
         </div>
 
         {/* Total Sales Invoices Card */}
-        <div className="p-5 rounded-3xl bg-[#0B132B] border border-cyan-500/30 relative overflow-hidden group hover:border-cyan-400 transition-all shadow-xl">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#0B132B] border border-cyan-500/30 relative overflow-hidden group hover:border-cyan-400 transition-all shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              <Receipt className="w-6 h-6" />
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <Receipt className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
-            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
               {isAr ? 'نشط' : 'Active'}
             </span>
           </div>
 
-          <div className="mt-4 space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">
-              {isKu ? 'ژمارەی پسوولەکانی فرۆشتن' : isAr ? 'إجمالي عدد الفواتير' : 'Total Sales Invoices'}
+          <div className="mt-3 sm:mt-4 space-y-0.5">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block truncate">
+              {isKu ? 'ژمارەی پسوولەکان' : isAr ? 'عدد الفواتير' : 'Total Invoices'}
             </span>
-            <div className="text-2xl font-black text-cyan-400 font-mono">
+            <div className="text-base sm:text-2xl font-black text-cyan-400 font-mono">
               {overallInvoicesCount.toLocaleString()}
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center">
-            <span>{isAr ? 'فواتير اليوم:' : "Today's Count:"}</span>
+          <div className="mt-2 sm:mt-3 pt-2 border-t border-slate-800 text-[10px] sm:text-[11px] text-slate-400 flex justify-between items-center">
+            <span>{isAr ? 'اليوم:' : 'Today:'}</span>
             <span className="font-mono font-bold text-cyan-400">{todayInvoicesCount}</span>
           </div>
         </div>
 
         {/* Low Stock Items Card */}
-        <div className="p-5 rounded-3xl bg-[#0B132B] border border-amber-500/30 relative overflow-hidden group hover:border-amber-400 transition-all shadow-xl">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#0B132B] border border-amber-500/30 relative overflow-hidden group hover:border-amber-400 transition-all shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <AlertTriangle className="w-4 h-4 sm:w-6 sm:h-6 animate-pulse" />
             </div>
-            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
+            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
               {lowStockItems.length} {isAr ? 'تنبيه' : 'Alerts'}
             </span>
           </div>
 
-          <div className="mt-4 space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">
+          <div className="mt-3 sm:mt-4 space-y-0.5">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block truncate">
               {isKu ? 'کاڵای نزیک لە تەواوبوون' : isAr ? 'مواد قريبة من النفاد' : 'Low Stock Items'}
             </span>
-            <div className="text-2xl font-black text-amber-400 font-mono">
+            <div className="text-base sm:text-2xl font-black text-amber-400 font-mono">
               {lowStockItems.length}
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center">
-            <span>{isAr ? 'تتطلب إعادة طلب:' : 'Needs Reorder:'}</span>
-            <span className="font-mono font-bold text-amber-400">{lowStockItems.length} {isAr ? 'أصناف' : 'items'}</span>
+          <div className="mt-2 sm:mt-3 pt-2 border-t border-slate-800 text-[10px] sm:text-[11px] text-slate-400 flex justify-between items-center">
+            <span className="truncate">{isAr ? 'إعادة طلب:' : 'Reorder:'}</span>
+            <span className="font-mono font-bold text-amber-400">{lowStockItems.length}</span>
           </div>
         </div>
 
         {/* Out of Stock Card */}
-        <div className="p-5 rounded-3xl bg-[#0B132B] border border-rose-500/30 relative overflow-hidden group hover:border-rose-400 transition-all shadow-xl">
+        <div className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#0B132B] border border-rose-500/30 relative overflow-hidden group hover:border-rose-400 transition-all shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
-              <TrendingDown className="w-6 h-6" />
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
-            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/30">
+            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/30">
               {outOfStockItems.length} {isAr ? 'نفذت' : 'Depleted'}
             </span>
           </div>
 
-          <div className="mt-4 space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">
-              {isKu ? 'کاڵای تەواوبوو (صفر)' : isAr ? 'مواد نفذت بالكامل' : 'Out of Stock Items'}
+          <div className="mt-3 sm:mt-4 space-y-0.5">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block truncate">
+              {isKu ? 'کاڵای تەواوبوو' : isAr ? 'مواد نفذت بالكامل' : 'Out of Stock'}
             </span>
-            <div className="text-2xl font-black text-rose-400 font-mono">
+            <div className="text-base sm:text-2xl font-black text-rose-400 font-mono">
               {outOfStockItems.length}
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center">
-            <span>{isAr ? 'مستويات الرصيد:' : 'Stock Level:'}</span>
+          <div className="mt-2 sm:mt-3 pt-2 border-t border-slate-800 text-[10px] sm:text-[11px] text-slate-400 flex justify-between items-center">
+            <span>{isAr ? 'الرصيد:' : 'Stock:'}</span>
             <span className="font-mono font-bold text-rose-400">0</span>
           </div>
         </div>

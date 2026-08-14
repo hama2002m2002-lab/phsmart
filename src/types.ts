@@ -295,4 +295,25 @@ export interface PurchaseInvoice {
   notes?: string;
 }
 
+export interface OperatingExpenseItem {
+  id: string;
+  name: string;
+  category: string;
+  categoryName?: string;
+  amount: number;
+  note?: string;
+  date?: string;
+  createdBy?: string;
+}
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  nameAr: string;
+  nameKu?: string;
+  nameEn?: string;
+  icon?: string;
+  isCustom?: boolean;
+}
+
 

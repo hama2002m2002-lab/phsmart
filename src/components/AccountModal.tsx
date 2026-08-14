@@ -190,7 +190,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       
       {/* Outer Card Styled to match the User's Image Reference */}
-      <div className="bg-[#FAF9F6] text-slate-800 rounded-3xl w-full max-w-4xl shadow-2xl relative overflow-hidden my-auto border border-emerald-900/20 font-sans" dir={isAr ? 'rtl' : 'ltr'}>
+      <div className="bg-[#FAF9F6] text-slate-800 rounded-3xl w-full max-w-4xl shadow-2xl relative overflow-hidden my-auto border border-emerald-900/20 font-sans" dir={isAr || isKu ? 'rtl' : 'ltr'}>
         
         {/* TOP HEADER BAR */}
         <div className="p-6 pb-2 flex items-center justify-between border-b border-slate-200">
@@ -210,7 +210,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               {editingAccount ? (isKu ? 'دەستکاری کردنی پرۆفایل' : isAr ? 'تعديل الملف الشخصي' : 'Edit User Profile') : (isKu ? 'دروستکردنی هەژماری نوێ و دەسەڵاتەکان' : isAr ? 'إنشاء حساب جديد وترخيص الصلاحيات' : 'Create New Account')}
             </h2>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              {isKu ? 'تکایە زانیارییەکانی بەکارهێنەر و وشەی تێپەڕبوون و دەسەڵاتەکان دیاری بکە' : isAr ? 'قم بإدخال بيانات المستخدم وربط اسم المستخدم وكلمة المرور بالدخول مع الصلاحيات' : 'Enter user details, password credentials, and grant granular permissions'}
+              {isKu ? 'تکایە زانیارییەکانی بەکارهێنەر، وشەی تێپەڕ و دەسەڵاتەکان دیاری بکە' : isAr ? 'قم بإدخال بيانات المستخدم وربط اسم المستخدم وكلمة المرور بالدخول مع الصلاحيات' : 'Enter user details, password credentials, and grant granular permissions'}
             </p>
           </div>
 
@@ -225,13 +225,13 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             {/* Bio Field (Takes Left 8 cols in Arabic RTL) */}
             <div className="md:col-span-8 space-y-1.5 order-2 md:order-1">
               <label className="text-xs font-bold text-slate-700 block text-right rtl:text-right">
-                {isAr ? 'نبذة عنك / الوصف الوظيفي' : 'About You / Bio'}
+                {isKu ? 'دەربارەی بەکارهێنەر / پێناسەی کار' : isAr ? 'نبذة عنك / الوصف الوظيفي' : 'About You / Bio'}
               </label>
               <textarea
                 rows={3}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder={isAr ? 'أخصائي نفسي مراهقين وأطفال...' : 'Describe job role or notes...'}
+                placeholder={isKu ? 'بەرپرسی فرۆشتن، کڕین و هتد...' : isAr ? 'أخصائي مبيعات وإدارة الكاشير...' : 'Describe job role or notes...'}
                 className="w-full bg-[#EDEDED] text-slate-900 placeholder-slate-400 p-3.5 rounded-2xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all text-xs leading-relaxed font-semibold resize-none shadow-inner"
               />
             </div>
@@ -247,7 +247,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   />
                 </div>
                 {/* Pencil Edit Icon Pill on Image Edge */}
-                <label className="absolute bottom-1 left-1 bg-emerald-600 text-white p-2 rounded-full shadow-lg cursor-pointer hover:bg-emerald-700 transition-colors" title={isAr ? 'رفع صورة من الجهاز' : 'Upload photo'}>
+                <label className="absolute bottom-1 left-1 bg-emerald-600 text-white p-2 rounded-full shadow-lg cursor-pointer hover:bg-emerald-700 transition-colors" title={isKu ? 'وێنەیەک لە کۆمپیوتەر دابنێ' : isAr ? 'رفع صورة من الجهاز' : 'Upload photo'}>
                   <Camera className="w-4 h-4" />
                   <input
                     type="file"
@@ -270,7 +270,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-[11px] font-black shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 mt-1"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{isAr ? 'اختر بيتموجي 3D' : 'Pick 3D Bitmoji'}</span>
+                <span>{isKu ? 'هەڵبژاردنی بتمۆجی 3D' : isAr ? 'اختر بيتموجي 3D' : 'Pick 3D Bitmoji'}</span>
               </button>
 
               {/* Quick Preset Avatars Bar */}
@@ -283,7 +283,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                       type="button"
                       onClick={() => setAvatar(dataUri)}
                       className="w-7 h-7 rounded-full border-2 border-slate-200 hover:border-purple-600 hover:scale-110 overflow-hidden bg-purple-50 transition-all cursor-pointer shadow-sm"
-                      title={isAr ? preset.nameAr : preset.nameEn}
+                      title={isKu ? preset.nameAr : isAr ? preset.nameAr : preset.nameEn}
                     >
                       <img src={dataUri} alt="Preset" className="w-full h-full object-contain" />
                     </button>
@@ -299,26 +299,26 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             
             {/* 1. Name Field (الاسم) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'الاسم الكامل' : 'Full Name'}</label>
+              <label className="text-slate-700 block">{isKu ? 'ناوی تەواو' : isAr ? 'الاسم الكامل' : 'Full Name'}</label>
               <input
                 type="text"
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder={isAr ? 'ليلى سمير' : 'e.g. Laila Samir'}
+                placeholder={isKu ? 'ئاراس ئەحمەد' : isAr ? 'ليلى سمير' : 'e.g. Laila Samir'}
                 className="w-full bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all font-bold"
               />
             </div>
 
             {/* 2. Email Field (البريد الالكتروني) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'البريد الإلكتروني' : 'Email Address'}</label>
+              <label className="text-slate-700 block">{isKu ? 'ئیمەیڵ' : isAr ? 'البريد الإلكتروني' : 'Email Address'}</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="lailasamir@gmail.com"
+                placeholder="user@supermarket.com"
                 className="w-full bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all font-mono"
               />
             </div>
@@ -326,14 +326,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             {/* 3. Username Field (اسم المستخدم للدخول) */}
             <div className="space-y-1">
               <label className="text-slate-700 block font-bold text-emerald-800">
-                {isAr ? 'اسم المستخدم (لربطه بصفحة الدخول)' : 'Username (For Login)'}
+                {isKu ? 'ناوی بەکارهێنەر (بۆ چوونەژوورەوە)' : isAr ? 'اسم المستخدم (لربطه بصفحة الدخول)' : 'Username (For Login)'}
               </label>
               <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="lailasamir"
+                placeholder="cashier1"
                 className="w-full bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all font-mono font-bold"
               />
             </div>
@@ -341,7 +341,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             {/* 4. Password Field (الرقم السري) */}
             <div className="space-y-1">
               <label className="text-slate-700 block font-bold text-emerald-800">
-                {isAr ? 'الرقم السري (كلمة المرور)' : 'Password'}
+                {isKu ? 'وشەی تێپەڕبوون' : isAr ? 'الرقم السري (كلمة المرور)' : 'Password'}
               </label>
               <div className="relative">
                 <input
@@ -364,22 +364,22 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
             {/* 5. Role / Title (التخصص) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'التخصص / المسمى الوظيفي' : 'Role / Title'}</label>
+              <label className="text-slate-700 block">{isKu ? 'ڕۆڵ / نازناوی کار' : isAr ? 'التخصص / المسمى الوظيفي' : 'Role / Title'}</label>
               <div className="flex gap-2">
                 <select
                   value={role}
                   onChange={(e) => handleRoleChange(e.target.value as any)}
                   className="bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all font-bold cursor-pointer"
                 >
-                  <option value="Cashier">🛒 {isAr ? 'كاشير' : 'Cashier'}</option>
-                  <option value="Manager">👔 {isAr ? 'مدير فرع' : 'Manager'}</option>
-                  <option value="Admin">👤 {isAr ? 'مدير نظام' : 'Admin'}</option>
+                  <option value="Cashier">🛒 {isKu ? 'کاشێر' : isAr ? 'كاشير' : 'Cashier'}</option>
+                  <option value="Manager">👔 {isKu ? 'بەڕێوەبەری لک' : isAr ? 'مدير فرع' : 'Manager'}</option>
+                  <option value="Admin">👤 {isKu ? 'بەڕێوەبەری گشتی' : isAr ? 'مدير نظام' : 'Admin'}</option>
                 </select>
                 <input
                   type="text"
                   value={specialization}
                   onChange={(e) => setSpecialization(e.target.value)}
-                  placeholder={isAr ? 'أخصائي مبيعات مراهقين وأطفال' : 'e.g. Senior Specialist'}
+                  placeholder={isKu ? 'کاشێر و فرۆشیار' : isAr ? 'أخصائي مبيعات كاشير' : 'e.g. Senior Specialist'}
                   className="flex-1 bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all"
                 />
               </div>
@@ -387,51 +387,51 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
             {/* 6. Gender (النوع) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'النوع' : 'Gender'}</label>
+              <label className="text-slate-700 block">{isKu ? 'ڕەگەز' : isAr ? 'النوع' : 'Gender'}</label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
                 className="w-full bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all cursor-pointer font-bold"
               >
-                <option value="ذكر">{isAr ? 'ذكر' : 'Male'}</option>
-                <option value="أنثى">{isAr ? 'أنثى' : 'Female'}</option>
+                <option value="ذكر">{isKu ? 'نێر' : isAr ? 'ذكر' : 'Male'}</option>
+                <option value="أنثى">{isKu ? 'مێ' : isAr ? 'أنثى' : 'Female'}</option>
               </select>
             </div>
 
             {/* 7. Address (العنوان) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'العنوان' : 'Address'}</label>
+              <label className="text-slate-700 block">{isKu ? 'ناونیشان' : isAr ? 'العنوان' : 'Address'}</label>
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder={isAr ? 'الإبراهيمية 2 - 63 شارع عمر لطفى' : 'e.g. 63 Omar Lotfy St'}
+                placeholder={isKu ? 'هەولێر / سلێمانی / دهۆک' : isAr ? 'الإبراهيمية 2 - شارع عمر لطفى' : 'e.g. 63 Omar Lotfy St'}
                 className="w-full bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all"
               />
             </div>
 
             {/* 8. Phone (التليفون) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'التليفون' : 'Phone Number'}</label>
+              <label className="text-slate-700 block">{isKu ? 'ژمارەی مۆبایل' : isAr ? 'التليفون' : 'Phone Number'}</label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="+20 1126732118"
+                placeholder="+964 750 000 0000"
                 className="w-full bg-[#EDEDED] text-slate-900 p-3 rounded-xl border border-transparent focus:bg-white focus:border-emerald-600 focus:outline-none transition-all font-mono"
               />
             </div>
 
             {/* 9. National ID Attachment (بطاقة الرقم القومي) - Matching Screenshot File Pill */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'بطاقة الرقم القومي / المرفق' : 'National ID File'}</label>
+              <label className="text-slate-700 block">{isKu ? 'کارت / بەڵگەنامەی ناسنامە' : isAr ? 'بطاقة الرقم القومي / المرفق' : 'National ID File'}</label>
               <div className="flex items-center justify-between bg-[#EDEDED] p-2 rounded-xl border border-transparent">
                 <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[11px] font-mono font-bold">
                   <span>📄</span>
-                  <span>{nationalIdFile}</span>
+                  <span>{nationalIdFile || (isKu ? 'هیچ پەڕگەیەک دیاری نەکراوە' : isAr ? 'لم يتم تحديد ملف' : 'No file selected')}</span>
                 </div>
                 <label className="px-3 py-1.5 rounded-lg bg-slate-300 hover:bg-slate-400 text-slate-800 text-[11px] font-bold cursor-pointer transition-colors">
-                  {isAr ? 'اختر ملف' : 'Browse File'}
+                  {isKu ? 'هەڵبژاردنی پەڕگە' : isAr ? 'اختر ملف' : 'Browse File'}
                   <input
                     type="file"
                     className="hidden"
@@ -447,14 +447,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
             {/* 10. Resume/Doc Attachment (السيرة الذاتية / المستندات) */}
             <div className="space-y-1">
-              <label className="text-slate-700 block">{isAr ? 'السيرة الذاتية / العقود' : 'Resume / Documents'}</label>
+              <label className="text-slate-700 block">{isKu ? 'سیڤی / بەڵگەنامەی گرێبەست' : isAr ? 'السيرة الذاتية / العقود' : 'Resume / Documents'}</label>
               <div className="flex items-center justify-between bg-[#EDEDED] p-2 rounded-xl border border-transparent">
                 <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[11px] font-mono font-bold">
                   <span>📑</span>
-                  <span>{resumeFile}</span>
+                  <span>{resumeFile || (isKu ? 'هیچ پەڕگەیەک دیاری نەکراوە' : isAr ? 'لم يتم تحديد ملف' : 'No file selected')}</span>
                 </div>
                 <label className="px-3 py-1.5 rounded-lg bg-slate-300 hover:bg-slate-400 text-slate-800 text-[11px] font-bold cursor-pointer transition-colors">
-                  {isAr ? 'اختر ملف' : 'Browse File'}
+                  {isKu ? 'هەڵبژاردنی پەڕگە' : isAr ? 'اختر ملف' : 'Browse File'}
                   <input
                     type="file"
                     className="hidden"
@@ -475,7 +475,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                <span>{isAr ? 'تحديد صلاحيات هذا الحساب داخل المنظومة (صلاحيات مدير النظام)' : 'Assign Granular System Permissions'}</span>
+                <span>{isKu ? 'دیاریکردنی دەسەڵاتەکانی ئەم هەژمارە لە سیستەمدا' : isAr ? 'تحديد صلاحيات هذا الحساب داخل المنظومة (صلاحيات مدير النظام)' : 'Assign Granular System Permissions'}</span>
               </h3>
               
               <div className="flex gap-2">
@@ -484,20 +484,22 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   onClick={() => setPermissions(adminPermissions)}
                   className="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-bold hover:bg-purple-200"
                 >
-                  {isAr ? 'منح كافة الصلاحيات' : 'Select All'}
+                  {isKu ? 'هەموو دەسەڵاتەکان' : isAr ? 'منح كافة الصلاحيات' : 'Select All'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPermissions(cashierPermissions)}
                   className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200"
                 >
-                  {isAr ? 'صلاحيات كاشير فقط' : 'Cashier Only'}
+                  {isKu ? 'تەنها کاشێر' : isAr ? 'صلاحيات كاشير فقط' : 'Cashier Only'}
                 </button>
               </div>
             </div>
 
             <p className="text-[11px] text-slate-500">
-              {isAr 
+              {isKu 
+                ? 'دەتوانیت هەر بەشێکی سیستەم بە جیاواز بۆ ئەم هەژمارە کارا یا ناچالاک بکەیت' 
+                : isAr 
                 ? 'يمكنك تفعيل أو إلغاء تفعيل أي قسم في البرنامج لهذا الحساب بشكل مستقل' 
                 : 'Toggle accessible system sections specifically for this user account.'}
             </p>
@@ -515,7 +517,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'الكاشير والبيع السريع (POS)' : 'POS & Cashier'}</span>
+                  <span>{isKu ? 'کاشێر و فرۆشتنی خێرا (POS)' : isAr ? 'الكاشير والبيع السريع (POS)' : 'POS & Cashier'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canAccessPOS ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canAccessPOS ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -533,7 +535,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Package className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'إدارة الأصناف والمنتجات' : 'Products & Pricing'}</span>
+                  <span>{isKu ? 'بەڕێوەبردنی کاڵاکان و نرخەکان' : isAr ? 'إدارة الأصناف والمنتجات' : 'Products & Pricing'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canManageProducts ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canManageProducts ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -551,7 +553,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'لوحة التحكم الرئيسية والمالية' : 'Main Overview Dashboard'}</span>
+                  <span>{isKu ? 'داشبۆرد و کورتەی سەرەکی' : isAr ? 'لوحة التحكم الرئيسية والمالية' : 'Main Overview Dashboard'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canAccessDashboard !== false ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canAccessDashboard !== false ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -569,7 +571,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'تقارير الأرباح والمبيعات' : 'Profit & Sales Reports'}</span>
+                  <span>{isKu ? 'ڕاپۆرتەکانی فرۆش و قازانج' : isAr ? 'تقارير الأرباح والمبيعات' : 'Profit & Sales Reports'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canViewReports ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canViewReports ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -587,7 +589,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'تحليلات الأداء والذكاء الاصطناعي' : 'AI Analytics & Forecast'}</span>
+                  <span>{isKu ? 'شیکارییە پێشکەوتووەکان و زیرەکی دەستکرد' : isAr ? 'تحليلات الأداء والذكاء الاصطناعي' : 'AI Analytics & Forecast'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${(permissions.canViewAnalytics ?? permissions.canViewReports) ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${(permissions.canViewAnalytics ?? permissions.canViewReports) ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -605,7 +607,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'فواتير الشراء والتجهيز' : 'Purchase Invoices'}</span>
+                  <span>{isKu ? 'پسوولەکانی کڕین و دابینکردن' : isAr ? 'فواتير الشراء والتجهيز' : 'Purchase Invoices'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${(permissions.canManagePurchases ?? permissions.canManageProducts) ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${(permissions.canManagePurchases ?? permissions.canManageProducts) ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -623,7 +625,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Package className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'جرد وتفتيش المخزون' : 'Stock Audit & Inventory'}</span>
+                  <span>{isKu ? 'جیاکردنەوە و پشکنینی کۆگا' : isAr ? 'جرد وتفتيش المخزون' : 'Stock Audit & Inventory'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${(permissions.canManageInventoryAudit ?? permissions.canManageProducts) ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${(permissions.canManageInventoryAudit ?? permissions.canManageProducts) ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -641,7 +643,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Truck className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'سجل الموردين والشركات' : 'Suppliers & Vendors'}</span>
+                  <span>{isKu ? 'تۆماری دابینکەران و کۆمپانیاکان' : isAr ? 'سجل الموردين والشركات' : 'Suppliers & Vendors'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canManageSuppliers ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canManageSuppliers ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -659,7 +661,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'إدارة العملاء والزبائن والديون' : 'Customers & Loyalty'}</span>
+                  <span>{isKu ? 'بەڕێوەبردنی کڕیاران و قەرزەکان' : isAr ? 'إدارة العملاء والزبائن والديون' : 'Customers & Loyalty'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canManageCustomers ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canManageCustomers ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -677,7 +679,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'سجل الفواتير والمقبوضات' : 'Saved Sales Invoices'}</span>
+                  <span>{isKu ? 'تۆماری پسوولە و فرۆشراوەکان' : isAr ? 'سجل الفواتير والمقبوضات' : 'Saved Sales Invoices'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${(permissions.canViewInvoices ?? permissions.canManageOrders) ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${(permissions.canViewInvoices ?? permissions.canManageOrders) ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -695,7 +697,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'طلبات الشحنات ورسائل السوق' : 'Market Orders'}</span>
+                  <span>{isKu ? 'داواکارییەکان و نامەکانی بازاڕ' : isAr ? 'طلبات الشحنات ورسائل السوق' : 'Market Orders'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canManageOrders ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canManageOrders ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -713,7 +715,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Settings className="w-4 h-4 text-emerald-600" />
-                  <span>{isAr ? 'إدارة الإعدادات وصلاحيات الحسابات' : 'System Settings & Users'}</span>
+                  <span>{isKu ? 'بەڕێوەبردنی ڕێکخستنەکان و هەژمارەکان' : isAr ? 'إدارة الإعدادات وصلاحيات الحسابات' : 'System Settings & Users'}</span>
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canManageSettings ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canManageSettings ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
@@ -730,7 +732,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               className="px-12 py-3.5 rounded-2xl bg-[#7BAE9E] hover:bg-[#689B8B] text-white font-black text-sm shadow-xl active:scale-95 transition-all flex items-center gap-2"
             >
               <Check className="w-5 h-5 stroke-[3]" />
-              <span>{isAr ? 'حفظ التغييرات' : 'Save Changes'}</span>
+              <span>{isKu ? 'پاشەکەوتکردنی گۆڕانکارییەکان' : isAr ? 'حفظ التغييرات' : 'Save Changes'}</span>
             </button>
           </div>
 

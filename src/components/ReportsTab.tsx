@@ -22,9 +22,11 @@ import {
   ShieldAlert, RefreshCw, Filter, ArrowUpRight, ArrowDownRight,
   Truck, Percent, Receipt, History, Activity, Sparkles, X, Plus,
   MinusCircle, Lock, Award, Zap, ArrowRight, ArrowLeft, Eye,
-  FileSpreadsheet, Trash2
+  FileSpreadsheet, Trash2, Tag, PlusCircle, RotateCcw, FolderPlus,
+  Edit2, Check, Boxes, Search, ShoppingCart, BookOpen, Coins,
+  Star, Flame, Gauge, CalendarRange, CheckCircle2
 } from 'lucide-react';
-import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings } from '../types';
+import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings, OperatingExpenseItem } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { parseDate, isToday, formatDisplayDateTime } from '../lib/dateUtils';
 import { getItemUnitCost, getItemTotalProfit } from '../lib/financialUtils';
@@ -56,6 +58,19 @@ export type MainReportCategory =
   | 'customers'
   | 'security'
   | 'operational';
+
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  { id: 'rent', labelAr: 'إيجار المحل والمخزن', labelKu: 'کرێی دوکان و کۆگا', labelEn: 'Rent & Storage', icon: '🏢' },
+  { id: 'electricity', labelAr: 'كهرباء ومولدات وطاقة', labelKu: 'کارەبا و مۆلیدە و وزە', labelEn: 'Electricity & Utilities', icon: '⚡' },
+  { id: 'salaries', labelAr: 'رواتب الموظفين والكاشيرية', labelKu: 'مووچەی کارمەندان و کاشێرەکان', labelEn: 'Staff Salaries', icon: '👥' },
+  { id: 'petty', labelAr: 'مصاريف نثرية وضيافة', labelKu: 'تێچووی لاوەکی و میوانداری', labelEn: 'Petty Cash & Hospitality', icon: '☕' },
+  { id: 'maintenance', labelAr: 'صيانة ومعدات وتصليح', labelKu: 'چاککردنەوە و ئامێرەکان', labelEn: 'Maintenance & Repairs', icon: '🔧' },
+  { id: 'transport', labelAr: 'أجور نقل وشحن وتوصيل', labelKu: 'کرێی گواستنەوە و گەیاندن', labelEn: 'Logistics & Transport', icon: '🚚' },
+  { id: 'marketing', labelAr: 'تسويق ودعاية وإعلانات', labelKu: 'مارکێتینگ و ڕیکلام', labelEn: 'Marketing & Ads', icon: '📢' },
+  { id: 'packaging', labelAr: 'أكياس وتغليف ومطبوعات', labelKu: 'نایلۆن و پاکێجینگ و چاپ', labelEn: 'Packaging & Supplies', icon: '📦' },
+  { id: 'taxes', labelAr: 'ضرائب ورسوم حكومية', labelKu: 'باج و ڕسووماتی فەرمی', labelEn: 'Taxes & Official Fees', icon: '🏛️' },
+  { id: 'custom', labelAr: 'نوع مخصص آخر', labelKu: 'جۆری تایبەتی تر', labelEn: 'Custom Expense Type', icon: '🏷️' },
+];
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({
   products = [],
@@ -94,6 +109,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   const [showTodayReturnsModal, setShowTodayReturnsModal] = useState<boolean>(false);
   const [todayReturnsSearchInput, setTodayReturnsSearchInput] = useState<string>('');
   const [returnsChartTimeframe, setReturnsChartTimeframe] = useState<'7days' | '14days' | '30days'>('7days');
+  const [stockSearchQuery, setStockSearchQuery] = useState<string>('');
+  const [itemTurnoverTab, setItemTurnoverTab] = useState<'fast' | 'slow' | 'dead'>('fast');
 
   // Damaged Items Logs State & Filter for Wastage Report
   const [damagedLogsFilter, setDamagedLogsFilter] = useState<'ALL' | 'DAMAGED' | 'BROKEN' | 'EXPIRED' | 'DEFECTIVE'>('ALL');
@@ -158,14 +175,125 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   const [cashierPrintModalData, setCashierPrintModalData] = useState<any | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<SaleTransaction | null>(null);
   
-  // Operational expenses state (for COGS & Net profit calculation)
-  const [opExpenses, setOpExpenses] = useState<{ rent: number; electricity: number; salaries: number; petty: number }>({
-    rent: 500000,
-    electricity: 150000,
-    salaries: 1200000,
-    petty: 85000
+  // Operational expenses state (Dynamic list defaulting to 0 / empty as requested)
+  const [opExpenseItems, setOpExpenseItems] = useState<OperatingExpenseItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('pos_custom_operating_expenses');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return []; // Defaults to 0 / empty list
   });
+
+  // Custom expense categories created by the user
+  const [customExpenseTypes, setCustomExpenseTypes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('pos_custom_expense_types');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
+
   const [editingExpense, setEditingExpense] = useState(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newExpenseName, setNewExpenseName] = useState('');
+  const [newExpenseCategory, setNewExpenseCategory] = useState('rent');
+  const [newExpenseAmount, setNewExpenseAmount] = useState<number | ''>('');
+  const [newExpenseNote, setNewExpenseNote] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Persist expense items to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('pos_custom_operating_expenses', JSON.stringify(opExpenseItems));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [opExpenseItems]);
+
+  // Persist custom categories to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('pos_custom_expense_types', JSON.stringify(customExpenseTypes));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [customExpenseTypes]);
+
+  // Helper to add single manual expense unit
+  const handleAddExpenseItem = () => {
+    if (!newExpenseName.trim() || newExpenseAmount === '' || Number(newExpenseAmount) < 0) return;
+    const newItem: OperatingExpenseItem = {
+      id: 'EXP-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      name: newExpenseName.trim(),
+      category: newExpenseCategory,
+      amount: Number(newExpenseAmount),
+      note: newExpenseNote.trim() || undefined,
+      date: new Date().toISOString()
+    };
+    setOpExpenseItems(prev => [newItem, ...prev]);
+    setNewExpenseName('');
+    setNewExpenseAmount('');
+    setNewExpenseNote('');
+    setShowAddExpenseModal(false);
+  };
+
+  // Helper to add custom expense type
+  const handleAddCustomType = () => {
+    if (!newCategoryName.trim()) return;
+    const catName = newCategoryName.trim();
+    if (!customExpenseTypes.includes(catName)) {
+      setCustomExpenseTypes(prev => [...prev, catName]);
+    }
+    setNewExpenseCategory(catName);
+    setNewCategoryName('');
+    setShowAddCategoryModal(false);
+  };
+
+  // Zero out all expense amounts (as requested: "اجعل كل تكاليف مصفرا")
+  const handleZeroAllExpenses = () => {
+    setOpExpenseItems(prev => prev.map(item => ({ ...item, amount: 0 })));
+  };
+
+  // Clear / remove all expense items
+  const handleClearAllExpenses = () => {
+    setOpExpenseItems([]);
+  };
+
+  // Delete a single expense item
+  const handleDeleteExpenseItem = (id: string) => {
+    setOpExpenseItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  // Update a single expense item field
+  const handleUpdateExpenseItem = (id: string, field: keyof OperatingExpenseItem, value: any) => {
+    setOpExpenseItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  // Helper to resolve category title and icon
+  const getCategoryMeta = (catIdOrName: string) => {
+    const predefined = DEFAULT_EXPENSE_CATEGORIES.find(c => c.id === catIdOrName);
+    if (predefined) {
+      return {
+        label: isKu ? predefined.labelKu : (isAr ? predefined.labelAr : predefined.labelEn),
+        icon: predefined.icon
+      };
+    }
+    return {
+      label: catIdOrName,
+      icon: '🏷️'
+    };
+  };
 
   // Shift closure simulation
   const [actualShiftCash, setActualShiftCash] = useState<number>(0);
@@ -547,7 +675,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
     const netSales = grossSales - totalDiscounts - totalRefundsValue;
     const grossProfit = netSales - cogs;
-    const totalOperatingExpenses = opExpenses.rent + opExpenses.electricity + opExpenses.salaries + opExpenses.petty;
+    const totalOperatingExpenses = opExpenseItems.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
     const netOperatingProfit = grossProfit - totalOperatingExpenses;
 
     // Payment methods breakdown
@@ -576,7 +704,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       posCardTerminals,
       loyaltyWalletSales
     };
-  }, [filteredSales, products, opExpenses]);
+  }, [filteredSales, products, opExpenseItems]);
 
   // ----------------------------------------------------
   // CALCULATED INVENTORY VALUATION METRICS
@@ -1325,6 +1453,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     csvData += `COGS,${financialMetrics.cogs}\n`;
     csvData += `Gross Profit,${financialMetrics.grossProfit}\n`;
     csvData += `Total Operating Expenses,${financialMetrics.totalOperatingExpenses}\n`;
+    if (opExpenseItems.length > 0) {
+      opExpenseItems.forEach((item, idx) => {
+        csvData += `Expense #${idx + 1}: ${item.name} [${item.category}],${item.amount}\n`;
+      });
+    }
     csvData += `Net Operating Profit,${financialMetrics.netOperatingProfit}\n`;
 
     const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
@@ -1338,7 +1471,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   };
 
   // ----------------------------------------------------
-  // CATEGORIES DEFINITION FOR NAVIGATION
+  // CATEGORIES DEFINITION FOR NAVIGATION WITH ICONS
   // ----------------------------------------------------
   const categoriesConfig = [
     {
@@ -1348,12 +1481,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '1. Financial, Sales & Returns',
       icon: DollarSign,
       subTabs: [
-        { id: 'comprehensive_financial', labelAr: 'التقرير المالي الشامل (P&L)', labelKu: 'ڕاپۆرتی دارایی گشتگیر (P&L)', labelEn: 'Comprehensive Financial (P&L)' },
-        { id: 'sales_report', labelAr: 'تقارير المبيعات التفصيلية 🛒', labelKu: 'ڕاپۆرتی وردی فرۆشتن 🛒', labelEn: 'Detailed Sales Report 🛒' },
-        { id: 'returns_report', labelAr: 'تقارير المرجوعات والمرتجعات 🔄', labelKu: 'ڕاپۆرتی کاڵا گەڕێنراوەکان 🔄', labelEn: 'Returns & Refunds Report 🔄' },
-        { id: 'cashier_accounts', labelAr: 'تقارير حسابات ومبيعات الكاشيرية 👤', labelKu: 'کەشف حیسابی کاشێرەکان 👤', labelEn: 'Cashier Accounts & Sales 👤' },
-        { id: 'payment_cashflow', labelAr: 'تفصيل وسائل الدفع والسيولة', labelKu: 'وردەکاری ڕێگاکانی دانی پارە و نەقدی', labelEn: 'Payment & Cashflow' },
-        { id: 'period_comparison', labelAr: 'مقارنة الفترات والاتجاهات', labelKu: 'بەراوردی ماوەکان و ڕەوتەکان', labelEn: 'Period & Trends Comparison' }
+        { id: 'comprehensive_financial', labelAr: 'التقرير المالي الشامل (P&L)', labelKu: 'ڕاپۆرتی دارایی گشتگیر (P&L)', labelEn: 'Comprehensive Financial (P&L)', icon: TrendingUp, color: 'text-emerald-400 bg-emerald-500/10' },
+        { id: 'sales_report', labelAr: 'تقارير المبيعات التفصيلية', labelKu: 'ڕاپۆرتی وردی فرۆشتن', labelEn: 'Detailed Sales Report', icon: ShoppingCart, color: 'text-cyan-400 bg-cyan-500/10' },
+        { id: 'returns_report', labelAr: 'تقارير المرجوعات والمرتجعات', labelKu: 'ڕاپۆرتی کاڵا گەڕێنراوەکان', labelEn: 'Returns & Refunds Report', icon: RotateCcw, color: 'text-rose-400 bg-rose-500/10' },
+        { id: 'cashier_accounts', labelAr: 'تقارير حسابات ومبيعات الكاشيرية', labelKu: 'کەشف حیسابی کاشێرەکان', labelEn: 'Cashier Accounts & Sales', icon: UserCheck, color: 'text-purple-400 bg-purple-500/10' },
+        { id: 'payment_cashflow', labelAr: 'تفصيل وسائل الدفع والسيولة', labelKu: 'وردەکاری ڕێگاکانی دانی پارە و نەقدی', labelEn: 'Payment & Cashflow', icon: Wallet, color: 'text-blue-400 bg-blue-500/10' },
+        { id: 'period_comparison', labelAr: 'مقارنة الفترات والاتجاهات', labelKu: 'بەراوردی ماوەکان و ڕەوتەکان', labelEn: 'Period & Trends Comparison', icon: CalendarRange, color: 'text-amber-400 bg-amber-500/10' }
       ]
     },
     {
@@ -1363,10 +1496,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '2. Inventory & Damaged Stock',
       icon: Package,
       subTabs: [
-        { id: 'stock_valuation', labelAr: 'جرد وتقييم المخزون ( بسعر البيع والشراء )', labelKu: 'جرد و هەڵسەنگاندنی کۆگا (بە نرخی تاک و تێچوو)', labelEn: 'Stock Valuation' },
-        { id: 'item_turnover', labelAr: 'حركة ودوران البضائع (الأكثر/الأقل/الراكد)', labelKu: 'جووڵە و خولانەوەی کاڵاکان (پڕفرۆش/کەمفرۆش/مەند)', labelEn: 'Item Turnover' },
-        { id: 'wastage_damage', labelAr: 'تقارير المواد المتلفة والهالك والتسويات ⚠️', labelKu: 'ڕاپۆرتی کاڵای تێکچوو و زەرەر ⚠️', labelEn: 'Damaged & Spoiled Stock Report ⚠️' },
-        { id: 'proactive_alerts', labelAr: 'التنبيهات المتقدمة وحد إعادة الطلب', labelKu: 'ئاگاداری پێشکەوتوو و بەسەرچوون', labelEn: 'Proactive Reorder & Expiry' }
+        { id: 'stock_valuation', labelAr: 'جرد وتقييم المخزون ( بسعر البيع والشراء )', labelKu: 'جرد و هەڵسەنگاندنی کۆگا (بە نرخی تاک و تێچوو)', labelEn: 'Stock Valuation', icon: Boxes, color: 'text-cyan-400 bg-cyan-500/10' },
+        { id: 'item_turnover', labelAr: 'حركة ودوران البضائع (الأكثر/الأقل/الراكد)', labelKu: 'جووڵە و خولانەوەی کاڵاکان (پڕفرۆش/کەمفرۆش/مەند)', labelEn: 'Item Turnover', icon: RefreshCw, color: 'text-emerald-400 bg-emerald-500/10' },
+        { id: 'wastage_damage', labelAr: 'تقارير المواد المتلفة والهالك والتسويات', labelKu: 'ڕاپۆرتی کاڵای تێکچوو و زەرەر', labelEn: 'Damaged & Spoiled Stock', icon: AlertTriangle, color: 'text-amber-400 bg-amber-500/10' },
+        { id: 'proactive_alerts', labelAr: 'التنبيهات المتقدمة وحد إعادة الطلب', labelKu: 'ئاگاداری پێشکەوتوو و بەسەرچوون', labelEn: 'Proactive Reorder & Expiry', icon: Clock, color: 'text-rose-400 bg-rose-500/10' }
       ]
     },
     {
@@ -1376,9 +1509,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '3. Purchases & Supplier Reports',
       icon: Truck,
       subTabs: [
-        { id: 'purchases_report', labelAr: 'تقارير الشراء وفواتير المشتريات 🚚', labelKu: 'ڕاپۆرتی کڕین و پسوڵەکان 🚚', labelEn: 'Purchases & Invoices Report 🚚' },
-        { id: 'supplier_ledgers', labelAr: 'كشف حساب وحركة الموردين', labelKu: 'کەشف حیساب و جووڵەی دابینکەران', labelEn: 'Supplier Ledgers & Debts' },
-        { id: 'purchase_price_history', labelAr: 'تاريخ وتغير أسعار الشراء', labelKu: 'مێژوو و گۆڕانکاری نرخەکانی کڕین', labelEn: 'Purchase Price History' }
+        { id: 'purchases_report', labelAr: 'تقارير الشراء وفواتير المشتريات', labelKu: 'ڕاپۆرتی کڕین و پسوڵەکان', labelEn: 'Purchases & Invoices Report', icon: Receipt, color: 'text-blue-400 bg-blue-500/10' },
+        { id: 'supplier_ledgers', labelAr: 'كشف حساب وحركة الموردين', labelKu: 'کەشف حیساب و جووڵەی دابینکەران', labelEn: 'Supplier Ledgers & Debts', icon: BookOpen, color: 'text-purple-400 bg-purple-500/10' },
+        { id: 'purchase_price_history', labelAr: 'تاريخ وتغير أسعار الشراء', labelKu: 'مێژوو و گۆڕانکاری نرخەکانی کڕین', labelEn: 'Purchase Price History', icon: History, color: 'text-amber-400 bg-amber-500/10' }
       ]
     },
     {
@@ -1388,8 +1521,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '4. Customers & Credit',
       icon: Users,
       subTabs: [
-        { id: 'customer_receivables', labelAr: 'الذمم المدينة وأعمار الديون', labelKu: 'قەرزەکان و تەمەنی قەرزەکانی کڕیار', labelEn: 'Customer Credit & Debt Aging' },
-        { id: 'loyalty_behavior', labelAr: 'نقاط الولاء وقائمة الزبائن المميزين', labelKu: 'خاڵەکانی دڵسۆزی و کڕیارە تایبەتەکان', labelEn: 'Loyalty & VIP Customers' }
+        { id: 'customer_receivables', labelAr: 'الذمم المدينة وأعمار الديون', labelKu: 'قەرزەکان و تەمەنی قەرزەکانی کڕیار', labelEn: 'Customer Credit & Debt Aging', icon: Coins, color: 'text-rose-400 bg-rose-500/10' },
+        { id: 'loyalty_behavior', labelAr: 'نقاط الولاء وقائمة الزبائن المميزين', labelKu: 'خاڵەکانی دڵسۆزی و کڕیارە تایبەتەکان', labelEn: 'Loyalty & VIP Customers', icon: Star, color: 'text-amber-400 bg-amber-500/10' }
       ]
     },
     {
@@ -1399,8 +1532,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '5. Audit & Anti-Fraud',
       icon: ShieldAlert,
       subTabs: [
-        { id: 'shift_closure', labelAr: 'إغلاق الورديات (Z-Report)', labelKu: 'داخستنی نۆبەت (Z-Report)', labelEn: 'Shift Closure Z-Report' },
-        { id: 'security_audit_log', labelAr: 'سجل العمليات المشبوهة والإلغاءات', labelKu: 'تۆماری کردارە گوماناوییەکان و هەڵوەشاندنەوەکان', labelEn: 'Security Audit Log' }
+        { id: 'shift_closure', labelAr: 'إغلاق الورديات (Z-Report)', labelKu: 'داخستنی نۆبەت (Z-Report)', labelEn: 'Shift Closure Z-Report', icon: Lock, color: 'text-emerald-400 bg-emerald-500/10' },
+        { id: 'security_audit_log', labelAr: 'سجل العمليات المشبوهة والإلغاءات', labelKu: 'تۆماری کردارە گوماناوییەکان و هەڵوەشاندنەوەکان', labelEn: 'Security Audit Log', icon: ShieldCheck, color: 'text-rose-400 bg-rose-500/10' }
       ]
     },
     {
@@ -1410,15 +1543,16 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '6. Operational Analytics',
       icon: BarChart3,
       subTabs: [
-        { id: 'cashier_accounts', labelAr: 'حسابات ومبيعات الكاشيرية (مع التاريخ والوقت)', labelKu: 'ئەژماری کاشێرەکان بە پێی بەروار و کات', labelEn: 'Cashier Accounts (Date & Time Filter)' },
-        { id: 'peak_hours', labelAr: 'تحليل ساعات الذروة (24 ساعة)', labelKu: 'شیکاری کاتەکانی قەرەباڵغی (٢٤ کاتژمێر)', labelEn: '24h Peak Hours Analysis' },
-        { id: 'basket_analysis', labelAr: 'تحليل حجم وسلة الشراء', labelKu: 'شیکاری قەبارەی سەبەتەی کڕین', labelEn: 'Basket Size & Cross-Selling' },
-        { id: 'cashier_performance', labelAr: 'تقرير أداء وسرعة الكاشيرية', labelKu: 'ڕاپۆرتی کارکردن و خێرایی کاشێرەکان', labelEn: 'Cashier Speed & Errors' }
+        { id: 'cashier_accounts', labelAr: 'حسابات ومبيعات الكاشيرية (مع الوقت)', labelKu: 'ئەژماری کاشێرەکان بە پێی بەروار و کات', labelEn: 'Cashier Accounts (Date & Time)', icon: Users, color: 'text-purple-400 bg-purple-500/10' },
+        { id: 'peak_hours', labelAr: 'تحليل ساعات الذروة (24 ساعة)', labelKu: 'شیکاری کاتەکانی قەرەباڵغی (٢٤ کاتژمێر)', labelEn: '24h Peak Hours Analysis', icon: Flame, color: 'text-amber-400 bg-amber-500/10' },
+        { id: 'basket_analysis', labelAr: 'تحليل حجم وسلة الشراء', labelKu: 'شیکاری قەبارەی سەبەتەی کڕین', labelEn: 'Basket Size & Cross-Selling', icon: ShoppingBag, color: 'text-cyan-400 bg-cyan-500/10' },
+        { id: 'cashier_performance', labelAr: 'تقرير أداء وسرعة الكاشيرية', labelKu: 'ڕاپۆرتی کارکردن و خێرایی کاشێرەکان', labelEn: 'Cashier Speed & Errors', icon: Gauge, color: 'text-emerald-400 bg-emerald-500/10' }
       ]
     }
   ];
 
   const activeCategoryObj = categoriesConfig.find(c => c.id === activeCategory) || categoriesConfig[0];
+  const activeSubTabObj = categoriesConfig.flatMap(c => c.subTabs).find(s => s.id === activeSubTab) || activeCategoryObj.subTabs[0];
 
   if (isCashierAccountsOnly) {
     return (
@@ -1741,16 +1875,16 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   {/* 1. بيع نقد (Cash Sales Button) */}
                   <button
                     onClick={() => openWithFilter('cash')}
-                    className={`p-1 rounded-lg border flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-right ${
+                    className={`p-1.5 rounded-lg border flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-right ${
                       isExpanded && activeDrawerFilter === 'cash'
-                        ? 'bg-emerald-900/60 border-emerald-400 ring-1 ring-emerald-400/50'
-                        : 'bg-emerald-950/40 border-emerald-500/30 hover:bg-emerald-900/40'
+                        ? 'bg-emerald-900/80 border-emerald-400 ring-2 ring-emerald-400/60 shadow-[0_0_12px_rgba(16,185,129,0.3)] text-white'
+                        : 'bg-emerald-950/40 border-emerald-500/30 hover:bg-emerald-900/50'
                     }`}
-                    title={t('عرض وصلات البيع النقد', 'بینینی فرۆشتنی نەقد', 'View Cash Sales')}
+                    title={t('اضغط لفتح ورؤية وصلات البيع النقدية', 'بینینی فرۆشتنی نەقد', 'Click to open cash sales receipts')}
                   >
                     <span className="text-[9px] font-bold text-emerald-400 font-sans flex items-center gap-1">
                       <span>{t('بيع نقد', 'نەقد', 'Cash')}</span>
-                      <span className="text-[8px] opacity-75">🔍</span>
+                      <span className="text-[8px] opacity-90">🔍</span>
                     </span>
                     <span className="font-bold text-emerald-300 text-[10px]">
                       {currency} {c.cashSales.toLocaleString('en-US')}
@@ -1760,16 +1894,16 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   {/* 2. مرجوع (Refunds / Returns Button) */}
                   <button
                     onClick={() => openWithFilter('returned_items')}
-                    className={`p-1 rounded-lg border flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-right ${
+                    className={`p-1.5 rounded-lg border flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-right ${
                       isExpanded && (activeDrawerFilter === 'refunds' || activeDrawerFilter === 'returned_items')
-                        ? 'bg-rose-900/60 border-rose-400 ring-1 ring-rose-400/50'
-                        : 'bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/40'
+                        ? 'bg-rose-900/80 border-rose-400 ring-2 ring-rose-400/60 shadow-[0_0_12px_rgba(244,63,94,0.3)] text-white'
+                        : 'bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/50'
                     }`}
-                    title={t('عرض المواد المرجوعة والواصلات المرتجعة', 'بینینی کاڵا گەڕێنراوەکان', 'View Returned Materials')}
+                    title={t('اضغط لفتح ورؤية المواد والوصلات المرجوعة', 'بینینی کاڵا گەڕێنراوەکان', 'Click to open returns & refunded receipts')}
                   >
                     <span className="text-[9px] font-bold text-rose-400 font-sans flex items-center gap-1">
                       <span>{t('مرجوع', 'گەڕێنراوە', 'Refund')}</span>
-                      <span className="text-[8px] opacity-75">🔍</span>
+                      <span className="text-[8px] opacity-90">🔍</span>
                     </span>
                     <span className="font-bold text-rose-300 text-[10px]">
                       {currency} {c.refunds.toLocaleString('en-US')}
@@ -1781,14 +1915,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     onClick={() => openWithFilter('net')}
                     className={`p-1.5 rounded-lg border flex items-center justify-between col-span-2 cursor-pointer transition-all hover:scale-[1.01] active:scale-95 text-right ${
                       isExpanded && activeDrawerFilter === 'net'
-                        ? 'bg-cyan-900/70 border-cyan-300 ring-1 ring-cyan-400/50'
+                        ? 'bg-cyan-900/80 border-cyan-300 ring-2 ring-cyan-400/60 shadow-[0_0_12px_rgba(6,182,212,0.3)] text-white'
                         : 'bg-cyan-950/50 border-cyan-500/40 hover:bg-cyan-900/50 bg-gradient-to-r from-cyan-950/60 to-blue-950/60'
                     }`}
-                    title={t('عرض وصلات صافي المبيعات', 'بینینی پاکی فرۆشتن', 'View Net Sales Receipts')}
+                    title={t('اضغط لفتح ورؤية وصلات صافي المبيعات النافذة', 'بینینی پاکی فرۆشتن', 'Click to open net sales receipts')}
                   >
                     <span className="text-[10px] font-bold text-cyan-300 font-sans flex items-center gap-1">
                       <span>{t('صافي المبيعات', 'پاکی فرۆشتن', 'Net Sales')}</span>
-                      <span className="text-[8px] opacity-75">🔍</span>
+                      <span className="text-[8px] opacity-90">🔍</span>
                     </span>
                     <span className="text-xs font-black text-cyan-200">
                       {currency} {c.netSales.toLocaleString('en-US')}
@@ -1798,35 +1932,35 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   {/* 4. مجموع كل المبيعات (Total All Sales Button) */}
                   <button
                     onClick={() => openWithFilter('all')}
-                    className={`p-1 rounded-lg border flex items-center justify-between col-span-2 cursor-pointer transition-all hover:scale-[1.01] active:scale-95 text-right ${
+                    className={`p-1.5 rounded-lg border flex items-center justify-between col-span-2 cursor-pointer transition-all hover:scale-[1.01] active:scale-95 text-right ${
                       isExpanded && activeDrawerFilter === 'all'
-                        ? 'bg-amber-900/60 border-amber-400 ring-1 ring-amber-400/50'
-                        : 'bg-amber-950/40 border-amber-500/30 hover:bg-amber-900/40'
+                        ? 'bg-amber-900/80 border-amber-400 ring-2 ring-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.3)] text-white'
+                        : 'bg-amber-950/40 border-amber-500/30 hover:bg-amber-900/50'
                     }`}
-                    title={t('عرض كافة الوصلات الصادرة', 'بینینی هەموو پسوڵەکان', 'View All Invoices')}
+                    title={t('اضغط لفتح ورؤية كافة الوصلات الصادرة', 'بینینی هەموو پسوڵەکان', 'Click to open all issued receipts')}
                   >
                     <span className="text-[9px] font-bold text-amber-400 font-sans flex items-center gap-1">
                       <span>{t('مجموع كل المبيعات', 'کۆی گشتی', 'Total Sales')}</span>
-                      <span className="text-[8px] opacity-75">🔍</span>
+                      <span className="text-[8px] opacity-90">🔍</span>
                     </span>
                     <span className="font-bold text-amber-300 text-[10px]">
                       {currency} {c.grossSales.toLocaleString('en-US')}
                     </span>
                   </button>
 
-                  {/* 5. أرباح المبيعات (Sales Profit Button) - NEW FIELD */}
+                  {/* 5. أرباح المبيعات (Sales Profit Button) */}
                   <button
                     onClick={() => openWithFilter('sold_items')}
                     className={`p-1.5 rounded-lg border flex items-center justify-between col-span-2 cursor-pointer transition-all hover:scale-[1.01] active:scale-95 text-right ${
                       isExpanded && (activeDrawerFilter === 'profit' || activeDrawerFilter === 'sold_items')
-                        ? 'bg-purple-900/70 border-purple-300 ring-1 ring-purple-400/50'
+                        ? 'bg-purple-900/80 border-purple-300 ring-2 ring-purple-400/60 shadow-[0_0_12px_rgba(168,85,247,0.3)] text-white'
                         : 'bg-purple-950/50 border-purple-500/40 hover:bg-purple-900/50 bg-gradient-to-r from-purple-950/60 to-indigo-950/60'
                     }`}
-                    title={t('عرض المواد المباعة وأرباح المبيعات', 'بینینی کاڵا فرۆشراوەکان و قازانج', 'View Sold Materials & Profits')}
+                    title={t('اضغط لفتح ورؤية المواد المباعة وتفاصيل الأرباح', 'بینینی کاڵا فرۆشراوەکان و قازانج', 'Click to view sold materials & net profits')}
                   >
                     <span className="text-[10px] font-bold text-purple-300 font-sans flex items-center gap-1">
                       <span>💰 {t('أرباح المبيعات', 'قازانجی فرۆشتن', 'Sales Profit')}</span>
-                      <span className="text-[8px] opacity-75">🔍</span>
+                      <span className="text-[8px] opacity-90">🔍</span>
                     </span>
                     <span className="text-xs font-black text-purple-200">
                       {currency} {c.profit.toLocaleString('en-US')}
@@ -1843,14 +1977,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
                 {/* Drawer: Filtered Invoices & Sold / Returned Materials */}
                 {isExpanded && (
-                  <div className="pt-2 border-t border-slate-800 space-y-2 animate-fadeIn">
+                  <div className="pt-2 border-t border-slate-800 space-y-2 animate-fadeIn bg-[#050914] p-2 rounded-xl border border-indigo-500/20">
                     {/* Quick View Tabs Bar */}
-                    <div className="flex flex-wrap items-center gap-1 bg-[#050914] p-1 rounded-xl border border-slate-800 font-sans text-[9px]">
+                    <div className="flex flex-wrap items-center gap-1 bg-[#090F20] p-1 rounded-xl border border-slate-800 font-sans text-[9px]">
                       <button
                         onClick={() => openWithFilter('all')}
                         className={`px-1.5 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
                           activeDrawerFilter === 'all'
-                            ? 'bg-amber-500 text-slate-950 shadow-sm'
+                            ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
                             : 'text-slate-400 hover:text-white'
                         }`}
                       >
@@ -1861,7 +1995,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         onClick={() => openWithFilter('cash')}
                         className={`px-1.5 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
                           activeDrawerFilter === 'cash'
-                            ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                            ? 'bg-emerald-500 text-slate-950 shadow-sm font-black'
                             : 'text-slate-400 hover:text-white'
                         }`}
                       >
@@ -1872,7 +2006,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         onClick={() => openWithFilter('sold_items')}
                         className={`px-1.5 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
                           activeDrawerFilter === 'sold_items' || activeDrawerFilter === 'profit'
-                            ? 'bg-purple-500 text-slate-950 shadow-sm'
+                            ? 'bg-purple-500 text-slate-950 shadow-sm font-black'
                             : 'text-slate-400 hover:text-white'
                         }`}
                       >
@@ -1883,7 +2017,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         onClick={() => openWithFilter('returned_items')}
                         className={`px-1.5 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
                           activeDrawerFilter === 'returned_items' || activeDrawerFilter === 'refunds'
-                            ? 'bg-rose-500 text-slate-950 shadow-sm'
+                            ? 'bg-rose-500 text-slate-950 shadow-sm font-black'
                             : 'text-slate-400 hover:text-white'
                         }`}
                       >
@@ -1891,26 +2025,26 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                       </button>
                     </div>
 
-                    {/* VIEW 1: SOLD ITEMS (مواد تم بيعها) */}
+                    {/* VIEW 1: SOLD ITEMS (مواد تم بيعها وأرباحها) */}
                     {(activeDrawerFilter === 'sold_items' || activeDrawerFilter === 'profit') && (
                       <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-purple-300 px-0.5">
-                          <span>{t(`المواد المباعة (${soldItemsList.length}):`, `کاڵا فرۆشراوەکان (${soldItemsList.length}):`, `Sold Items (${soldItemsList.length}):`)}</span>
-                          <span className="text-[9px] text-slate-400 font-mono">{t('ربح:', 'قازانج:', 'Profit:')} {currency} {c.profit.toLocaleString('en-US')}</span>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-purple-300 p-1 bg-purple-950/40 rounded-lg border border-purple-500/30">
+                          <span>🛒 {t(`المواد المباعة (${soldItemsList.length}):`, `کاڵا فرۆشراوەکان (${soldItemsList.length}):`, `Sold Items (${soldItemsList.length}):`)}</span>
+                          <span className="text-[10px] text-purple-200 font-mono font-bold">{t('صافي الربح:', 'قازانج:', 'Profit:')} {currency} {Math.round(c.profit).toLocaleString('en-US')}</span>
                         </div>
                         {soldItemsList.length === 0 ? (
-                          <p className="text-[10px] text-slate-500 py-2 text-center">{t('لا توجد مواد مباعة', 'هیچ کاڵایەک نەفڕۆشراوە', 'No sold items')}</p>
+                          <p className="text-[10px] text-slate-500 py-2 text-center">{t('لا توجد مواد مباعة لهذا الكاشير', 'هیچ کاڵایەک نەفڕۆشراوە', 'No sold items')}</p>
                         ) : (
                           <div className="max-h-48 overflow-y-auto space-y-1 text-[10px] custom-scrollbar pr-0.5">
                             {soldItemsList.map((item, idx) => (
-                              <div key={idx} className="p-1.5 rounded-lg bg-[#050914] border border-purple-500/20 flex items-center justify-between">
+                              <div key={idx} className="p-1.5 rounded-lg bg-[#070C18] border border-purple-500/20 flex items-center justify-between">
                                 <div>
-                                  <p className="font-bold text-slate-100 font-sans truncate max-w-[120px]">{item.name}</p>
-                                  <p className="text-[9px] text-slate-400 font-mono">{t('الكمية المباعة:', 'بڕ:', 'Qty:')} <strong className="text-purple-300">{item.quantity}</strong></p>
+                                  <p className="font-bold text-slate-100 font-sans truncate max-w-[130px]">{item.name}</p>
+                                  <p className="text-[9px] text-slate-400 font-mono">{t('الكمية المباعة:', 'بڕ:', 'Qty:')} <strong className="text-purple-300 font-bold">{item.quantity}</strong></p>
                                 </div>
                                 <div className="text-right font-mono">
                                   <p className="font-bold text-emerald-400 text-[10px]">{currency} {item.totalRevenue.toLocaleString('en-US')}</p>
-                                  <p className="text-[9px] text-purple-300">{t('ربح:', 'قازانج:', 'Profit:')} {currency} {Math.round(item.totalProfit).toLocaleString('en-US')}</p>
+                                  <p className="text-[9px] text-purple-300 font-bold">{t('ربح:', 'قازانج:', 'Profit:')} {currency} {Math.round(item.totalProfit).toLocaleString('en-US')}</p>
                                 </div>
                               </div>
                             ))}
@@ -1919,41 +2053,92 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                       </div>
                     )}
 
-                    {/* VIEW 2: RETURNED ITEMS (مواد مرجوعة) */}
-                    {(activeDrawerFilter === 'returned_items') && (
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-rose-300 px-0.5">
-                          <span>{t(`المواد المرجوعة والراجع (${returnedItemsList.length}):`, `کاڵا گەڕێنراوەکان (${returnedItemsList.length}):`, `Returned Items (${returnedItemsList.length}):`)}</span>
-                          <span className="text-[9px] text-rose-400 font-mono">-{currency} {c.refunds.toLocaleString('en-US')}</span>
+                    {/* VIEW 2: RETURNED ITEMS (مواد مرجوعة ووصلات المرجوع) */}
+                    {(activeDrawerFilter === 'returned_items' || activeDrawerFilter === 'refunds') && (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-rose-300 p-1 bg-rose-950/40 rounded-lg border border-rose-500/30">
+                          <span>🔄 {t(`المواد المرجوعة والراجع (${returnedItemsList.length}):`, `کاڵا گەڕێنراوەکان (${returnedItemsList.length}):`, `Returned Items (${returnedItemsList.length}):`)}</span>
+                          <span className="text-[10px] text-rose-300 font-mono font-bold">-{currency} {c.refunds.toLocaleString('en-US')}</span>
                         </div>
-                        {returnedItemsList.length === 0 ? (
-                          <p className="text-[10px] text-slate-500 py-2 text-center">{t('لا توجد مواد مرجوعة', 'هیچ کاڵایەک نەگەڕێنراوەتەوە', 'No returned items')}</p>
+
+                        {returnedItemsList.length === 0 && filteredTransactions.length === 0 ? (
+                          <p className="text-[10px] text-slate-500 py-2 text-center">{t('لا توجد مواد أو وصلات مرجوعة لهذا الحساب', 'هیچ کاڵایەک نەگەڕێنراوەتەوە', 'No returned items or receipts')}</p>
                         ) : (
-                          <div className="max-h-48 overflow-y-auto space-y-1 text-[10px] custom-scrollbar pr-0.5">
-                            {returnedItemsList.map((item, idx) => (
-                              <div key={idx} className="p-1.5 rounded-lg bg-rose-950/40 border border-rose-500/40 flex items-center justify-between">
-                                <div>
-                                  <p className="font-bold text-rose-100 font-sans truncate max-w-[120px]">{item.name}</p>
-                                  <p className="text-[9px] text-rose-300/80 font-mono">
-                                    {t('الكمية المرجعة:', 'بڕی گەڕێنراوە:', 'Returned Qty:')} <strong>{item.quantity}</strong> • #{item.invoiceNo}
-                                  </p>
-                                </div>
-                                <div className="text-right font-mono">
-                                  <p className="font-bold text-rose-300 text-[10px]">-{currency} {item.totalRefunded.toLocaleString('en-US')}</p>
+                          <>
+                            {returnedItemsList.length > 0 && (
+                              <div className="max-h-36 overflow-y-auto space-y-1 text-[10px] custom-scrollbar pr-0.5">
+                                {returnedItemsList.map((item, idx) => (
+                                  <div key={idx} className="p-1.5 rounded-lg bg-rose-950/40 border border-rose-500/40 flex items-center justify-between">
+                                    <div>
+                                      <p className="font-bold text-rose-100 font-sans truncate max-w-[130px]">{item.name}</p>
+                                      <p className="text-[9px] text-rose-300/80 font-mono">
+                                        {t('الكمية المرجعة:', 'بڕی گەڕێنراوە:', 'Returned Qty:')} <strong>{item.quantity}</strong> • #{item.invoiceNo}
+                                      </p>
+                                    </div>
+                                    <div className="text-right font-mono">
+                                      <p className="font-bold text-rose-300 text-[10px]">-{currency} {item.totalRefunded.toLocaleString('en-US')}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {filteredTransactions.length > 0 && (
+                              <div className="space-y-1 pt-1 border-t border-rose-900/40">
+                                <p className="text-[9px] font-bold text-rose-300">{t('فواتير ووصلات المرجوع المعتمدة:', 'پسوڵە گەڕێنراوەکان:', 'Refunded Receipts:')}</p>
+                                <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5 text-[10px] custom-scrollbar">
+                                  {filteredTransactions.map((tx) => (
+                                    <div key={tx.id} className="p-1.5 rounded-xl border border-rose-500/50 bg-rose-950/70 text-rose-100 flex items-center justify-between">
+                                      <div>
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="font-mono font-bold text-rose-200">#{tx.invoiceNumber}</p>
+                                          <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white text-[8px] font-sans font-black">
+                                            {t('مرتجع 🔴', 'گەڕێنراوە 🔴', 'Refunded 🔴')}
+                                          </span>
+                                        </div>
+                                        <p className="text-[9px] font-mono text-rose-300/80">
+                                          {new Date(tx.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-bold text-rose-300 text-xs font-mono">-{currency} {tx.total.toLocaleString('en-US')}</p>
+                                        <button
+                                          onClick={() => setSelectedInvoice(tx)}
+                                          className="py-1 px-2 rounded-lg bg-rose-600/40 hover:bg-rose-500 text-white border border-rose-400 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shrink-0"
+                                          title={t('فتح معاينة الوصل والمرجوع', 'کردنەوەی پسوڵە', 'Open Refund Receipt')}
+                                        >
+                                          <Eye className="w-3 h-3 text-white" />
+                                          <span>{t('معاينة الوصل', 'کردنەوە', 'View')}</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
-                            ))}
-                          </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
 
-                    {/* VIEW 3: INVOICES & RECEIPTS LIST */}
-                    {(activeDrawerFilter === 'all' || activeDrawerFilter === 'cash' || activeDrawerFilter === 'net' || activeDrawerFilter === 'refunds') && (
+                    {/* VIEW 3: INVOICES & RECEIPTS LIST FOR CASH, NET, ALL */}
+                    {(activeDrawerFilter === 'all' || activeDrawerFilter === 'cash' || activeDrawerFilter === 'net') && (
                       <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold">
-                          <span className="text-slate-300">
-                            {t(`وصلات ${c.cashierName} (${filteredTransactions.length}):`, `پسوڵەکانی ${c.cashierName} (${filteredTransactions.length}):`, `Receipts for ${c.cashierName} (${filteredTransactions.length}):`)}
+                        <div className="flex items-center justify-between text-[10px] font-bold p-1 rounded-lg border bg-[#070C18]"
+                          style={{
+                            borderColor: activeDrawerFilter === 'cash' ? 'rgba(16,185,129,0.3)' : activeDrawerFilter === 'net' ? 'rgba(6,182,212,0.3)' : 'rgba(245,158,11,0.3)'
+                          }}
+                        >
+                          <span className="text-slate-200">
+                            {activeDrawerFilter === 'cash' && `💵 ${t('وصلات المبيعات النقدية:', 'پسوڵەکانی نەقد:', 'Cash Receipts:')}`}
+                            {activeDrawerFilter === 'net' && `💙 ${t('وصلات صافي المبيعات النافذة:', 'پاکی فرۆشتن:', 'Net Receipts:')}`}
+                            {activeDrawerFilter === 'all' && `📊 ${t('كافة الوصلات والفواتير الصادرة:', 'هەموو پسوڵەکان:', 'All Receipts:')}`}
+                            {' '}({filteredTransactions.length})
+                          </span>
+                          <span className="font-mono font-bold text-cyan-300">
+                            {activeDrawerFilter === 'cash' && `${currency} ${c.cashSales.toLocaleString('en-US')}`}
+                            {activeDrawerFilter === 'net' && `${currency} ${c.netSales.toLocaleString('en-US')}`}
+                            {activeDrawerFilter === 'all' && `${currency} ${c.grossSales.toLocaleString('en-US')}`}
                           </span>
                         </div>
                         {filteredTransactions.length === 0 ? (
@@ -1968,7 +2153,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                                   className={`p-1.5 rounded-xl border flex items-center justify-between transition-all ${
                                     isRefunded 
                                       ? 'bg-rose-950/90 border-2 border-rose-500 text-rose-100 shadow-[0_0_12px_rgba(244,63,94,0.35)] font-bold' 
-                                      : 'bg-[#050914] border-slate-800 text-slate-200 hover:border-slate-700'
+                                      : 'bg-[#070C18] border-slate-800 text-slate-200 hover:border-slate-700'
                                   }`}
                                 >
                                   <div>
@@ -2136,8 +2321,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 </div>
               </div>
 
-              <div className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg group-hover:scale-105 transition-all shrink-0">
-                <Eye className="w-4 h-4" />
+              <div className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md group-hover:scale-105 transition-all shrink-0">
+                <Eye className="w-3.5 h-3.5" />
                 <span>{t('عرض التفاصيل ↗', 'بینینی وردەکاری ↗', 'View Details ↗')}</span>
               </div>
             </div>
@@ -2145,57 +2330,91 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
         </div>
 
         {/* ======================================================== */}
-        {/* 6 MAIN CATEGORY HUB LAUNCH CARDS (Yellow Circle Items) */}
         {/* ======================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* 6 MAIN CATEGORY HUB LAUNCH CARDS (Compact List View with Icons) */}
+        {/* ======================================================== */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {categoriesConfig.map((cat) => {
             const IconComp = cat.icon;
             return (
               <div
                 key={cat.id}
-                onClick={() => {
-                  setActiveCategory(cat.id);
-                  setActiveSubTab(cat.subTabs[0].id);
-                  setIsDetailOpen(true);
-                  onToggleFullscreen?.(true);
-                }}
-                className={`p-6 rounded-3xl border text-right rtl:text-right text-left flex flex-col justify-between transition-all duration-300 cursor-pointer group hover:shadow-2xl hover:-translate-y-1.5 ${
+                className={`p-4 rounded-2xl border text-right rtl:text-right text-left flex flex-col justify-between transition-all duration-200 ${
                   isLight 
-                    ? 'bg-white hover:bg-slate-50 border-slate-200 hover:border-cyan-500 shadow-md' 
-                    : 'bg-gradient-to-b from-[#0C152B] via-[#091022] to-[#060B18] border-slate-800 hover:border-cyan-500/70 shadow-lg shadow-black/50 hover:shadow-cyan-500/20'
+                    ? 'bg-white border-slate-200/90 shadow-sm hover:shadow-md hover:border-cyan-400' 
+                    : 'bg-gradient-to-b from-[#0C152B] via-[#091022] to-[#060B18] border-slate-800 hover:border-cyan-500/60 shadow-md shadow-black/40'
                 }`}
               >
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3.5 rounded-2xl bg-gradient-to-br from-cyan-500 via-teal-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 group-hover:scale-110 transition-transform">
-                      <IconComp className="w-7 h-7" />
+                  {/* Category Header */}
+                  <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 via-teal-500 to-blue-600 text-white shadow-sm shadow-cyan-500/20 shrink-0">
+                        <IconComp className="w-4 h-4" />
+                      </div>
+                      <h3 className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {isKu ? cat.titleKu : (isAr ? cat.titleAr : cat.titleEn)}
+                      </h3>
                     </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-black bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
-                      {cat.subTabs.length} {t('تقارير تفصيلية', 'ڕاپۆرتی ورد', 'sub-reports')}
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 shrink-0">
+                      {cat.subTabs.length}
                     </span>
                   </div>
 
-                  <h3 className={`text-base sm:text-lg font-black ${isLight ? 'text-slate-900 group-hover:text-cyan-700' : 'text-white group-hover:text-cyan-300'} transition-colors`}>
-                    {isKu ? cat.titleKu : (isAr ? cat.titleAr : cat.titleEn)}
-                  </h3>
-
-                  <div className="mt-4 space-y-2">
-                    {cat.subTabs.map((sub: any) => (
-                      <div key={sub.id} className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
-                        <div className="w-2 h-2 rounded-full bg-cyan-500/70 shrink-0 group-hover:bg-cyan-400 transition-colors" />
-                        <span className="truncate">{isKu ? sub.labelKu : (isAr ? sub.labelAr : sub.labelEn)}</span>
-                      </div>
-                    ))}
+                  {/* Sub-report list view: compact list buttons with icons */}
+                  <div className="space-y-1">
+                    {cat.subTabs.map((sub: any) => {
+                      const SubIcon = sub.icon || ArrowUpRight;
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveCategory(cat.id);
+                            setActiveSubTab(sub.id);
+                            setIsDetailOpen(true);
+                            onToggleFullscreen?.(true);
+                          }}
+                          className={`w-full text-right rtl:text-right text-left flex items-center justify-between py-1.5 px-2.5 rounded-lg border transition-all cursor-pointer group/btn ${
+                            isLight
+                              ? 'bg-slate-50/80 hover:bg-cyan-50 border-slate-200/80 hover:border-cyan-400 text-slate-700 hover:text-cyan-950'
+                              : 'bg-[#080E1C]/80 hover:bg-cyan-950/40 border-slate-800/60 hover:border-cyan-500/40 text-slate-300 hover:text-cyan-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`p-1 rounded-md shrink-0 transition-transform group-hover/btn:scale-110 ${sub.color || 'text-cyan-400 bg-cyan-500/10'}`}>
+                              <SubIcon className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="text-[11px] font-medium truncate">
+                              {isKu ? sub.labelKu : (isAr ? sub.labelAr : sub.labelEn)}
+                            </span>
+                          </div>
+                          <div className="text-slate-400 group-hover/btn:text-cyan-400 rtl:rotate-0 rotate-90 shrink-0 transition-transform group-hover/btn:translate-x-0.5">
+                            <ArrowUpRight className="w-3 h-3" />
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
-                  <span className="text-xs font-black text-cyan-600 dark:text-cyan-400 group-hover:underline">
-                    {t('فتح الواجهة بكامل الشاشة ↗', 'کردنەوەی واجەی تەواو ↗', 'Launch Fullscreen View ↗')}
-                  </span>
-                  <div className="p-2.5 rounded-xl bg-cyan-500/10 group-hover:bg-cyan-500 text-cyan-600 dark:text-cyan-300 group-hover:text-slate-950 transition-all shadow-md">
-                    <ArrowUpRight className="w-4 h-4 rtl:rotate-0 rotate-90" />
-                  </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveCategory(cat.id);
+                      setActiveSubTab(cat.subTabs[0].id);
+                      setIsDetailOpen(true);
+                      onToggleFullscreen?.(true);
+                    }}
+                    className={`w-full py-1.5 px-2.5 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all border ${
+                      isLight 
+                        ? 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200' 
+                        : 'bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                    }`}
+                  >
+                    <span>{t('فتح جميع تقارير هذا القسم ↗', 'کردنەوەی هەموو ڕاپۆرتەکان ↗', 'Open Section Reports ↗')}</span>
+                  </button>
                 </div>
               </div>
             );
@@ -2230,16 +2449,20 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
               title={t('الرجوع إلى القائمة الرئيسية للتقارير', 'گەڕانەوە بۆ ناوەندی ڕاپۆرتەکان', 'Back to Reports Hub')}
             >
               <ArrowRight className="w-4 h-4 rtl:rotate-0 rotate-180 text-cyan-200" />
-              <span>{t('الرجوع للتقارير 🏠', 'گەڕانەوە 🏠', 'Back to Hub 🏠')}</span>
+              <span>{t('الرجوع للتقارير 🏠', 'گەڕانەوە بۆ ڕاپۆرتەکان 🏠', 'Back to Hub 🏠')}</span>
             </button>
 
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                  <span>{isKu ? activeCategoryObj.titleKu : (isAr ? activeCategoryObj.titleAr : activeCategoryObj.titleEn)}</span>
+                  <span>›</span>
+                </div>
                 <h1 className={`text-base sm:text-lg font-black tracking-wide truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {isKu ? activeCategoryObj.titleKu : (isAr ? activeCategoryObj.titleAr : activeCategoryObj.titleEn)}
+                  {isKu ? activeSubTabObj.labelKu : (isAr ? activeSubTabObj.labelAr : activeSubTabObj.labelEn)}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/40 text-[10px] font-bold shrink-0">
-                  {t('واجهة تفصيلية كاملة', 'واجەی تەواوی شاشە', 'Full Screen Workspace')}
+                  {t('تفاصيل التقرير المختار', 'وردەکاری ڕاپۆرت', 'Active Report View')}
                 </span>
               </div>
             </div>
@@ -2344,94 +2567,6 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* CATEGORY SWITCHER CARDS STRIP */}
-      {/* ======================================================== */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-        {categoriesConfig.map((cat) => {
-          const IconComp = cat.icon;
-          const isActive = activeCategory === cat.id;
-
-          return (
-            <button
-              key={cat.id}
-              onClick={() => {
-                setActiveCategory(cat.id);
-                setActiveSubTab(cat.subTabs[0].id);
-              }}
-              className={`p-3 rounded-2xl border text-right rtl:text-right text-left flex flex-col justify-between transition-all cursor-pointer ${
-                isActive
-                  ? (isLight 
-                      ? 'bg-gradient-to-b from-cyan-50 via-teal-50 to-white border-cyan-500 shadow-md scale-[1.02]' 
-                      : 'bg-gradient-to-b from-[#0E1A33] to-[#0A1020] border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.25)] scale-[1.02]')
-                  : (isLight 
-                      ? 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 shadow-sm' 
-                      : 'bg-[#0A0F1D] border-slate-800 hover:border-slate-700 hover:bg-[#0E1528] text-slate-400')
-              }`}
-            >
-              <div className="flex items-center justify-between w-full mb-2">
-                <div className={`p-2 rounded-xl ${
-                  isActive 
-                    ? (isLight ? 'bg-cyan-600 text-white font-bold' : 'bg-cyan-500 text-slate-950 font-bold') 
-                    : (isLight ? 'bg-slate-100 text-slate-700' : 'bg-slate-800/80 text-slate-300')
-                }`}>
-                  <IconComp className="w-4 h-4" />
-                </div>
-                {isActive && <div className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />}
-              </div>
-
-              <div>
-                <h3 className={`text-xs font-bold ${
-                  isActive 
-                    ? (isLight ? 'text-cyan-950 font-black' : 'text-white font-black') 
-                    : (isLight ? 'text-slate-800' : 'text-slate-300')
-                }`}>
-                  {isKu ? cat.titleKu : (isAr ? cat.titleAr : cat.titleEn)}
-                </h3>
-                <p className={`text-[10px] mt-0.5 ${isLight ? 'text-slate-500 font-medium' : 'text-slate-500'}`}>
-                  {cat.subTabs.length} {t('تقارير تفصيلية', 'ڕاپۆرتی ورد', 'sub-reports')}
-                </p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ======================================================== */}
-      {/* SUB-TAB SELECTOR STRIP FOR ACTIVE CATEGORY */}
-      {/* ======================================================== */}
-      <div className={`p-2 rounded-xl border flex flex-wrap gap-2 items-center ${
-        isLight ? 'bg-white border-slate-200 text-slate-900 shadow-sm' : 'bg-[#0A0F1D] border-slate-800 text-slate-100'
-      }`}>
-        <span className={`text-[11px] font-bold px-2 flex items-center gap-1.5 border-l rtl:border-l-0 rtl:border-r shrink-0 ${
-          isLight ? 'text-slate-600 border-slate-300' : 'text-slate-400 border-slate-800'
-        }`}>
-          <Filter className="w-3.5 h-3.5 text-cyan-500" />
-          <span>{t('اختر التقرير المطلوب:', 'ڕاپۆرتی داواکراو هەڵبژێرە:', 'Select Report:')}</span>
-        </span>
-
-        {activeCategoryObj.subTabs.map((sub: any) => {
-          const isSelected = activeSubTab === sub.id;
-          return (
-            <button
-              key={sub.id}
-              onClick={() => setActiveSubTab(sub.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                isSelected
-                  ? (isLight 
-                      ? 'bg-cyan-600 text-white shadow-sm' 
-                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm')
-                  : (isLight 
-                      ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' 
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60')
-              }`}
-            >
-              {isKu ? sub.labelKu : (isAr ? sub.labelAr : sub.labelEn)}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ======================================================== */}
       {/* 4. DYNAMIC REPORT CONTENT VIEWS */}
       {/* ======================================================== */}
 
@@ -2517,18 +2652,65 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
               {/* Detailed Financial Breakdown Table */}
               <div className="cyber-card p-4 rounded-2xl bg-[#0A0F1D] border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
                     <Receipt className="w-4 h-4 text-cyan-400" />
-                    <span>{t('جدول حساب الأرباح والخسائر الشامل (Income Statement / P&L)', 'خشتەی حیسابی قازانج و زیانی گشتگیر (Income Statement / P&L)', 'Comprehensive P&L Statement')}</span>
-                  </h3>
+                    <h3 className="font-bold text-sm text-white">
+                      {t('جدول حساب الأرباح والخسائر الشامل (Income Statement / P&L)', 'خشتەی حیسابی قازانج و زیانی گشتگیر (Income Statement / P&L)', 'Comprehensive P&L Statement')}
+                    </h3>
+                  </div>
 
-                  <button
-                    onClick={() => setEditingExpense(!editingExpense)}
-                    className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
-                  >
-                    {editingExpense ? t('حفظ المصاريف', 'پاشەکەوتکردنی تێچووەکان', 'Save Expenses') : t('تعديل المصاريف التشغيلية', 'دەستکاری تێچووەکانی کارکردن', 'Edit Operating Expenses')}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setShowAddExpenseModal(true)}
+                      className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      title={t('إضافة بند تكلفة جديد يدوياً', 'زیادکردنی بڕگەی تێچووی نوێ بە دەستی', 'Add manual expense')}
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>{t('+ إضافة بند تكلفة', '+ زیادکردنی تێچوو', '+ Add Expense Unit')}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowAddCategoryModal(true)}
+                      className="px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      title={t('إضافة نوع / تصنيف تكلفة جديد', 'زیادکردنی جۆری تێچووی نوێ', 'Add custom expense type')}
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                      <span>{t('+ نوع تكلفة جديد', '+ جۆری تێچووی نوێ', '+ Expense Type')}</span>
+                    </button>
+
+                    {opExpenseItems.length > 0 && (
+                      <button
+                        onClick={handleZeroAllExpenses}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                        title={t('تصفير مبالغ كافة التكاليف', 'سفرکردنەوەی هەموو بڕەکان', 'Zero all amounts')}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>{t('تصفير الكل', 'سفرکردنی هەموو', 'Zero All')}</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setEditingExpense(!editingExpense)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        editingExpense
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-900/30'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {editingExpense ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{t('حفظ التعديلات', 'پاشەکەوتکردن', 'Save Changes')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>{t('تعديل المصاريف', 'دەستکاری تێچووەکان', 'Edit Expenses')}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -2572,79 +2754,159 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         <td className="p-2.5 text-center font-mono text-cyan-300 text-sm">{currency} {financialMetrics.grossProfit.toLocaleString('en-US')}</td>
                       </tr>
 
-                      {/* Operating Expenses Block */}
-                      <tr className="bg-slate-900/80">
-                        <td colSpan={3} className="p-2 font-bold text-slate-300 text-[11px]">
-                          {t('المصروفات التشغيلية (Operating Expenses - OPEX):', 'تێچووەکانی کارکردن (Operating Expenses - OPEX):', 'Operating Expenses (OPEX):')}
+                      {/* Dynamic Manual Operating Expenses Block */}
+                      <tr className="bg-slate-900/90 border-t-2 border-slate-700">
+                        <td colSpan={3} className="p-2.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Tag className="w-3.5 h-3.5 text-amber-400" />
+                              <span className="font-bold text-slate-200 text-xs">
+                                {t('المصروفات والتكاليف التشغيلية اليدوية (Operating Expenses - OPEX):', 'تێچووەکانی کارکردن بە دەستی (Operating Expenses - OPEX):', 'Manual Operating Expenses (OPEX):')}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-400 font-mono">
+                                {opExpenseItems.length} {t('بند', 'بڕگە', 'items')}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-slate-400">
+                                {t('إجمالي التكاليف:', 'کۆی تێچووەکان:', 'Total OPEX:')}
+                              </span>
+                              <span className="font-mono font-bold text-amber-400 text-xs">
+                                {currency} {financialMetrics.totalOperatingExpenses.toLocaleString('en-US')}
+                              </span>
+                            </div>
+                          </div>
                         </td>
                       </tr>
-                      <tr>
-                        <td className="p-2.5 pl-6 rtl:pr-6 rtl:pl-0 text-slate-300">• {t('إيجار المحل والمخزن', 'کرێی دوکان و کۆگا', 'Rent Expense')}</td>
-                        <td className="p-2.5 text-center">
-                          {editingExpense ? (
-                            <input
-                              type="number"
-                              value={opExpenses.rent}
-                              onChange={(e) => setOpExpenses({ ...opExpenses, rent: Number(e.target.value) })}
-                              className="w-24 bg-slate-900 text-center font-mono font-bold py-0.5 px-2 rounded border border-slate-700 text-xs"
-                            />
-                          ) : (
-                            <span className="text-slate-400">{t('مصاريف الإيجار الشهري', 'کرێی مانگانە', 'Monthly rent')}</span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center font-mono text-slate-300">{currency} {opExpenses.rent.toLocaleString('en-US')}</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2.5 pl-6 rtl:pr-6 rtl:pl-0 text-slate-300">• {t('كهرباء ومولدات وطاقة', 'کارەبا و مۆلیدە و وزە', 'Electricity & Utilities')}</td>
-                        <td className="p-2.5 text-center">
-                          {editingExpense ? (
-                            <input
-                              type="number"
-                              value={opExpenses.electricity}
-                              onChange={(e) => setOpExpenses({ ...opExpenses, electricity: Number(e.target.value) })}
-                              className="w-24 bg-slate-900 text-center font-mono font-bold py-0.5 px-2 rounded border border-slate-700 text-xs"
-                            />
-                          ) : (
-                            <span className="text-slate-400">{t('فاتورة الكهرباء والمولدات', 'پسوڵەی کارەبا و مۆلیدە', 'Utilities')}</span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center font-mono text-slate-300">{currency} {opExpenses.electricity.toLocaleString('en-US')}</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2.5 pl-6 rtl:pr-6 rtl:pl-0 text-slate-300">• {t('رواتب الموظفين والكاشيرية', 'مووچەی کارمەندان و کاشێرەکان', 'Staff Salaries')}</td>
-                        <td className="p-2.5 text-center">
-                          {editingExpense ? (
-                            <input
-                              type="number"
-                              value={opExpenses.salaries}
-                              onChange={(e) => setOpExpenses({ ...opExpenses, salaries: Number(e.target.value) })}
-                              className="w-24 bg-slate-900 text-center font-mono font-bold py-0.5 px-2 rounded border border-slate-700 text-xs"
-                            />
-                          ) : (
-                            <span className="text-slate-400">{t('أجور الكادر والعمال', 'مووچەی کادیر و کارمەندان', 'Salaries')}</span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center font-mono text-slate-300">{currency} {opExpenses.salaries.toLocaleString('en-US')}</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2.5 pl-6 rtl:pr-6 rtl:pl-0 text-slate-300">• {t('مصاريف نثرية وضيافة والصندوق', 'تێچووی لاوەکی و میوانداری', 'Petty Cash & Misc')}</td>
-                        <td className="p-2.5 text-center">
-                          {editingExpense ? (
-                            <input
-                              type="number"
-                              value={opExpenses.petty}
-                              onChange={(e) => setOpExpenses({ ...opExpenses, petty: Number(e.target.value) })}
-                              className="w-24 bg-slate-900 text-center font-mono font-bold py-0.5 px-2 rounded border border-slate-700 text-xs"
-                            />
-                          ) : (
-                            <span className="text-slate-400">{t('مصاريف يومية متفرقة', 'تێچووی ڕۆژانەی جۆراوجۆر', 'Petty cash')}</span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center font-mono text-slate-300">{currency} {opExpenses.petty.toLocaleString('en-US')}</td>
-                      </tr>
+
+                      {/* When no operating expenses are added (Default zero state) */}
+                      {opExpenseItems.length === 0 ? (
+                        <tr className="bg-slate-950/40">
+                          <td colSpan={3} className="p-4 text-center">
+                            <div className="flex flex-col items-center justify-center gap-1.5 text-slate-400">
+                              <p className="text-xs">
+                                {t('لا توجد مصاريف أو تكاليف مسجلة حالياً (المجموع مصفّر: 0)', 'هیچ تێچوویەک تۆمار نەکراوە (کۆی گشتی سفرە: 0)', 'No expenses recorded currently (Total is 0)')}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {t('يمكنك إضافة تكاليف يدوياً واحدة بوحدة وتحديد نوعها بالضغط على زر "+ إضافة بند تكلفة"', 'دەتوانیت تێچوو زیاد بکەیت یەکە بە یەکە بە کلیک لە "+ زیادکردنی تێچوو"', 'You can add expenses one by one manually by clicking "+ Add Expense Unit"')}
+                              </p>
+                              <button
+                                onClick={() => setShowAddExpenseModal(true)}
+                                className="mt-1.5 px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>{t('إضافة أول بند تكلفة الآن', 'زیادکردنی یەکەمین تێچوو', 'Add First Expense Now')}</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        opExpenseItems.map((item, idx) => {
+                          const meta = getCategoryMeta(item.category);
+                          return (
+                            <tr key={item.id || idx} className="hover:bg-slate-800/40 transition-colors">
+                              <td className="p-2.5 pl-6 rtl:pr-6 rtl:pl-0 text-slate-300">
+                                {editingExpense ? (
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      value={item.name}
+                                      onChange={(e) => handleUpdateExpenseItem(item.id, 'name', e.target.value)}
+                                      placeholder={t('اسم التكلفة', 'ناوی تێچوو', 'Expense name')}
+                                      className="bg-slate-900 text-white font-bold py-1 px-2 rounded border border-slate-700 text-xs w-44"
+                                    />
+                                    <select
+                                      value={item.category}
+                                      onChange={(e) => handleUpdateExpenseItem(item.id, 'category', e.target.value)}
+                                      className="bg-slate-900 text-cyan-300 font-medium py-1 px-2 rounded border border-slate-700 text-xs"
+                                    >
+                                      {DEFAULT_EXPENSE_CATEGORIES.map(cat => (
+                                        <option key={cat.id} value={cat.id}>
+                                          {cat.icon} {isKu ? cat.labelKu : (isAr ? cat.labelAr : cat.labelEn)}
+                                        </option>
+                                      ))}
+                                      {customExpenseTypes.map(cName => (
+                                        <option key={cName} value={cName}>
+                                          🏷️ {cName}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span>•</span>
+                                    <span className="text-base">{meta.icon}</span>
+                                    <span className="font-medium text-slate-200">{item.name}</span>
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-cyan-300 border border-slate-700/60 font-sans">
+                                      {meta.label}
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="p-2.5 text-center">
+                                {editingExpense ? (
+                                  <input
+                                    type="text"
+                                    value={item.note || ''}
+                                    onChange={(e) => handleUpdateExpenseItem(item.id, 'note', e.target.value)}
+                                    placeholder={t('ملاحظات وتفاصيل...', 'تێبینی...', 'Notes...')}
+                                    className="w-full max-w-xs bg-slate-900 text-slate-300 py-1 px-2 rounded border border-slate-700 text-xs text-center"
+                                  />
+                                ) : (
+                                  <span className="text-slate-400">{item.note || meta.label}</span>
+                                )}
+                              </td>
+
+                              <td className="p-2.5 text-center">
+                                {editingExpense ? (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={item.amount}
+                                      onChange={(e) => handleUpdateExpenseItem(item.id, 'amount', Math.max(0, Number(e.target.value)))}
+                                      className="w-28 bg-slate-900 text-center font-mono font-bold py-1 px-2 rounded border border-slate-700 text-xs text-amber-300"
+                                    />
+                                    <button
+                                      onClick={() => handleDeleteExpenseItem(item.id)}
+                                      className="p-1 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 cursor-pointer transition-colors"
+                                      title={t('حذف هذا البند', 'سڕینەوەی ئەم بڕگەیە', 'Delete item')}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="font-mono text-slate-300 font-bold">
+                                    {currency} {item.amount.toLocaleString('en-US')}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+
+                      {/* Subtotal OPEX row */}
+                      {opExpenseItems.length > 0 && (
+                        <tr className="bg-slate-900/60 font-bold border-t border-slate-800">
+                          <td className="p-2.5 pl-6 rtl:pr-6 rtl:pl-0 text-amber-400">
+                            {t('(-) مجموع المصاريف التشغيلية (Total OPEX)', '(-) کۆی تێچووەکانی کارکردن (Total OPEX)', '(-) Total OPEX')}
+                          </td>
+                          <td className="p-2.5 text-center text-slate-400">
+                            {t('مجموع كافة بنود التكاليف المضافة يدوياً', 'کۆی گشتی هەموو بڕگە دەستییەکان', 'Sum of all manual expense units')}
+                          </td>
+                          <td className="p-2.5 text-center font-mono text-amber-400 font-bold">
+                            - {currency} {financialMetrics.totalOperatingExpenses.toLocaleString('en-US')}
+                          </td>
+                        </tr>
+                      )}
+
+                      {/* Final Net Operating Profit Row */}
                       <tr className="bg-amber-500/20 font-black">
                         <td className="p-3 text-amber-300 text-sm">{t('(=) صافي الربح التشغيلي النهائي', '(=) پاکی قازانجی کۆتایی کارکردن', '(=) Net Operating Profit')}</td>
-                        <td className="p-3 text-center text-amber-400">{t('الربح النهائي الخالص للمحل', 'قازانجی پاکی کۆتایی دوکان', 'Final net profit')}</td>
+                        <td className="p-3 text-center text-amber-400">{t('الربح النهائي الخالص للمحل بعد خصم التكاليف', 'قازانجی پاکی کۆتایی دوکان دوای دەرکردنی تێچووەکان', 'Final net profit after expenses')}</td>
                         <td className="p-3 text-center font-mono text-amber-300 text-base">{currency} {financialMetrics.netOperatingProfit.toLocaleString('en-US')}</td>
                       </tr>
                     </tbody>
@@ -3526,6 +3788,369 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     </div>
                     <TrendingUp className="w-8 h-8 text-cyan-400 p-1 bg-cyan-500/10 rounded-xl" />
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* CATEGORY 2: INVENTORY & STOCK VALUATION */}
+      {/* ---------------------------------------------------- */}
+      {activeCategory === 'inventory' && (
+        <div className="space-y-4">
+
+          {/* Sub-tab: Stock Valuation & Inventory Audit */}
+          {activeSubTab === 'stock_valuation' && (() => {
+            const filteredProducts = products.filter(p => {
+              if (!stockSearchQuery) return true;
+              const q = stockSearchQuery.toLowerCase();
+              return (
+                p.name?.toLowerCase().includes(q) ||
+                p.nameAr?.toLowerCase().includes(q) ||
+                p.nameKu?.toLowerCase().includes(q) ||
+                p.barcode?.toLowerCase().includes(q)
+              );
+            });
+
+            return (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Header Action Bar */}
+                <div className={`flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl border ${
+                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0A0F1D] border-cyan-500/30'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center gap-2 justify-center text-cyan-400 font-bold">
+                      <Boxes className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        <span>{t('جرد وتقييم المخزون الشامل (بسعر البيع وسعر التكلفة)', 'جرد و هەڵسەنگاندنی گشتگیری کۆگا (بە نرخی فرۆشتن و تێچوو)', 'Comprehensive Stock Valuation & Inventory Audit')}</span>
+                      </h2>
+                      <p className="text-[11px] text-slate-400">
+                        {t('حساب القيمة الإجمالية للمخزون، هامش الربح المحتمل، وكميات الرف والمستودع', 'هەژمارکردنی کۆی بەهای کۆگا، قازانجی پێشبینیکراو و بڕی سەر ڕەف و عەمبار', 'Total stock asset valuation, potential gross margin, and stock breakdown')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => exportDataToExcel(filteredProducts.map(p => ({
+                        'اسم الصنف': p.nameKu || p.nameAr || p.name,
+                        'الباركود': p.barcode || '',
+                        'الكمية المتوفرة': p.stock || 0,
+                        'سعر التكلفة': p.costPerUnit || p.cost || 0,
+                        'سعر البيع': p.singleRetailPrice || p.price || 0,
+                        'إجمالي التكلفة': ((p.costPerUnit || p.cost || 0) * (p.stock || 0)).toFixed(2),
+                        'إجمالي قيمة البيع': ((p.singleRetailPrice || p.price || 0) * (p.stock || 0)).toFixed(2),
+                        'الربح المتوقع': (((p.singleRetailPrice || p.price || 0) - (p.costPerUnit || p.cost || 0)) * (p.stock || 0)).toFixed(2)
+                      })), `stock_valuation_report_${new Date().toISOString().split('T')[0]}.xlsx`, 'جرد المخزون')}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow border border-emerald-400/30"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>{t('تصدير إكسل', 'تۆمارکردنی ئێکسڵ', 'Export Excel')}</span>
+                    </button>
+
+                    <button
+                      onClick={() => window.print()}
+                      className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow border border-cyan-400/30"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>{t('طباعة الجرد', 'چاپکردنی جرد', 'Print Audit')}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Stock Valuation KPI Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-cyan-200 shadow-sm' : 'bg-[#090E1A] border-cyan-500/40'
+                  }`}>
+                    <p className="text-[11px] font-bold text-cyan-500 uppercase tracking-wider">
+                      {t('إجمالي قيمة المخزون بسعر التكلفة', 'کۆی تێچووی کۆگا بە نرخی کڕین', 'Total Stock Cost Value')}
+                    </p>
+                    <p className={`text-xl font-black font-mono text-center ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {currency} {inventoryValuation.totalCostVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-slate-400 text-center">{t('رأس المال المستثمر في البضاعة', 'سەرمایەی دانراو لە کاڵاکان', 'Invested Capital in Stock')}</p>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-blue-200 shadow-sm' : 'bg-[#090E1A] border-blue-500/40'
+                  }`}>
+                    <p className="text-[11px] font-bold text-blue-400 uppercase tracking-wider">
+                      {t('إجمالي قيمة المخزون بسعر البيع', 'کۆی بەهای کۆگا بە نرخی فرۆشتن', 'Total Stock Retail Value')}
+                    </p>
+                    <p className={`text-xl font-black font-mono text-center ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {currency} {inventoryValuation.totalRetailVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-slate-400 text-center">{t('القيمة السوقية عند البيع الكامل', 'بەهای فرۆشتن لەکاتی تەواوبوون', 'Expected Total Revenue')}</p>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-emerald-200 shadow-sm' : 'bg-[#090E1A] border-emerald-500/40'
+                  }`}>
+                    <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
+                      {t('إجمالي الأرباح المتوقعة من المخزون', 'کۆی قازانجی پێشبینیکراو', 'Expected Gross Profit')}
+                    </p>
+                    <p className={`text-xl font-black font-mono text-center ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                      {currency} {inventoryValuation.potentialProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-emerald-500 text-center font-bold">
+                      {t('هامش ربح إجمالي:', 'ڕێژەی قازانج:', 'Margin:')} {inventoryValuation.totalRetailVal > 0 ? ((inventoryValuation.potentialProfit / inventoryValuation.totalRetailVal) * 100).toFixed(1) : '0.0'}%
+                    </p>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-purple-200 shadow-sm' : 'bg-[#090E1A] border-purple-500/40'
+                  }`}>
+                    <p className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">
+                      {t('عدد الأصناف والكمية الإجمالية', 'ژمارەی جۆر و دانەکان', 'Items & Stock Count')}
+                    </p>
+                    <p className={`text-xl font-black font-mono text-center ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
+                      {products.length} <span className="text-xs font-normal text-slate-400">{t('صنف', 'جۆر', 'items')}</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400 text-center font-mono">
+                      {products.reduce((acc, p) => acc + (p.stock || 0), 0).toLocaleString('en-US')} {t('قطعة بالمخزن', 'دانە لە کۆگادا', 'units in stock')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Detailed Stock Valuation Table with Search */}
+                <div className={`cyber-card p-4 rounded-2xl border space-y-3 ${
+                  isLight ? 'bg-white border-slate-200 text-slate-900 shadow-sm' : 'bg-[#0A0F1D] border-slate-800 text-slate-100'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Boxes className="w-4 h-4 text-cyan-400" />
+                      <h3 className="font-bold text-sm">
+                        {t('كشف جرد وتقييم تفصيلي لجميع أصناف المخزون', 'کەشف جرد و هەڵسەنگاندنی وردی سەرجەم کاڵاکان', 'Detailed Stock Valuation Item Register')}
+                      </h3>
+                    </div>
+
+                    <div className="relative min-w-[240px]">
+                      <Search className="w-3.5 h-3.5 absolute right-3 rtl:right-3 rtl:left-auto left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={stockSearchQuery}
+                        onChange={(e) => setStockSearchQuery(e.target.value)}
+                        placeholder={t('بحث بالاسم أو الباركود...', 'گەڕان بەپێی ناو یان بارکۆد...', 'Search by name or barcode...')}
+                        className={`w-full text-xs rounded-xl py-2 px-8 border outline-none transition-all ${
+                          isLight ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-500' : 'bg-[#050914] border-slate-700 text-white focus:border-cyan-400'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className={`border-b font-bold ${
+                        isLight ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#050914] text-slate-400 border-slate-800'
+                      }`}>
+                        <tr>
+                          <th className="p-2.5 text-right rtl:text-right">{t('اسم الصنف', 'ناوی کاڵا', 'Product Name')}</th>
+                          <th className="p-2.5 text-center">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
+                          <th className="p-2.5 text-center">{t('الكمية الحالية', 'بڕی ماوە', 'Current Stock')}</th>
+                          <th className="p-2.5 text-center">{t('سعر التكلفة', 'تێچووی کڕین', 'Cost Unit')}</th>
+                          <th className="p-2.5 text-center">{t('سعر البيع', 'نرخی فرۆشتن', 'Retail Unit')}</th>
+                          <th className="p-2.5 text-center">{t('إجمالي التكلفة', 'کۆی تێچوو', 'Total Cost')}</th>
+                          <th className="p-2.5 text-center">{t('إجمالي البيع', 'کۆی فرۆشتن', 'Total Retail')}</th>
+                          <th className="p-2.5 text-center">{t('الربح المتوقع', 'قازانجی چاوەڕوانکراو', 'Expected Profit')}</th>
+                          <th className="p-2.5 text-center">{t('الحالة', 'دۆخ', 'Status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-slate-800/80'}`}>
+                        {filteredProducts.length === 0 ? (
+                          <tr>
+                            <td colSpan={9} className="p-8 text-center text-slate-500">
+                              {t('لا توجد أصناف تطابق البحث', 'هیچ کاڵایەک نەدۆزرایەوە', 'No matching products found')}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredProducts.slice(0, 100).map((p) => {
+                            const stock = p.stock || 0;
+                            const cost = p.costPerUnit || p.cost || 0;
+                            const price = p.singleRetailPrice || p.price || 0;
+                            const totalCost = cost * stock;
+                            const totalRetail = price * stock;
+                            const profit = totalRetail - totalCost;
+                            const isLow = stock <= (p.minStock || 10);
+                            const isOut = stock <= 0;
+
+                            return (
+                              <tr key={p.id} className={`hover:bg-cyan-500/5 transition-colors ${
+                                isOut ? 'bg-rose-500/5' : isLow ? 'bg-amber-500/5' : ''
+                              }`}>
+                                <td className={`p-2.5 font-bold max-w-[200px] truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                  {p.nameKu || p.nameAr || p.name}
+                                </td>
+                                <td className="p-2.5 text-center font-mono text-cyan-400">{p.barcode || '---'}</td>
+                                <td className="p-2.5 text-center font-mono font-bold">{stock}</td>
+                                <td className="p-2.5 text-center font-mono text-slate-400">{currency} {cost.toLocaleString('en-US')}</td>
+                                <td className="p-2.5 text-center font-mono text-blue-400 font-bold">{currency} {price.toLocaleString('en-US')}</td>
+                                <td className="p-2.5 text-center font-mono text-slate-300">{currency} {totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td className="p-2.5 text-center font-mono font-bold text-cyan-400">{currency} {totalRetail.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td className={`p-2.5 text-center font-mono font-bold ${profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {currency} {profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  {isOut ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold text-[10px]">
+                                      {t('نفد المخزون', 'تەواوبووە', 'Out of Stock')}
+                                    </span>
+                                  ) : isLow ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[10px]">
+                                      {t('مخزون منخفض', 'کەمە', 'Low Stock')}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">
+                                      {t('متوفر', 'بەردەستە', 'In Stock')}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Sub-tab: Item Turnover (Fast / Slow / Dead Stock) */}
+          {activeSubTab === 'item_turnover' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Turnover Tabs Bar */}
+              <div className={`p-3 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0A0F1D] border-slate-800'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-cyan-400" />
+                  <div>
+                    <h2 className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {t('تقرير حركة ودوران البضائع والأصناف الراكدة', 'ڕاپۆرتی جووڵە و خولانەوەی کاڵاکان و کاڵا مەندەکان', 'Item Turnover, Movement & Dead Stock Analysis')}
+                    </h2>
+                    <p className="text-[11px] text-slate-400">
+                      {t('تصنيف الأصناف حسب سرعة البيع ودوران رأس المال لتفادي تكدس البضائع', 'پۆلێنکردنی کاڵاکان بەپێی خێرایی فرۆشتن بۆ ڕێگری لە مەندبوون', 'Categorize fast-moving, slow-moving, and stagnant dead stock')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setItemTurnoverTab('fast')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      itemTurnoverTab === 'fast'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : (isLight ? 'bg-slate-100 text-slate-600 hover:text-slate-900' : 'bg-[#050914] text-slate-400 hover:text-white')
+                    }`}
+                  >
+                    🔥 {t('الأكثر مبيعاً وسريع الحركة', 'پڕفرۆشترین و خێراترین', 'Fast Moving')} ({inventoryValuation.fastMoving.length})
+                  </button>
+
+                  <button
+                    onClick={() => setItemTurnoverTab('slow')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      itemTurnoverTab === 'slow'
+                        ? 'bg-amber-600 text-white shadow'
+                        : (isLight ? 'bg-slate-100 text-slate-600 hover:text-slate-900' : 'bg-[#050914] text-slate-400 hover:text-white')
+                    }`}
+                  >
+                    ⏳ {t('بطيء الحركة', 'هێواش لە فرۆشتن', 'Slow Moving')} ({inventoryValuation.slowMoving.length})
+                  </button>
+
+                  <button
+                    onClick={() => setItemTurnoverTab('dead')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      itemTurnoverTab === 'dead'
+                        ? 'bg-rose-600 text-white shadow'
+                        : (isLight ? 'bg-slate-100 text-slate-600 hover:text-slate-900' : 'bg-[#050914] text-slate-400 hover:text-white')
+                    }`}
+                  >
+                    🛑 {t('الراكد والمخزون الميت', 'مەند و نەفرۆشراو', 'Dead Stock')} ({inventoryValuation.deadStock.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Items List Table */}
+              <div className={`cyber-card p-4 rounded-2xl border space-y-3 ${
+                isLight ? 'bg-white border-slate-200 text-slate-900 shadow-sm' : 'bg-[#0A0F1D] border-slate-800 text-slate-100'
+              }`}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className={`border-b font-bold ${
+                      isLight ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#050914] text-slate-400 border-slate-800'
+                    }`}>
+                      <tr>
+                        <th className="p-2.5 text-right rtl:text-right">{t('اسم الصنف', 'ناوی کاڵا', 'Product Name')}</th>
+                        <th className="p-2.5 text-center">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
+                        <th className="p-2.5 text-center">{t('الكمية الحالية', 'بڕی ماوە', 'In Stock')}</th>
+                        <th className="p-2.5 text-center">{t('سعر التكلفة', 'تێچوو', 'Cost')}</th>
+                        <th className="p-2.5 text-center">{t('سعر البيع', 'فرۆشتن', 'Price')}</th>
+                        <th className="p-2.5 text-center">{t('رأس المال المحتجز', 'سەرمایەی ڕاگیراو', 'Tied Capital')}</th>
+                        <th className="p-2.5 text-center">{t('الإجراء المقترح', 'کرداری پێشنیازکراو', 'Recommendation')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-slate-800/80'}`}>
+                      {(itemTurnoverTab === 'fast'
+                        ? inventoryValuation.fastMoving
+                        : itemTurnoverTab === 'slow'
+                        ? inventoryValuation.slowMoving
+                        : inventoryValuation.deadStock
+                      ).length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500">
+                            {t('لا توجد أصناف في هذه القائمة حالياً', 'هیچ کاڵایەک لەم بەشەدا نییە', 'No products in this category')}
+                          </td>
+                        </tr>
+                      ) : (
+                        (itemTurnoverTab === 'fast'
+                          ? inventoryValuation.fastMoving
+                          : itemTurnoverTab === 'slow'
+                          ? inventoryValuation.slowMoving
+                          : inventoryValuation.deadStock
+                        ).map((p) => {
+                          const stock = p.stock || 0;
+                          const cost = p.costPerUnit || p.cost || 0;
+                          const price = p.singleRetailPrice || p.price || 0;
+                          const tiedCapital = stock * cost;
+
+                          return (
+                            <tr key={p.id} className="hover:bg-cyan-500/5 transition-colors">
+                              <td className={`p-2.5 font-bold max-w-[220px] truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                {p.nameKu || p.nameAr || p.name}
+                              </td>
+                              <td className="p-2.5 text-center font-mono text-cyan-400">{p.barcode || '---'}</td>
+                              <td className="p-2.5 text-center font-mono font-bold">{stock}</td>
+                              <td className="p-2.5 text-center font-mono text-slate-400">{currency} {cost.toLocaleString('en-US')}</td>
+                              <td className="p-2.5 text-center font-mono text-blue-400 font-bold">{currency} {price.toLocaleString('en-US')}</td>
+                              <td className="p-2.5 text-center font-mono font-black text-rose-400">{currency} {tiedCapital.toLocaleString('en-US')}</td>
+                              <td className="p-2.5 text-center">
+                                {itemTurnoverTab === 'fast' ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">
+                                    {t('أعد الطلب وزد المخزون', 'داواکردنەوەی زیاتر', 'Reorder More')}
+                                  </span>
+                                ) : itemTurnoverTab === 'slow' ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[10px]">
+                                    {t('قدّم عروض ترويجية', 'داشکاندن و عەرز پێشکەش بکە', 'Run Promo Offer')}
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold text-[10px]">
+                                    {t('تصفية بسعر التكلفة', 'تەسفیە بە نرخی کڕین', 'Liquidate at Cost')}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -4975,6 +5600,251 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: ADD MANUAL EXPENSE UNIT (إضافة بند تكلفة يدوياً) */}
+      {/* ---------------------------------------------------- */}
+      {showAddExpenseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#0B132B] border border-cyan-500/40 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl space-y-0">
+            {/* Modal Header */}
+            <div className="p-4 bg-[#070D1E] border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    {t('إضافة بند تكلفة تشغيلية يدوياً', 'زیادکردنی بڕگەی تێچووی نوێ بە دەستی', 'Add Manual Operating Expense Unit')}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {t('أدخل تفاصيل التكلفة والمبلغ ونوعها لحساب صافي الأرباح', 'وردەکاری تێچوو و بڕ و جۆرەکەی دیاری بکە', 'Enter cost details, amount and category')}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddExpenseModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form Body */}
+            <div className="p-5 space-y-4 text-xs text-right rtl:text-right bg-[#0A1022]">
+              {/* Expense Name */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-300 block">
+                  {t('اسم / عنوان بند التكلفة *', 'ناوی بڕگەی تێچوو *', 'Expense Name / Title *')}
+                </label>
+                <input
+                  type="text"
+                  value={newExpenseName}
+                  onChange={(e) => setNewExpenseName(e.target.value)}
+                  placeholder={t('مثال: إيجار المحل، صيانة مكيفات، شراء أكياس، رواتب كادر...', 'نموونە: کرێی دوکان، چاککردنەوە، نایلۆن...', 'e.g., Shop rent, AC maintenance, bags...')}
+                  className="w-full bg-[#050A18] text-white p-2.5 rounded-xl border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-medium placeholder-slate-500"
+                  autoFocus
+                />
+              </div>
+
+              {/* Expense Category / Type */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300">
+                    {t('نوع وتصنيف التكلفة *', 'جۆری تێچوو *', 'Expense Category / Type *')}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddCategoryModal(true);
+                    }}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1 font-bold underline cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>{t('+ إضافة نوع جديد', '+ زیادکردنی جۆری نوێ', '+ Add new category')}</span>
+                  </button>
+                </div>
+
+                <select
+                  value={newExpenseCategory}
+                  onChange={(e) => setNewExpenseCategory(e.target.value)}
+                  className="w-full bg-[#050A18] text-cyan-300 p-2.5 rounded-xl border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-bold"
+                >
+                  <optgroup label={t('التصنيفات القياسية الأساسية', 'جۆرە بنەڕەتییەکان', 'Standard Categories')}>
+                    {DEFAULT_EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.icon} {isKu ? cat.labelKu : (isAr ? cat.labelAr : cat.labelEn)}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {customExpenseTypes.length > 0 && (
+                    <optgroup label={t('الأنواع والتصنيفات المخصصة', 'جۆرە تایبەتە زیادکراوەکان', 'Custom Categories')}>
+                      {customExpenseTypes.map(cName => (
+                        <option key={cName} value={cName}>
+                          🏷️ {cName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Expense Amount */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-300 block">
+                  {t('المبلغ المالي *', 'بڕی پارە *', 'Amount *')}
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={newExpenseAmount}
+                    onChange={(e) => setNewExpenseAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0"
+                    className="w-full bg-[#050A18] text-amber-300 p-2.5 pl-14 rtl:pr-14 rtl:pl-2.5 rounded-xl border border-slate-700 focus:border-amber-500 focus:outline-none font-mono font-bold text-sm"
+                  />
+                  <span className="absolute top-1/2 -translate-y-1/2 right-3 rtl:right-auto rtl:left-3 text-slate-400 font-bold text-xs pointer-events-none">
+                    {currency}
+                  </span>
+                </div>
+              </div>
+
+              {/* Notes / Details */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-300 block">
+                  {t('تفاصيل وملاحظات إضافية (اختياري)', 'تێبینی و وردەکاری زیاتر (ئارەزوومەندانە)', 'Notes / Details (Optional)')}
+                </label>
+                <input
+                  type="text"
+                  value={newExpenseNote}
+                  onChange={(e) => setNewExpenseNote(e.target.value)}
+                  placeholder={t('أدخل أي توضيح أو رقم وصل أو اسم المورد/المستلم...', 'هەر ڕوونکردنەوەیەک یان ژمارەی وەسڵ...', 'Any note, voucher #, or recipient name...')}
+                  className="w-full bg-[#050A18] text-slate-200 p-2.5 rounded-xl border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs font-medium placeholder-slate-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-[#070D1E] border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowAddExpenseModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all border border-slate-700 cursor-pointer"
+              >
+                {t('إلغاء', 'پاشگەزبوونەوە', 'Cancel')}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddExpenseItem}
+                disabled={!newExpenseName.trim() || newExpenseAmount === ''}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:brightness-110 text-white font-bold text-xs shadow-lg shadow-cyan-900/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>{t('حفظ وإضافة التكلفة', 'پاشەکەوت و زیادکردن', 'Save & Add Expense')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: ADD CUSTOM EXPENSE CATEGORY (إضافة نوع تكلفة) */}
+      {/* ---------------------------------------------------- */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#0B132B] border border-purple-500/40 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl space-y-0">
+            {/* Modal Header */}
+            <div className="p-4 bg-[#070D1E] border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                  <FolderPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    {t('إضافة نوع وتصنيف تكلفة جديد', 'زیادکردنی جۆری نوێی تێچوو', 'Add Custom Expense Type')}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {t('أدخل اسم التصنيف الجديد لتنظيم المصاريف اليدوية', 'ناوی جۆری نوێ بنووسە بۆ ڕێکخستنی تێچووەکان', 'Enter category name to organize manual expenses')}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddCategoryModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form Body */}
+            <div className="p-5 space-y-4 text-xs text-right rtl:text-right bg-[#0A1022]">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-300 block">
+                  {t('اسم نوع / تصنيف التكلفة الجديد *', 'ناوی جۆری تێچووی نوێ *', 'New Expense Category Name *')}
+                </label>
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder={t('مثال: مصاريف بنزين ومحروقات، إكراميات، قرطاسية، ضيافة خاصة...', 'نموونە: بەنزین، شیرینی، چاپ...', 'e.g., Fuel & gas, stationery, tips...')}
+                  className="w-full bg-[#050A18] text-white p-2.5 rounded-xl border border-slate-700 focus:border-purple-500 focus:outline-none text-xs font-medium placeholder-slate-500"
+                  autoFocus
+                />
+              </div>
+
+              {/* Display existing custom categories */}
+              {customExpenseTypes.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-slate-400 font-bold">
+                    {t('الأنواع المخصصة المضافة سابقاً:', 'جۆرە تایبەتە زیادکراوەکانی پێشوو:', 'Existing custom types:')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {customExpenseTypes.map((cName, cIdx) => (
+                      <span
+                        key={cIdx}
+                        className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[11px] flex items-center gap-1.5"
+                      >
+                        <span>🏷️ {cName}</span>
+                        <button
+                          type="button"
+                          onClick={() => setCustomExpenseTypes(prev => prev.filter(x => x !== cName))}
+                          className="text-slate-400 hover:text-rose-400 cursor-pointer"
+                          title={t('حذف هذا التصنيف', 'سڕینەوەی ئەم جۆرە', 'Delete category')}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-[#070D1E] border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowAddCategoryModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all border border-slate-700 cursor-pointer"
+              >
+                {t('إلغاء', 'پاشگەزبوونەوە', 'Cancel')}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddCustomType}
+                disabled={!newCategoryName.trim()}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 text-white font-bold text-xs shadow-lg shadow-purple-900/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Check className="w-4 h-4" />
+                <span>{t('حفظ نوع التكلفة', 'پاشەکەوتکردنی جۆر', 'Save Category')}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

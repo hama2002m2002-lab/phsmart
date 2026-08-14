@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3 } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
 import { OverviewTab } from './components/OverviewTab';
@@ -25,6 +26,7 @@ import { BarcodePrintModal } from './components/BarcodePrintModal';
 import { InventoryAuditModal } from './components/InventoryAuditModal';
 import { formatNumber } from './lib/formatUtils';
 import { DamagedItemsModal } from './components/DamagedItemsModal';
+import { DelegateReturnsModal } from './components/DelegateReturnsModal';
 import { AccountModal } from './components/AccountModal';
 import { DesktopAppModal } from './components/DesktopAppModal';
 import { CSharpExporterModal } from './components/CSharpExporterModal';
@@ -271,6 +273,7 @@ export function App() {
       case 'products': return perms.canManageProducts;
       case 'inventoryAudit': return perms.canManageInventoryAudit ?? perms.canManageProducts;
       case 'damagedItems': return perms.canManageProducts;
+      case 'delegateReturns': return perms.canManageProducts || perms.canManageSuppliers;
       case 'purchases': return perms.canManagePurchases ?? perms.canManageProducts;
       case 'suppliers': return perms.canManageSuppliers;
       case 'customers': return perms.canManageCustomers;
@@ -602,6 +605,8 @@ export function App() {
               setProductForBarcodePrint(prod || null);
               setIsBarcodePrintOpen(true);
             }}
+            onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
+            onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
             currentUser={currentUser}
           />
         );
@@ -641,6 +646,20 @@ export function App() {
             onClose={() => setActiveTab('products')}
             products={products}
             setProducts={setProducts}
+            settings={settings}
+            cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
+          />
+        );
+
+      case 'delegateReturns':
+        return (
+          <DelegateReturnsModal
+            isOpen={true}
+            onClose={() => setActiveTab('products')}
+            products={products}
+            setProducts={setProducts}
+            suppliers={suppliers}
+            setSuppliers={setSuppliers}
             settings={settings}
             cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
           />
@@ -839,29 +858,158 @@ export function App() {
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
         
-        {/* Left/Right Sidebar */}
+        {/* Desktop Sidebar (Fixed side navigation on lg+ screens) */}
         {isSidebarOpen && activeTab !== 'pos' && activeTab !== 'products' && activeTab !== 'purchases' && activeTab !== 'invoices' && !isReportsFullscreen && (
-          <Sidebar
-            activeTab={activeTab}
-            setActiveTab={(tab) => {
-              setActiveTopTab('overview');
-              setActiveTab(tab);
-            }}
-            settings={settings}
-            lowStockCount={lowStockCount}
-            currentUser={currentUser}
-            onLogout={() => setCurrentUser(null)}
-          />
+          <div className="hidden lg:block w-64 shrink-0 h-full">
+            <Sidebar
+              activeTab={activeTab}
+              setActiveTab={(tab) => {
+                setActiveTopTab('overview');
+                setActiveTab(tab);
+              }}
+              settings={settings}
+              lowStockCount={lowStockCount}
+              currentUser={currentUser}
+              onLogout={() => setCurrentUser(null)}
+            />
+          </div>
+        )}
+
+        {/* Mobile Slide-over Drawer (on small/tablet screens) */}
+        {isSidebarOpen && activeTab !== 'pos' && (
+          <div className="lg:hidden fixed inset-0 z-50 flex animate-fadeIn">
+            {/* Dark Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            {/* Drawer Container */}
+            <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10">
+              <Sidebar
+                activeTab={activeTab}
+                setActiveTab={(tab) => {
+                  setActiveTopTab('overview');
+                  setActiveTab(tab);
+                  setIsSidebarOpen(false);
+                }}
+                settings={settings}
+                lowStockCount={lowStockCount}
+                currentUser={currentUser}
+                onLogout={() => {
+                  setCurrentUser(null);
+                  setIsSidebarOpen(false);
+                }}
+                onClose={() => setIsSidebarOpen(false)}
+              />
+            </div>
+          </div>
         )}
 
         {/* Content Area */}
-        <main className={`flex-1 w-full min-h-0 ${activeTab === 'pos' ? 'max-w-full overflow-hidden h-full p-2 sm:p-3' : activeTab === 'products' || activeTab === 'purchases' || activeTab === 'invoices' || isReportsFullscreen ? 'max-w-full overflow-y-auto p-3 sm:p-4 lg:p-6' : 'max-w-7xl mx-auto overflow-y-auto p-3 sm:p-4 lg:p-6'}`}>
+        <main className={`flex-1 w-full min-h-0 ${
+          activeTab === 'pos' 
+            ? 'max-w-full overflow-hidden h-full p-1.5 sm:p-2.5 lg:p-3' 
+            : activeTab === 'products' || activeTab === 'purchases' || activeTab === 'invoices' || isReportsFullscreen 
+            ? 'max-w-full overflow-y-auto p-2.5 sm:p-4 lg:p-6 pb-20 lg:pb-6' 
+            : 'max-w-7xl mx-auto overflow-y-auto p-2.5 sm:p-4 lg:p-6 pb-20 lg:pb-6'
+        }`}>
           {renderMainContent()}
         </main>
 
       </div>
+
+      {/* Mobile Bottom Navigation Bar (Hidden on Desktop & in POS Mode) */}
+      {activeTab !== 'pos' && (
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B1120]/95 backdrop-blur-xl border-t border-cyan-500/20 px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center justify-around">
+            {/* Dashboard */}
+            <button
+              onClick={() => {
+                setActiveTopTab('overview');
+                setActiveTab('dashboard');
+              }}
+              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === 'dashboard'
+                  ? 'text-cyan-400 font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutDashboard className={`w-5 h-5 mb-0.5 ${activeTab === 'dashboard' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
+              <span className="text-[10px] leading-tight font-bold">
+                {settings.language === 'ku' ? 'سەرەکی' : settings.language === 'ar' ? 'الرئيسية' : 'Home'}
+              </span>
+            </button>
+
+            {/* POS Fast Sales */}
+            <button
+              onClick={() => {
+                setActiveTopTab('overview');
+                setActiveTab('pos');
+              }}
+              className={`flex flex-col items-center py-1 px-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 transition-all cursor-pointer -mt-3 border-2 border-[#0B1120]`}
+            >
+              <ShoppingCart className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] font-black leading-tight">
+                {settings.language === 'ku' ? 'کاشێر' : settings.language === 'ar' ? 'الكاشير' : 'POS'}
+              </span>
+            </button>
+
+            {/* Products */}
+            <button
+              onClick={() => {
+                setActiveTopTab('overview');
+                setActiveTab('products');
+              }}
+              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all relative cursor-pointer ${
+                activeTab === 'products'
+                  ? 'text-cyan-400 font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Package className={`w-5 h-5 mb-0.5 ${activeTab === 'products' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
+              <span className="text-[10px] leading-tight font-bold">
+                {settings.language === 'ku' ? 'کاڵاکان' : settings.language === 'ar' ? 'المنتجات' : 'Products'}
+              </span>
+              {lowStockCount > 0 && (
+                <span className="absolute -top-1 end-1 w-4 h-4 bg-amber-500 text-slate-950 font-black text-[9px] rounded-full flex items-center justify-center border border-[#0B1120] animate-pulse">
+                  {lowStockCount}
+                </span>
+              )}
+            </button>
+
+            {/* Reports */}
+            <button
+              onClick={() => {
+                setActiveTopTab('overview');
+                setActiveTab('reports');
+              }}
+              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === 'reports'
+                  ? 'text-cyan-400 font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileText className={`w-5 h-5 mb-0.5 ${activeTab === 'reports' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
+              <span className="text-[10px] leading-tight font-bold">
+                {settings.language === 'ku' ? 'ڕاپۆرت' : settings.language === 'ar' ? 'التقارير' : 'Reports'}
+              </span>
+            </button>
+
+            {/* More Menu Drawer Toggle */}
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400 hover:text-slate-200 active:scale-95 transition-all cursor-pointer"
+            >
+              <Menu className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] leading-tight font-bold">
+                {settings.language === 'ku' ? 'بەشەکان' : settings.language === 'ar' ? 'المزيد' : 'Menu'}
+              </span>
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* Modals */}
       <ReceiptModal
@@ -973,6 +1121,13 @@ export function App() {
         userAccounts={userAccounts}
         salesHistory={salesHistory}
         settings={settings}
+        onViewReceipt={(sale) => setSelectedReceipt(sale)}
+        onOpenReturnForSale={(sale) => {
+          setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+          setIsSalesReturnOpen(true);
+        }}
+        onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
+        onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
       />
 
     </div>

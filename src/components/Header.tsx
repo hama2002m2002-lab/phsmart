@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon } from 'lucide-react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -42,6 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSalesReturn,
   onOpenCashDrawer,
   onOpenShiftReport,
+  onToggleSidebar,
+  isSidebarOpen = false,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -58,45 +60,57 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#0B1120]/90 backdrop-blur-md border-b border-blue-500/20 px-4 lg:px-6 py-2.5 transition-all">
-      <div className="flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-40 bg-[#0B1120]/95 backdrop-blur-md border-b border-blue-500/20 px-2.5 sm:px-4 lg:px-6 py-2 transition-all">
+      <div className="flex items-center justify-between gap-2 max-w-full">
         
-        {/* Left: Store Brand & Active Cashier */}
-        <div className="flex items-center space-x-3 rtl:space-x-reverse">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-base shadow-[0_0_15px_rgba(6,182,212,0.35)] border border-cyan-400/30 shrink-0">
+        {/* Left: Mobile Menu Toggle + Store Brand & Active Cashier */}
+        <div className="flex items-center space-x-2 sm:space-x-3 rtl:space-x-reverse min-w-0">
+          {/* Mobile Hamburger Button */}
+          {!isPOSMode && onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="lg:hidden p-2 rounded-xl bg-slate-800/80 border border-slate-700 text-cyan-400 hover:text-white hover:bg-slate-700 active:scale-95 transition-all cursor-pointer shrink-0"
+              title={isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة الجانبية'}
+              aria-label="Toggle Navigation Menu"
+            >
+              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
+
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm sm:text-base shadow-[0_0_15px_rgba(6,182,212,0.35)] border border-cyan-400/30 shrink-0">
             {cashierName.charAt(0)}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xs sm:text-sm font-black text-slate-100 tracking-wide flex items-center gap-1.5">
-                <span className="text-amber-400 font-bold text-[11px] sm:text-xs">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h1 className="text-xs sm:text-sm font-black text-slate-100 tracking-wide flex items-center gap-1 truncate max-w-[130px] sm:max-w-[200px]">
+                <span className="text-amber-400 font-bold text-[10px] sm:text-xs shrink-0">
                   {isAr ? 'الكاشير:' : isKu ? 'کاشێر:' : 'Cashier:'}
                 </span>
-                <span>{cashierName}</span>
+                <span className="truncate">{cashierName}</span>
               </h1>
               {currentUser?.role && (
-                <span className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-md bg-cyan-950/90 text-cyan-300 border border-cyan-500/30 font-bold">
+                <span className="hidden xs:inline-block text-[9px] px-1.5 py-0.5 rounded-md bg-cyan-950/90 text-cyan-300 border border-cyan-500/30 font-bold shrink-0">
                   {currentUser.role === 'Admin' ? (isAr ? 'مدير' : 'Admin') : (isAr ? 'كاشير' : 'Cashier')}
                 </span>
               )}
             </div>
-            <p className="text-[10px] font-semibold text-cyan-400/80 flex items-center gap-1.5 mt-0.5">
-              <span className="font-bold text-slate-300">{storeDisplayName}</span>
-              <span>•</span>
-              <span>{isKu ? 'سیستەمی فرۆشتن' : isAr ? 'نظام إدارة المبيعات' : 'Sales System'}</span>
+            <p className="text-[9px] sm:text-[10px] font-semibold text-cyan-400/80 flex items-center gap-1 truncate mt-0.5">
+              <span className="font-bold text-slate-300 truncate max-w-[90px] sm:max-w-[150px]">{storeDisplayName}</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">{isKu ? 'سیستەمی فرۆشتن' : isAr ? 'نظام إدارة المبيعات' : 'Sales System'}</span>
             </p>
           </div>
         </div>
 
-        {/* Center/Right: Language Switcher and POS buttons */}
-        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+        {/* Center/Right: Language Switcher, Theme and POS buttons */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2 rtl:space-x-reverse shrink-0">
           {/* Quick Language Switcher */}
-          <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-1 gap-1">
-            <Globe className="w-4 h-4 text-cyan-400 ml-1.5 mr-0.5 shrink-0 hidden sm:inline" />
+          <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-0.5 sm:p-1 gap-0.5 sm:gap-1">
+            <Globe className="w-3.5 h-3.5 text-cyan-400 ml-1 mr-0.5 shrink-0 hidden md:inline" />
             <button
               type="button"
               onClick={() => handleLanguageChange('ar')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-[11px] sm:text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 lang === 'ar'
                   ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -108,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => handleLanguageChange('ku')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-[11px] sm:text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 lang === 'ku'
                   ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -120,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => handleLanguageChange('en')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-1.5 py-0.5 sm:px-2 sm:py-1 text-[11px] sm:text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 lang === 'en'
                   ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -132,7 +146,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Theme Switcher Button (Day / Night Mode - وضع ليلي و نهار) */}
-          <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-1">
+          <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-0.5 sm:p-1">
             <button
               type="button"
               onClick={() =>
@@ -141,7 +155,7 @@ export const Header: React.FC<HeaderProps> = ({
                   themeMode: prev.themeMode === 'light' ? 'dark' : 'light'
                 }))
               }
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
                 settings.themeMode === 'light'
                   ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-[0_0_10px_rgba(245,158,11,0.4)]'
                   : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-[0_0_10px_rgba(99,102,241,0.4)]'
@@ -154,13 +168,13 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {settings.themeMode === 'light' ? (
                 <>
-                  <Sun className="w-3.5 h-3.5 text-amber-100 shrink-0 animate-spin-slow" />
-                  <span>{isAr ? 'نهاري' : isKu ? 'ڕۆژ' : 'Day'}</span>
+                  <Sun className="w-3.5 h-3.5 text-amber-100 shrink-0" />
+                  <span className="hidden sm:inline">{isAr ? 'نهاري' : isKu ? 'ڕۆژ' : 'Day'}</span>
                 </>
               ) : (
                 <>
                   <Moon className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
-                  <span>{isAr ? 'ليلي' : isKu ? 'شەو' : 'Night'}</span>
+                  <span className="hidden sm:inline">{isAr ? 'ليلي' : isKu ? 'شەو' : 'Night'}</span>
                 </>
               )}
             </button>
@@ -168,48 +182,48 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right: Actions when in POS mode */}
           {isPOSMode && (
-            <div className="flex items-center space-x-2 rtl:space-x-reverse">
+            <div className="flex items-center space-x-1 sm:space-x-2 rtl:space-x-reverse overflow-x-auto custom-scrollbar py-0.5">
               {onOpenSalesReturn && (
                 <button
                   onClick={onOpenSalesReturn}
-                  className="flex items-center space-x-1.5 rtl:space-x-reverse px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-600 hover:brightness-110 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(244,63,94,0.35)] border border-rose-400/40 active:scale-95 cursor-pointer shrink-0"
+                  className="flex items-center space-x-1 rtl:space-x-reverse px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-600 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(244,63,94,0.35)] border border-rose-400/40 active:scale-95 cursor-pointer shrink-0"
                   title={isAr ? 'استرجاع مواد مباعة بالباركود، رقم الوصل، أو الاسم' : 'Sales Return'}
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-rose-100" />
-                  <span>{isAr ? 'استرجاع المواد' : isKu ? 'گەڕاندنەوەی کاڵاکان' : 'Sales Return'}</span>
+                  <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-100" />
+                  <span className="hidden xs:inline">{isAr ? 'استرجاع' : isKu ? 'گەڕاندنەوە' : 'Return'}</span>
                 </button>
               )}
 
               {onOpenCashDrawer && (
                 <button
                   onClick={onOpenCashDrawer}
-                  className="flex items-center space-x-1.5 rtl:space-x-reverse px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/40 active:scale-95 cursor-pointer shrink-0"
+                  className="flex items-center space-x-1 rtl:space-x-reverse px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/40 active:scale-95 cursor-pointer shrink-0"
                   title={isAr ? 'واجهة حركة الخزنة وصندوق الكاشير' : 'Cash Safe & Treasury'}
                 >
-                  <Vault className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
-                  <span>{isAr ? 'واجهة الخزنة' : isKu ? 'سندوقی پارە' : 'Cash Safe'}</span>
+                  <Vault className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-200" />
+                  <span className="hidden xs:inline">{isAr ? 'الخزنة' : isKu ? 'سندوق' : 'Safe'}</span>
                 </button>
               )}
 
               {onOpenShiftReport && (
                 <button
                   onClick={onOpenShiftReport}
-                  className="flex items-center space-x-1.5 rtl:space-x-reverse px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 hover:brightness-110 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(245,158,11,0.35)] border border-amber-400/40 active:scale-95 cursor-pointer shrink-0"
+                  className="flex items-center space-x-1 rtl:space-x-reverse px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(245,158,11,0.35)] border border-amber-400/40 active:scale-95 cursor-pointer shrink-0"
                   title={isAr ? 'طباعة تقرير ملخص وردية اليوم وإحصائيات الدرج' : 'Print Shift Report'}
                 >
-                  <Printer className="w-3.5 h-3.5 text-amber-100" />
-                  <span>{isAr ? 'ملخص الورديات' : isKu ? 'ڕاپۆرتی نۆبەت' : 'Shift Report'}</span>
+                  <Printer className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-100" />
+                  <span className="hidden sm:inline">{isAr ? 'ملخص الورديات' : isKu ? 'ڕاپۆرت' : 'Report'}</span>
                 </button>
               )}
 
               {onExitPOS && (
                 <button
                   onClick={onExitPOS}
-                  className="flex items-center space-x-1.5 rtl:space-x-reverse px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-900/80 via-slate-900 to-slate-800 hover:from-rose-800 hover:to-slate-700 text-rose-100 border border-rose-500/50 text-xs font-black transition-all shadow-[0_0_12px_rgba(244,63,94,0.3)] shrink-0 cursor-pointer active:scale-95"
+                  className="flex items-center space-x-1 rtl:space-x-reverse px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-900/80 via-slate-900 to-slate-800 hover:from-rose-800 hover:to-slate-700 text-rose-100 border border-rose-500/50 text-[11px] sm:text-xs font-black transition-all shadow-[0_0_12px_rgba(244,63,94,0.3)] shrink-0 cursor-pointer active:scale-95"
                   title={isAr ? 'الخروج من المبيعات والعودة للواجهة الرئيسية' : isKu ? 'دەرچوون بۆ لاپەڕەی سەرەکی' : 'Exit to Main Dashboard'}
                 >
-                  <Home className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
-                  <span>{isAr ? 'الخروج للرئيسية' : isKu ? 'گەڕانەوە بۆ سەرەکی' : getTranslation(lang, 'exitPOS')}</span>
+                  <Home className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-300 shrink-0" />
+                  <span>{isAr ? 'الرئيسية' : isKu ? 'سەرەکی' : 'Home'}</span>
                 </button>
               )}
             </div>
@@ -220,5 +234,6 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+
 
 

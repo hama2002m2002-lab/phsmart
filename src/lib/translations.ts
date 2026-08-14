@@ -29,6 +29,7 @@ export const uiTranslations: TranslationDict = {
   quickPOS: { ar: 'الكاشير السريع', en: 'Quick POS', ku: 'کاشێری خێرا' },
   stockAudit: { ar: 'جرد وتدقيق المخزون', en: 'Inventory Audit', ku: 'پشکنین و جردی کۆگا' },
   damagedItems: { ar: 'مواد متلفة / مكسورة / منتهية', en: 'Damaged & Expired Items', ku: 'کاڵای تێکچوو / بەسەرچوو' },
+  delegateReturns: { ar: 'إرجاع مواد إلى مندوب', en: 'Return Items to Delegate', ku: 'گەڕاندنەوەی کاڵا بۆ مەندوب' },
   showInventory: { ar: 'عرض مواد المخزن', en: 'Show Inventory', ku: 'نیشاندانی کاڵاکانی کۆگا' },
   exitPOS: { ar: 'خروج للقائمة الرئيسية', en: 'Exit POS View', ku: 'دەرچوون بۆ لاپەڕەی سەرەکی' },
   logout: { ar: 'تسجيل الخروج', en: 'Logout', ku: 'چوونه‌ده‌ره‌وه' },
