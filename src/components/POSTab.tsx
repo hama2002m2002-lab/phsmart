@@ -40,23 +40,34 @@ import {
   DollarSign,
   Undo2,
   Home,
-  LogOut
+  LogOut,
+  Tv,
+  ExternalLink,
+  Cast,
+  PanelRightClose,
+  PanelRightOpen,
+  Monitor
 } from 'lucide-react';
-import { Product, CartItem, Category, SaleTransaction, Customer, StoreSettings, SaleUnitType, PrescriptionInfo, UserAccount } from '../types';
+import { Product, CartItem, Category, SaleTransaction, Customer, StoreSettings, SaleUnitType, PrescriptionInfo, UserAccount, CustomerDisplayPayload, CustomerDisplayItem } from '../types';
 import { getTranslation, getProductName, getCategoryName } from '../lib/translations';
 import { defaultPOSShortcuts } from '../data/mockData';
 import { printSaleReceiptDirect } from '../lib/thermalPrinter';
 import { formatNumber } from '../lib/formatUtils';
+import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../lib/dateUtils';
 import { DamagedItemsModal } from './DamagedItemsModal';
+import { broadcastCustomerDisplay, openCustomerDisplayWindow } from '../lib/customerDisplayBroadcast';
+import { CustomerDisplayScreen } from './CustomerDisplayScreen';
 
 interface POSWindowTab {
   id: string;
   cart: CartItem[];
   discountAmount: number;
+  customTaxAmount?: number | null;
   paymentMethod: 'cash' | 'card' | 'nfc' | 'debt';
   cashTendered: number;
   lastAddedId: string | null;
   prescriptionInfo?: PrescriptionInfo;
+  isReturnMode?: boolean;
 }
 
 interface POSTabProps {
@@ -67,6 +78,8 @@ interface POSTabProps {
   onSaleCompleted: (sale: SaleTransaction) => void;
   showInventory?: boolean;
   setShowInventory?: (show: boolean) => void;
+  showYellowLineModal?: boolean;
+  setShowYellowLineModal?: (show: boolean) => void;
   isAnyModalOpen?: boolean;
   salesHistory?: SaleTransaction[];
   onViewReceipt?: (sale: SaleTransaction) => void;
@@ -76,6 +89,7 @@ interface POSTabProps {
   onOpenPrintBarcode?: (product?: Product) => void;
   onOpenSalesReturn?: () => void;
   onOpenDelegateReturns?: () => void;
+  onOpenCustomerDisplay?: () => void;
   currentUser?: UserAccount | null;
 }
 
@@ -180,6 +194,8 @@ export const POSTab: React.FC<POSTabProps> = ({
   onSaleCompleted,
   showInventory: externalShowInventory,
   setShowInventory: externalSetShowInventory,
+  showYellowLineModal: externalShowYellowLineModal,
+  setShowYellowLineModal: externalSetShowYellowLineModal,
   isAnyModalOpen = false,
   salesHistory = [],
   onViewReceipt,
@@ -189,6 +205,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   onOpenPrintBarcode,
   onOpenSalesReturn,
   onOpenDelegateReturns,
+  onOpenCustomerDisplay: externalOnOpenCustomerDisplay,
   currentUser,
 }) => {
   const isLight = settings.themeMode === 'light';
@@ -196,22 +213,35 @@ export const POSTab: React.FC<POSTabProps> = ({
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
 
+  // Customer display side panel state
+  const [showCustomerDisplaySidePanel, setShowCustomerDisplaySidePanel] = useState<boolean>(false);
+  const [customerDisplayCopiedToast, setCustomerDisplayCopiedToast] = useState<boolean>(false);
+
+  // Check if current logged-in user or cashier has permission to view purchase price
+  const canViewPurchasePrice = Boolean(
+    currentUser?.role === 'Admin' ||
+    currentUser?.role === 'Manager' ||
+    currentUser?.permissions?.canViewPurchasePriceInPOS === true
+  );
+
   // Multi-window sales tabs state
   const [windows, setWindows] = useState<POSWindowTab[]>([
     {
       id: 'win-1',
       cart: [],
       discountAmount: 0,
+      customTaxAmount: null,
       paymentMethod: 'cash',
       cashTendered: 0,
       lastAddedId: null,
+      isReturnMode: false,
     }
   ]);
   const [activeWindowId, setActiveWindowId] = useState<string>('win-1');
-  const [isReturnMode, setIsReturnMode] = useState<boolean>(false);
   const [mobilePosTab, setMobilePosTab] = useState<'cart' | 'checkout' | 'inventory'>('cart');
-  const [showYellowLineModal, setShowYellowLineModal] = useState<boolean>(false);
-  const [showReturnsActionSheet, setShowReturnsActionSheet] = useState<boolean>(false);
+  const [localShowYellowLineModal, setLocalShowYellowLineModal] = useState<boolean>(false);
+  const showYellowLineModal = externalShowYellowLineModal !== undefined ? externalShowYellowLineModal : localShowYellowLineModal;
+  const setShowYellowLineModal = externalSetShowYellowLineModal || setLocalShowYellowLineModal;
 
   // Active window object & derived states
   const activeWindowIndex = Math.max(0, windows.findIndex(w => w.id === activeWindowId));
@@ -219,21 +249,25 @@ export const POSTab: React.FC<POSTabProps> = ({
     id: 'win-1',
     cart: [],
     discountAmount: 0,
+    customTaxAmount: null,
     paymentMethod: 'cash' as const,
     cashTendered: 0,
     lastAddedId: null,
+    isReturnMode: false,
   };
 
   const cart = activeWindow.cart;
   const discountAmount = activeWindow.discountAmount;
+  const customTaxAmount = activeWindow.customTaxAmount ?? null;
   const paymentMethod = activeWindow.paymentMethod;
   const cashTendered = activeWindow.cashTendered;
   const lastAddedId = activeWindow.lastAddedId;
+  const isReturnMode = Boolean(activeWindow.isReturnMode);
 
   // Window cart & control state setters
   const setCart = (action: CartItem[] | ((prev: CartItem[]) => CartItem[])) => {
     setWindows(prevWindows => {
-      const targetId = activeWindow.id;
+      const targetId = activeWindowId;
       return prevWindows.map(w => {
         if (w.id === targetId) {
           const nextCart = typeof action === 'function' ? action(w.cart) : action;
@@ -244,9 +278,23 @@ export const POSTab: React.FC<POSTabProps> = ({
     });
   };
 
+  const setIsReturnMode = (action: boolean | ((prev: boolean) => boolean)) => {
+    setWindows(prevWindows => {
+      const targetId = activeWindowId;
+      return prevWindows.map(w => {
+        if (w.id === targetId) {
+          const currentVal = Boolean(w.isReturnMode);
+          const nextVal = typeof action === 'function' ? action(currentVal) : action;
+          return { ...w, isReturnMode: nextVal };
+        }
+        return w;
+      });
+    });
+  };
+
   const setDiscountAmount = (action: number | ((prev: number) => number)) => {
     setWindows(prevWindows => {
-      const targetId = activeWindow.id;
+      const targetId = activeWindowId;
       return prevWindows.map(w => {
         if (w.id === targetId) {
           const nextVal = typeof action === 'function' ? action(w.discountAmount) : action;
@@ -257,9 +305,22 @@ export const POSTab: React.FC<POSTabProps> = ({
     });
   };
 
+  const setCustomTaxAmount = (action: number | null | ((prev: number | null) => number | null)) => {
+    setWindows(prevWindows => {
+      const targetId = activeWindowId;
+      return prevWindows.map(w => {
+        if (w.id === targetId) {
+          const nextVal = typeof action === 'function' ? action(w.customTaxAmount ?? null) : action;
+          return { ...w, customTaxAmount: nextVal };
+        }
+        return w;
+      });
+    });
+  };
+
   const setPaymentMethod = (method: 'cash' | 'card' | 'nfc' | 'debt') => {
     setWindows(prevWindows => {
-      const targetId = activeWindow.id;
+      const targetId = activeWindowId;
       return prevWindows.map(w => {
         if (w.id === targetId) {
           return { ...w, paymentMethod: method };
@@ -271,7 +332,7 @@ export const POSTab: React.FC<POSTabProps> = ({
 
   const setCashTendered = (action: number | ((prev: number) => number)) => {
     setWindows(prevWindows => {
-      const targetId = activeWindow.id;
+      const targetId = activeWindowId;
       return prevWindows.map(w => {
         if (w.id === targetId) {
           const nextVal = typeof action === 'function' ? action(w.cashTendered) : action;
@@ -284,7 +345,7 @@ export const POSTab: React.FC<POSTabProps> = ({
 
   const setLastAddedId = (id: string | null) => {
     setWindows(prevWindows => {
-      const targetId = activeWindow.id;
+      const targetId = activeWindowId;
       return prevWindows.map(w => {
         if (w.id === targetId) {
           return { ...w, lastAddedId: id };
@@ -294,19 +355,25 @@ export const POSTab: React.FC<POSTabProps> = ({
     });
   };
 
-  // Add new sales window tab
+  // Add new sales window tab - ALWAYS ready for standard sale (isReturnMode: false)
   const handleAddWindow = () => {
     const newId = `win-${Date.now()}`;
     const newWin: POSWindowTab = {
       id: newId,
       cart: [],
       discountAmount: 0,
+      customTaxAmount: null,
       paymentMethod: 'cash',
       cashTendered: 0,
       lastAddedId: null,
+      isReturnMode: false,
     };
     setWindows(prev => [...prev, newWin]);
     setActiveWindowId(newId);
+    setScanAlert({
+      msg: isKu ? '✨ پەنجەرەیەکی نوێی فرۆشتن کرایەوە (ئامادەیە بۆ فرۆشتن)' : isAr ? '✨ تم فتح نافذة بيع جديدة (جاهزة للبيع العادي)' : '✨ New sales window ready for selling',
+      type: 'success'
+    });
   };
 
   // Remove sales window tab (Auto re-indexes sequence for remaining windows)
@@ -439,20 +506,29 @@ export const POSTab: React.FC<POSTabProps> = ({
             shiftQtyBufferRef.current = { val: targetQty, time: now };
           }
 
-          if (targetQty > targetItem.product.stock) {
+          // Always allow setting any quantity directly in cart, even if massive or stock is zero/negative
+          setDirectQuantity(targetItem.product.id, targetItem.saleType, targetQty);
+          setBarcodeInput('');
+
+          const itemName = isAr ? (targetItem.product.nameAr || targetItem.product.name) : isKu ? (targetItem.product.nameAr || targetItem.product.name) : targetItem.product.name;
+          const currentStock = targetItem.product.stock;
+
+          if (targetQty > currentStock || currentStock <= 0) {
             setScanAlert({
-              msg: isAr 
-                ? `⚠️ الكمية المطلوب تحديدها (${targetQty}) تتجاوز المتوفر بالمخزن (${targetItem.product.stock})!` 
-                : `⚠️ Requested quantity (${targetQty}) exceeds stock (${targetItem.product.stock})!`,
+              msg: isKu 
+                ? `⚠️ [ ${targetQty} ] دانە بۆ (${itemName}) دیاریکرا (بە قەرزی کۆگا / بڕی زیاتر لە بەردەست: ${currentStock})` 
+                : isAr 
+                ? `⚠️ تم تحديد [ ${targetQty} ] قطعة لمادة (${itemName}) (سحب على المكشوف / قيد بالسالب، المتوفر: ${currentStock})` 
+                : `⚠️ Set [ ${targetQty} ] items for (${itemName}) (Overdraft loan, stock: ${currentStock})`,
               type: 'error'
             });
           } else {
-            setDirectQuantity(targetItem.product.id, targetItem.saleType, targetQty);
-            setBarcodeInput('');
             setScanAlert({
-              msg: isAr 
-                ? `⚡ تم تعديل كمية (${targetItem.product.nameAr || targetItem.product.name}) إلى [ ${targetQty} ] قطعة (Shift+${digit})` 
-                : `⚡ Updated (${targetItem.product.name}) quantity to [ ${targetQty} ] items (Shift+${digit})`,
+              msg: isKu 
+                ? `⚡ بڕی (${itemName}) دیاریکرا بە [ ${targetQty} ] دانە (Shift+${digit})` 
+                : isAr 
+                ? `⚡ تم تعديل كمية (${itemName}) إلى [ ${targetQty} ] قطعة (Shift+${digit})` 
+                : `⚡ Updated (${itemName}) quantity to [ ${targetQty} ] items (Shift+${digit})`,
               type: 'success'
             });
           }
@@ -580,29 +656,78 @@ export const POSTab: React.FC<POSTabProps> = ({
     e.preventDefault();
     if (isBarcodeDisabled) return;
 
-    const cleanCode = barcodeInput.trim();
-    if (!cleanCode) return;
+    const rawInput = barcodeInput.trim();
+    if (!rawInput) return;
 
     // First check if scanned input matches a sale invoice number (e.g., INV-...)
-    const foundInvoice = salesHistory.find(s => s.invoiceNumber.toLowerCase() === cleanCode.toLowerCase());
+    const foundInvoice = salesHistory.find(s => s.invoiceNumber.toLowerCase() === rawInput.toLowerCase());
     if (foundInvoice && onViewReceipt) {
       onViewReceipt(foundInvoice);
       setScanAlert({
-        msg: isAr ? `تم العثور على الوصل (${foundInvoice.invoiceNumber})` : `Found receipt (${foundInvoice.invoiceNumber})`,
+        msg: isKu ? `پسوولە دۆزرایەوە (${foundInvoice.invoiceNumber})` : isAr ? `تم العثور على الوصل (${foundInvoice.invoiceNumber})` : `Found receipt (${foundInvoice.invoiceNumber})`,
         type: 'success'
       });
       setBarcodeInput('');
       return;
     }
 
+    // Check for Multiplier Pattern in barcode input: e.g. "5*62810023", "62810023*5", "*5", "100*..."
+    let parsedQty = 1;
+    let cleanCode = rawInput;
+
+    if (rawInput.includes('*')) {
+      const parts = rawInput.split('*').map(p => p.trim());
+      if (parts.length === 2) {
+        if (parts[0] === '' && /^\d+$/.test(parts[1])) {
+          // "*5" pattern -> Update quantity of the last added item in cart directly
+          const targetQty = parseInt(parts[1], 10);
+          if (targetQty > 0 && cart.length > 0) {
+            const targetItem = cart.find(item => item.product.id === lastAddedId) || cart[0];
+            setDirectQuantity(targetItem.product.id, targetItem.saleType, targetQty);
+            setBarcodeInput('');
+            const itemName = isAr ? (targetItem.product.nameAr || targetItem.product.name) : isKu ? (targetItem.product.nameAr || targetItem.product.name) : targetItem.product.name;
+            const currentStock = targetItem.product.stock;
+
+            if (targetQty > currentStock || currentStock <= 0) {
+              setScanAlert({
+                msg: isKu 
+                  ? `⚠️ [ ${targetQty} ] دانە بۆ (${itemName}) دیاریکرا (بە قەرزی کۆگا / بڕی زیاتر لە بەردەست: ${currentStock})` 
+                  : isAr 
+                  ? `⚠️ تم تحديد [ ${targetQty} ] قطعة لمادة (${itemName}) (سحب على المكشوف / قيد بالسالب، المتوفر: ${currentStock})` 
+                  : `⚠️ Set [ ${targetQty} ] items for (${itemName}) (Overdraft loan, stock: ${currentStock})`,
+                type: 'error'
+              });
+            } else {
+              setScanAlert({
+                msg: isKu 
+                  ? `⚡ بڕی (${itemName}) دیاریکرا بە [ ${targetQty} ] دانە` 
+                  : isAr 
+                  ? `⚡ تم تعديل كمية (${itemName}) إلى [ ${targetQty} ] قطعة` 
+                  : `⚡ Updated (${itemName}) quantity to [ ${targetQty} ] items`,
+                type: 'success'
+              });
+            }
+            return;
+          }
+        } else if (/^\d+$/.test(parts[0]) && parts[1] !== '') {
+          // "5*barcode" pattern
+          parsedQty = parseInt(parts[0], 10);
+          cleanCode = parts[1];
+        } else if (/^\d+$/.test(parts[1]) && parts[0] !== '') {
+          // "barcode*5" pattern
+          parsedQty = parseInt(parts[1], 10);
+          cleanCode = parts[0];
+        }
+      }
+    }
+
     const found = products.find(p => p.barcode === cleanCode || p.id === cleanCode);
     if (found) {
-      addToCart(found, 'retail');
-      setScanAlert(null);
+      addToCart(found, 'retail', parsedQty > 0 ? parsedQty : 1);
     } else {
       playErrorBeep();
       setScanAlert({
-        msg: isAr ? 'الباركود غير موجود في المخزن!' : isKu ? 'ئەم بارکۆدە لە کۆگادا نییە!' : 'This barcode does not exist in inventory!',
+        msg: isKu ? 'ئەم بارکۆدە لە کۆگادا نییە!' : isAr ? 'الباركود غير موجود في المخزن!' : 'This barcode does not exist in inventory!',
         type: 'error'
       });
     }
@@ -618,27 +743,50 @@ export const POSTab: React.FC<POSTabProps> = ({
 
     setTimeout(() => {
       setScanAlert(prev => prev?.type === 'error' ? null : prev);
-    }, 3500);
+    }, 4000);
   };
 
-  const addToCart = (product: Product, initialSaleType: SaleUnitType = 'retail') => {
+  const addToCart = (product: Product, initialSaleType: SaleUnitType = 'retail', quantityToAdd: number = 1) => {
     setIsBarcodePaused(false);
 
     setLastAddedId(product.id);
-    const addedAtTime = new Date().toLocaleTimeString(isAr ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const addedAtTime = formatDisplayTime(new Date(), settings.language);
 
     setCart(prev => {
       const existingIndex = prev.findIndex(item => item.product.id === product.id && item.saleType === initialSaleType);
       if (existingIndex !== -1) {
         const existing = prev[existingIndex];
-        const updatedItem = { ...existing, quantity: existing.quantity + 1 };
+        const updatedItem = { ...existing, quantity: existing.quantity + quantityToAdd };
         // Bring updated item to the VERY TOP of the cart
         const filtered = prev.filter((_, idx) => idx !== existingIndex);
         return [updatedItem, ...filtered];
       }
       // New item added at index 0 (Top of cart)
-      return [{ product, quantity: 1, saleType: initialSaleType, addedAtTime }, ...prev];
+      return [{ product, quantity: quantityToAdd, saleType: initialSaleType, addedAtTime }, ...prev];
     });
+
+    const itemName = isAr ? (product.nameAr || product.name) : isKu ? (product.nameAr || product.name) : product.name;
+    const currentStock = product.stock;
+
+    if (quantityToAdd > currentStock || currentStock <= 0) {
+      setScanAlert({
+        msg: isKu 
+          ? `⚠️ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە (بە قەرزی کۆگا / بڕی کەم: ${currentStock})` 
+          : isAr 
+          ? `⚠️ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة (سحب على المكشوف / قيد بالسالب، المتوفر: ${currentStock})` 
+          : `⚠️ Added [ ${quantityToAdd} ] of (${itemName}) (Overdraft negative loan, stock: ${currentStock})`,
+        type: 'error'
+      });
+    } else {
+      setScanAlert({
+        msg: isKu 
+          ? `✅ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە` 
+          : isAr 
+          ? `✅ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة` 
+          : `✅ Added [ ${quantityToAdd} ] of (${itemName}) to cart`,
+        type: 'success'
+      });
+    }
   };
 
   const updateSaleType = (productId: string, oldSaleType: SaleUnitType, newSaleType: SaleUnitType) => {
@@ -714,6 +862,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   const clearCart = () => {
     setCart([]);
     setDiscountAmount(0);
+    setCustomTaxAmount(null);
     setCashTendered(0);
     setLastAddedId(null);
     setIsBarcodePaused(false);
@@ -722,9 +871,100 @@ export const POSTab: React.FC<POSTabProps> = ({
 
   // Calculations
   const subtotal = cart.reduce((acc, item) => acc + (getItemUnitPrice(item) * item.quantity), 0);
-  const taxAmount = (subtotal - discountAmount) * (settings.taxRate / 100);
+  const calculatedTax = Math.max(0, (subtotal - discountAmount) * (settings.taxRate / 100));
+  const taxAmount = customTaxAmount !== null ? customTaxAmount : calculatedTax;
   const grandTotal = Math.max(0, subtotal - discountAmount + taxAmount);
   const changeDue = cashTendered > 0 ? Math.max(0, cashTendered - grandTotal) : 0;
+
+  // Real-time synchronization with Customer Display (شاشة عرض الزبون)
+  useEffect(() => {
+    const displayItems: CustomerDisplayItem[] = cart.map((item, index) => {
+      const unitPrice = getItemUnitPrice(item);
+      const retailPrice = item.product.singleRetailPrice || item.product.price;
+      const discountPerUnit = retailPrice > unitPrice ? (retailPrice - unitPrice) : 0;
+
+      return {
+        id: `${item.product.id}-${item.saleType}-${index}`,
+        productId: item.product.id,
+        name: item.product.name,
+        nameAr: item.product.nameAr,
+        nameKu: item.product.nameKu,
+        scientificName: item.product.scientificName,
+        barcode: item.product.barcode,
+        quantity: item.quantity,
+        saleType: item.saleType,
+        unitPrice,
+        total: unitPrice * item.quantity,
+        originalPrice: retailPrice > unitPrice ? retailPrice : undefined,
+        discountPerUnit: discountPerUnit > 0 ? discountPerUnit : undefined,
+        dosageInstruction: item.dosageInstruction,
+        imageIcon: item.product.imageIcon,
+        isNewlyAdded: item.product.id === lastAddedId,
+      };
+    });
+
+    const payload: CustomerDisplayPayload = {
+      activeWindowId,
+      windowIndex: activeWindowIndex + 1,
+      items: displayItems,
+      itemCount: cart.length,
+      totalUnitsCount: cart.reduce((acc, c) => acc + c.quantity, 0),
+      subtotal,
+      discountAmount,
+      tax: taxAmount,
+      total: isReturnMode ? -Math.abs(grandTotal) : grandTotal,
+      paymentMethod,
+      cashTendered,
+      changeDue,
+      isReturnMode: Boolean(isReturnMode),
+      storeName: settings.storeName,
+      storeNameAr: settings.storeNameAr,
+      storeNameKu: settings.storeNameKu,
+      currencySymbol: settings.currencySymbol || 'د.ع',
+      phone: settings.phone,
+      address: settings.address,
+      cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+      lastUpdated: Date.now(),
+    };
+
+    broadcastCustomerDisplay(payload);
+  }, [
+    cart,
+    subtotal,
+    discountAmount,
+    customTaxAmount,
+    taxAmount,
+    grandTotal,
+    paymentMethod,
+    cashTendered,
+    changeDue,
+    isReturnMode,
+    activeWindowId,
+    activeWindowIndex,
+    lastAddedId,
+    settings,
+    currentUser,
+    isAr
+  ]);
+
+  const handleOpenCustomerDisplayExternal = () => {
+    if (externalOnOpenCustomerDisplay) {
+      externalOnOpenCustomerDisplay();
+    } else {
+      openCustomerDisplayWindow();
+    }
+  };
+
+  const handleCopyCustomerDisplayLink = () => {
+    try {
+      const url = `${window.location.origin}${window.location.pathname}?view=customer-display#customer-display`;
+      navigator.clipboard.writeText(url);
+      setCustomerDisplayCopiedToast(true);
+      setTimeout(() => setCustomerDisplayCopiedToast(false), 2500);
+    } catch {
+      // Fallback
+    }
+  };
 
   const handleCompleteCheckout = (options?: { shouldPrintReceipt?: boolean }) => {
     if (cart.length === 0) return;
@@ -743,14 +983,15 @@ export const POSTab: React.FC<POSTabProps> = ({
             let totalAddition = 0;
             cartItemsForProd.forEach(c => {
               if (c.saleType === 'carton') {
-                totalAddition += c.quantity * (prod.unitsPerCarton || 12);
+                const cartonMultiplier = (prod.unitsPerCarton && prod.unitsPerCarton > 0) ? prod.unitsPerCarton : 1;
+                totalAddition += c.quantity * cartonMultiplier;
               } else {
                 totalAddition += c.quantity;
               }
             });
             const newStock = prod.stock + totalAddition;
             const newStatus = newStock === 0 ? 'out_of_stock' : newStock <= prod.minStock ? 'low_stock' : 'in_stock';
-            return { ...prod, stock: newStock, status: newStatus };
+            return { ...prod, stock: newStock, totalUnits: newStock, status: newStatus };
           }
           return prod;
         });
@@ -773,7 +1014,7 @@ export const POSTab: React.FC<POSTabProps> = ({
             quantity: i.quantity,
             saleType: i.saleType,
             total: itemUnitPrice * i.quantity,
-            addedAtTime: i.addedAtTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            addedAtTime: i.addedAtTime || formatDisplayTime(new Date(), settings.language)
           };
         }),
         returnedItems: cart.map(i => {
@@ -786,7 +1027,7 @@ export const POSTab: React.FC<POSTabProps> = ({
             quantity: i.quantity,
             saleType: i.saleType,
             total: itemUnitPrice * i.quantity,
-            returnedAt: new Date().toLocaleString()
+            returnedAt: formatDisplayDateTime(new Date(), settings.language)
           };
         }),
         subtotal: -Math.abs(subtotal),
@@ -802,6 +1043,40 @@ export const POSTab: React.FC<POSTabProps> = ({
       };
 
       onSaleCompleted(returnSale);
+
+      // Broadcast return completion to customer display
+      broadcastCustomerDisplay({
+        activeWindowId,
+        windowIndex: activeWindowIndex + 1,
+        items: [],
+        itemCount: 0,
+        totalUnitsCount: 0,
+        subtotal: 0,
+        discountAmount: 0,
+        tax: 0,
+        total: 0,
+        paymentMethod,
+        cashTendered: 0,
+        changeDue: 0,
+        isReturnMode: false,
+        storeName: settings.storeName,
+        storeNameAr: settings.storeNameAr,
+        storeNameKu: settings.storeNameKu,
+        currencySymbol: settings.currencySymbol || 'د.ع',
+        phone: settings.phone,
+        address: settings.address,
+        cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+        completedSale: {
+          invoiceNumber: returnInvoiceNo,
+          total: -Math.abs(grandTotal),
+          amountTendered: 0,
+          changeDue: 0,
+          paymentMethod,
+          itemsCount: cart.length,
+          timestamp: returnSale.timestamp,
+        },
+        lastUpdated: Date.now(),
+      });
 
       if (onViewReceipt) {
         onViewReceipt(returnSale);
@@ -820,14 +1095,18 @@ export const POSTab: React.FC<POSTabProps> = ({
       setIsBarcodePaused(false);
       setIsReturnMode(false);
       setScanAlert({
-        msg: isAr ? 'تم إرجاع المواد وإعادة كميتها للمخزن وخصم المبلغ من الصندوق بنجاح! 📦' : 'Items returned, inventory restocked, and cash refunded successfully! 📦',
+        msg: isKu 
+          ? 'کاڵاکان گەڕێنرانەوە، بڕی کۆگا زیادکرایەوە و پارەکە لە قاسییە دەرکرا! 📦' 
+          : isAr 
+          ? 'تم إرجاع المواد وإعادة كميتها للمخزن وخصم المبلغ من الصندوق بنجاح! 📦' 
+          : 'Items returned, inventory restocked, and cash refunded successfully! 📦',
         type: 'success'
       });
       return;
     }
 
     // Normal Sale Flow
-    // Deduct stock in real time according to unit types
+    // Deduct stock in real time according to unit types (allows negative stock / overdraft loan)
     setProducts(prevProducts => {
       return prevProducts.map(prod => {
         const cartItemsForProd = cart.filter(c => c.product.id === prod.id);
@@ -835,14 +1114,15 @@ export const POSTab: React.FC<POSTabProps> = ({
           let totalDeduction = 0;
           cartItemsForProd.forEach(c => {
             if (c.saleType === 'carton') {
-              totalDeduction += c.quantity * (prod.unitsPerCarton || 12);
+              const cartonMultiplier = (prod.unitsPerCarton && prod.unitsPerCarton > 0) ? prod.unitsPerCarton : 1;
+              totalDeduction += c.quantity * cartonMultiplier;
             } else {
               totalDeduction += c.quantity;
             }
           });
-          const newStock = Math.max(0, prod.stock - totalDeduction);
-          const status = newStock === 0 ? 'out_of_stock' : newStock <= prod.minStock ? 'low_stock' : 'in_stock';
-          return { ...prod, stock: newStock, status };
+          const newStock = prod.stock - totalDeduction;
+          const status = newStock < 0 ? 'out_of_stock' : newStock === 0 ? 'out_of_stock' : newStock <= prod.minStock ? 'low_stock' : 'in_stock';
+          return { ...prod, stock: newStock, totalUnits: newStock, status };
         }
         return prod;
       });
@@ -872,7 +1152,7 @@ export const POSTab: React.FC<POSTabProps> = ({
           quantity: i.quantity,
           saleType: i.saleType,
           total: itemUnitPrice * i.quantity,
-          addedAtTime: i.addedAtTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          addedAtTime: i.addedAtTime || formatDisplayTime(new Date(), settings.language),
           dosageInstruction: i.dosageInstruction
         };
       }),
@@ -889,6 +1169,40 @@ export const POSTab: React.FC<POSTabProps> = ({
     };
 
     onSaleCompleted(newSale);
+
+    // Broadcast completed sale celebration & summary to customer display
+    broadcastCustomerDisplay({
+      activeWindowId,
+      windowIndex: activeWindowIndex + 1,
+      items: [],
+      itemCount: 0,
+      totalUnitsCount: 0,
+      subtotal: 0,
+      discountAmount: 0,
+      tax: 0,
+      total: 0,
+      paymentMethod,
+      cashTendered: 0,
+      changeDue: 0,
+      isReturnMode: false,
+      storeName: settings.storeName,
+      storeNameAr: settings.storeNameAr,
+      storeNameKu: settings.storeNameKu,
+      currencySymbol: settings.currencySymbol || 'د.ع',
+      phone: settings.phone,
+      address: settings.address,
+      cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+      completedSale: {
+        invoiceNumber,
+        total: grandTotal,
+        amountTendered: newSale.amountTendered,
+        changeDue: newSale.changeDue,
+        paymentMethod,
+        itemsCount: cart.length,
+        timestamp: newSale.timestamp,
+      },
+      lastUpdated: Date.now(),
+    });
 
     // If print requested, trigger direct receipt print quietly
     if (options?.shouldPrintReceipt) {
@@ -914,7 +1228,10 @@ export const POSTab: React.FC<POSTabProps> = ({
   });
 
   return (
-    <div className="h-full flex flex-col justify-between overflow-hidden animate-fadeIn w-full space-y-2 min-h-0">
+    <div 
+      className="h-full flex flex-col justify-between overflow-hidden animate-fadeIn w-full space-y-2 min-h-0 pos-tab-times-font"
+      style={{ fontFamily: '"Times New Roman", Times, serif' }}
+    >
       
       {/* Mobile View Switcher (Visible only on < lg screens) */}
       <div className="lg:hidden flex items-center bg-[#070D1C] p-1 rounded-2xl border border-cyan-500/30 gap-1 shrink-0 shadow-lg">
@@ -1073,10 +1390,10 @@ export const POSTab: React.FC<POSTabProps> = ({
       )}
 
       {/* SALES CART INTERFACE (MAIN SCREEN GRID) */}
-      <div className={`flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 overflow-hidden min-h-0 h-full ${mobilePosTab === 'inventory' ? 'hidden lg:grid' : ''}`}>
+      <div className={`flex-1 grid grid-cols-1 ${showCustomerDisplaySidePanel ? 'lg:grid-cols-12 xl:grid-cols-12' : 'lg:grid-cols-12'} gap-2.5 overflow-hidden min-h-0 h-full ${mobilePosTab === 'inventory' ? 'hidden lg:grid' : ''}`}>
         
-        {/* RIGHT SIDE PANEL IN RTL (lg:col-span-4): Grand Total at Top Edge, Payment & Checkout */}
-        <div className={`lg:col-span-4 ${mobilePosTab === 'checkout' ? 'flex' : 'hidden lg:flex'} cyber-card p-2 sm:p-2.5 rounded-3xl border flex-col justify-between shadow-2xl h-full overflow-hidden select-none min-h-0 ${
+        {/* RIGHT SIDE PANEL IN RTL: Grand Total at Top Edge, Payment & Checkout */}
+        <div className={`${showCustomerDisplaySidePanel ? 'lg:col-span-4 xl:col-span-3.5 2xl:col-span-3' : 'lg:col-span-4'} ${mobilePosTab === 'checkout' ? 'flex' : 'hidden lg:flex'} cyber-card p-2 sm:p-2.5 rounded-3xl border flex-col justify-between shadow-2xl h-full overflow-hidden select-none min-h-0 ${
           isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B1120] border-emerald-500/40 text-slate-100'
         }`}>
           
@@ -1092,10 +1409,10 @@ export const POSTab: React.FC<POSTabProps> = ({
                 <span className={`text-[10px] sm:text-xs font-black uppercase tracking-widest block ${
                   isLight ? 'text-emerald-100' : 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]'
                 }`}>
-                  {isAr ? 'إجمالي ومجموع السلة النهائي' : 'Grand Total Due'}
+                  {isAr ? 'إجمالي ومجموع السلة النهائي' : isKu ? 'کۆی گشتی ماوە بۆ دان' : 'Grand Total Due'}
                 </span>
                 
-                <span className={`text-3xl sm:text-3xl font-black tracking-tight font-mono my-0.5 ${
+                <span className={`text-[50px] leading-tight font-black tracking-tight font-mono my-1 block ${
                   isLight ? 'text-white drop-shadow-md' : 'text-emerald-300 drop-shadow-[0_0_20px_rgba(52,211,153,0.95)]'
                 }`}>
                   {settings.currencySymbol}{formatNumber(grandTotal)}
@@ -1106,7 +1423,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                     ? 'bg-emerald-800 text-emerald-100 border-emerald-400/50' 
                     : 'bg-emerald-950/90 text-emerald-200 border-emerald-500/50'
                 }`}>
-                  {cart.length} {isAr ? 'أصناف مختارة في السلة' : 'items in cart'}
+                  {cart.length} {isAr ? 'أصناف مختارة في السلة' : isKu ? 'کاڵا لە سەبەتەدا' : 'items in cart'}
                 </span>
               </div>
             </div>
@@ -1115,13 +1432,13 @@ export const POSTab: React.FC<POSTabProps> = ({
               isLight ? 'text-slate-800 border-slate-200' : 'text-slate-300 border-slate-800/80'
             }`}>
               <Layers className="w-3.5 h-3.5 text-emerald-500" />
-              <span>{isAr ? 'وسيلة وتفاصيل الدفع' : 'Payment & Checkout'}</span>
+              <span>{isAr ? 'وسيلة وتفاصيل الدفع' : isKu ? 'شێواز و وردەکاری پارەدان' : 'Payment & Checkout'}</span>
             </h3>
 
             {/* Payment Method Selector - 4 Clear Unhidden Buttons (نقد، دين / آجل، بطاقة، NFC/مدى) */}
             <div className="space-y-0.5 shrink-0">
               <p className="text-[10px] font-bold text-slate-400 uppercase">
-                {isAr ? 'اختيار طريقة الدفع:' : 'Payment Method:'}
+                {isAr ? 'اختيار طريقة الدفع:' : isKu ? 'شێوازی پارەدان:' : 'Payment Method:'}
               </p>
               <div className="grid grid-cols-2 gap-1">
                 {/* Cash - نقد */}
@@ -1135,7 +1452,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                   }`}
                 >
                   <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                  <span>{isAr ? 'نقداً' : 'Cash'}</span>
+                  <span>{isAr ? 'نقداً' : isKu ? 'نەختینە (کاش)' : 'Cash'}</span>
                 </button>
 
                 {/* Debt / Account - دين / آجل */}
@@ -1149,7 +1466,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                   }`}
                 >
                   <User className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>{isAr ? 'دين / آجل' : 'Debt/Account'}</span>
+                  <span>{isAr ? 'دين / آجل' : isKu ? 'قەرز / ئەژمێر' : 'Debt/Account'}</span>
                 </button>
 
                 {/* Card - بطاقة */}
@@ -1163,7 +1480,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                   }`}
                 >
                   <CreditCard className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                  <span>{isAr ? 'بطاقة' : 'Card'}</span>
+                  <span>{isAr ? 'بطاقة' : isKu ? 'کارت' : 'Card'}</span>
                 </button>
 
                 {/* NFC / Mada */}
@@ -1177,17 +1494,20 @@ export const POSTab: React.FC<POSTabProps> = ({
                   }`}
                 >
                   <Smartphone className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-                  <span>NFC / مدى</span>
+                  <span>{isAr ? 'NFC / مدى' : isKu ? 'NFC / بێ بەرکەوتن' : 'NFC / Contactless'}</span>
                 </button>
               </div>
             </div>
 
             {/* Cash Tendered Calculator (if Cash) */}
             {paymentMethod === 'cash' && (
-              <div className="p-1.5 rounded-xl bg-[#070D1C] border border-emerald-500/20 space-y-1 shrink-0">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-300 font-semibold text-[11px]">{isAr ? 'المبلغ المستلم:' : 'Tendered Cash:'}</span>
-                  <div className="flex items-center gap-1">
+              <div className="p-1.5 rounded-xl bg-[#070D1C] border border-emerald-500/30 space-y-1.5 shrink-0 shadow-sm">
+                <div className="flex items-center justify-between gap-1.5 text-xs">
+                  <span className="text-slate-300 font-semibold text-[11px] shrink-0 whitespace-nowrap">
+                    {isAr ? 'المبلغ المستلم:' : isKu ? 'بڕی وەرگیراو:' : 'Tendered Cash:'}
+                  </span>
+
+                  <div className="flex items-center gap-1 shrink-0">
                     <span className="text-emerald-400 font-bold text-xs">{settings.currencySymbol}</span>
                     <input
                       type="number"
@@ -1210,28 +1530,33 @@ export const POSTab: React.FC<POSTabProps> = ({
                         }
                       }}
                       placeholder="0"
-                      className="w-20 bg-slate-900 text-emerald-400 font-bold font-mono px-2 py-0.5 text-center rounded-lg border border-emerald-500/40 text-xs focus:outline-none focus:border-emerald-400 placeholder:text-slate-600"
+                      className="w-24 bg-slate-900 text-emerald-400 font-bold font-mono px-2 py-0.5 text-center rounded-lg border border-emerald-500/40 text-xs focus:outline-none focus:border-emerald-400 placeholder:text-slate-600"
                     />
                   </div>
                 </div>
 
-                {/* Quick Cash Buttons */}
-                <div className="flex gap-1">
-                  {[10, 20, 50, 100, 200].map(amt => (
+                {/* Quick Cash Buttons (1000, 5000, 10000, 15000, 20000, 25000, 50000) */}
+                <div className="grid grid-cols-7 gap-1">
+                  {[1000, 5000, 10000, 15000, 20000, 25000, 50000].map(amt => (
                     <button
                       key={amt}
                       type="button"
                       onClick={() => setCashTendered(amt)}
-                      className="flex-1 py-0.5 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-bold hover:bg-slate-700 transition-all font-mono"
+                      className={`py-1 px-0.5 rounded-md text-[9.5px] font-bold font-mono transition-all border active:scale-95 cursor-pointer text-center whitespace-nowrap ${
+                        cashTendered === amt
+                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80 hover:bg-emerald-950 hover:text-emerald-300 hover:border-emerald-500/50'
+                      }`}
+                      title={isAr ? `تحديد المبلغ: ${formatNumber(amt)}` : isKu ? `دیاریکردنی بڕ: ${formatNumber(amt)}` : `Set cash: ${formatNumber(amt)}`}
                     >
-                      {amt}
+                      {formatNumber(amt)}
                     </button>
                   ))}
                 </div>
 
                 {cashTendered > 0 && (
-                  <div className="flex justify-between text-xs font-bold pt-0.5 border-t border-slate-800 text-cyan-400">
-                    <span>{isAr ? 'الباقي للمشتري:' : 'Change Due:'}</span>
+                  <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-800 text-cyan-400">
+                    <span>{isAr ? 'الباقي للمشتري:' : isKu ? 'بڕی گەڕاوە بۆ کڕیار:' : 'Change Due:'}</span>
                     <span className="font-mono text-xs">{settings.currencySymbol}{formatNumber(changeDue)}</span>
                   </div>
                 )}
@@ -1241,7 +1566,7 @@ export const POSTab: React.FC<POSTabProps> = ({
             {/* Debt Info Notice (if Debt) */}
             {paymentMethod === 'debt' && (
               <div className="p-1.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between shrink-0">
-                <span className="text-[11px]">{isAr ? 'بيع بالدين / حساب العميل' : 'On Account / Customer Debt Sale'}</span>
+                <span className="text-[11px]">{isAr ? 'بيع بالدين / حساب العميل' : isKu ? 'فرۆشتن بە قەرز / حیسابی کڕیار' : 'On Account / Customer Debt Sale'}</span>
                 <span className="font-bold text-amber-400 font-mono text-xs">{settings.currencySymbol}{formatNumber(grandTotal)}</span>
               </div>
             )}
@@ -1253,12 +1578,12 @@ export const POSTab: React.FC<POSTabProps> = ({
             {/* Bill Summary Breakdown */}
             <div className={`space-y-0.5 text-xs p-1.5 rounded-xl border ${isLight ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-[#070D1C] border-slate-800 text-slate-300'}`}>
               <div className="flex justify-between items-center">
-                <span className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{isAr ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
+                <span className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{isAr ? 'المجموع الفرعي:' : isKu ? 'کۆی سەرەتایی:' : 'Subtotal:'}</span>
                 <span className={`font-mono font-bold text-xs ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{settings.currencySymbol}{formatNumber(subtotal)}</span>
               </div>
 
               <div className={`flex justify-between items-center pt-0.5 border-t ${isLight ? 'border-slate-300' : 'border-slate-800/60'}`}>
-                <span className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{isAr ? 'خصم خاص:' : 'Discount:'}</span>
+                <span className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{isAr ? 'خصم خاص:' : isKu ? 'داشکاندنی تایبەت:' : 'Discount:'}</span>
                 <div className="flex items-center gap-1">
                   <span className="text-amber-500 font-bold text-xs">{settings.currencySymbol}</span>
                   <input
@@ -1295,8 +1620,40 @@ export const POSTab: React.FC<POSTabProps> = ({
               </div>
 
               <div className={`flex justify-between items-center pt-0.5 border-t ${isLight ? 'border-slate-300' : 'border-slate-800/60'}`}>
-                <span className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{isAr ? `الضريبة (${settings.taxRate}%):` : `VAT (${settings.taxRate}%):`}</span>
-                <span className={`font-mono font-semibold text-xs ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{settings.currencySymbol}{formatNumber(taxAmount)}</span>
+                <span className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{isAr ? `الضريبة (${settings.taxRate}%):` : isKu ? `باج (${settings.taxRate}%):` : `VAT (${settings.taxRate}%):`}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-cyan-400 font-bold text-xs">{settings.currencySymbol}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={customTaxAmount !== null ? (customTaxAmount === 0 ? '' : customTaxAmount) : (calculatedTax === 0 ? '' : Math.round(calculatedTax))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomTaxAmount(val === '' ? 0 : Math.max(0, parseFloat(val) || 0));
+                    }}
+                    onFocus={(e) => {
+                      setIsBarcodePaused(true);
+                      e.target.select();
+                    }}
+                    onClick={(e) => {
+                      setIsBarcodePaused(true);
+                      (e.target as HTMLInputElement).select();
+                    }}
+                    onBlur={() => {
+                      setIsBarcodePaused(false);
+                      focusBarcodeIfEnabled(50);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === 'Escape') {
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                    className={`w-20 text-xs font-mono font-bold px-2 py-0.5 text-center rounded-lg border focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 ${
+                      isLight ? 'bg-white text-slate-900 border-slate-300 placeholder:text-slate-400' : 'bg-[#0B1120] text-cyan-300 border-slate-700 placeholder:text-slate-600'
+                    }`}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1319,13 +1676,13 @@ export const POSTab: React.FC<POSTabProps> = ({
                       ? 'bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-600/30' 
                       : 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 border border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
                   }`}
-                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد بدون وصل' : 'Return without receipt') : (isAr ? 'حفظ المبيعات فوراً بدون إظهار أو طباعة وصل (سريع جداً)' : 'Fast Sale without receipt')}
+                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد بدون وصل' : isKu ? 'پشتڕاستکردنەوەی گەڕاندنەوە بێ پسوولە' : 'Return without receipt') : (isAr ? 'حفظ المبيعات فوراً بدون إظهار أو طباعة وصل (سريع جداً)' : isKu ? 'فرۆشتنی خێرا بێ پسوولە' : 'Fast Sale without receipt')}
                 >
                   {isReturnMode ? <RotateCcw className="w-4 h-4 text-rose-100 shrink-0 animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />}
                   <span className="truncate">
                     {isReturnMode 
-                      ? (isAr ? 'تأكيد إرجاع (بدون وصل)' : 'Confirm Return') 
-                      : (isAr ? 'بيع (بدون وصل)' : 'Sale (No Receipt)')}
+                      ? (isAr ? 'تأكيد إرجاع (بدون وصل)' : isKu ? 'پشتڕاستکردنەوە (بێ پسوولە)' : 'Confirm Return') 
+                      : (isAr ? 'بيع (بدون وصل)' : isKu ? 'فرۆشتن (بێ پسوولە)' : 'Sale (No Receipt)')}
                   </span>
                 </button>
 
@@ -1344,13 +1701,13 @@ export const POSTab: React.FC<POSTabProps> = ({
                       ? 'bg-gradient-to-r from-cyan-600 to-blue-600 shadow-cyan-600/30' 
                       : 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 border border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]'
                   }`}
-                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد وطباعة وصل مرتجع' : 'Return & print receipt') : (isAr ? 'إتمام البيع وطباعة الوصل مباشرة بدون إظهار شاشة الطباعة' : 'Sale with direct print')}
+                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد وطباعة وصل مرتجع' : isKu ? 'گەڕاندنەوە و چاپی پسوولە' : 'Return & print receipt') : (isAr ? 'إتمام البيع وطباعة الوصل مباشرة بدون إظهار شاشة الطباعة' : isKu ? 'فرۆشتن و چاپی ڕاستەوخۆی پسوولە' : 'Sale with direct print')}
                 >
                   <Printer className="w-4 h-4 text-cyan-200 shrink-0" />
                   <span className="truncate">
                     {isReturnMode 
-                      ? (isAr ? 'إرجاع وطباعة وصل' : 'Return & Print') 
-                      : (isAr ? 'بيع وطباعة وصل' : 'Sale & Print')}
+                      ? (isAr ? 'إرجاع وطباعة وصل' : isKu ? 'گەڕاندنەوە و چاپ' : 'Return & Print') 
+                      : (isAr ? 'بيع وطباعة وصل' : isKu ? 'فرۆشتن و چاپ' : 'Sale & Print')}
                   </span>
                 </button>
               </div>
@@ -1363,10 +1720,10 @@ export const POSTab: React.FC<POSTabProps> = ({
                   onClick={clearCart}
                   disabled={cart.length === 0}
                   className="flex-1 py-1 px-2 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 hover:text-rose-200 text-xs font-bold transition-all flex items-center justify-center gap-1 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                  title={isAr ? `تفريغ السلة (${posShortcuts.clearCart})` : `Clear Cart (${posShortcuts.clearCart})`}
+                  title={isAr ? `تفريغ السلة (${posShortcuts.clearCart})` : isKu ? `بەتاڵکردنی سەبەتە (${posShortcuts.clearCart})` : `Clear Cart (${posShortcuts.clearCart})`}
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
-                  <span>{isAr ? 'تفريغ السلة' : 'Clear Cart'}</span>
+                  <span>{isAr ? 'تفريغ السلة' : isKu ? 'بەتاڵکردنی سەبەتە' : 'Clear Cart'}</span>
                   <span className="px-1 py-0.2 rounded bg-rose-950 text-rose-300 font-mono text-[9px] border border-rose-500/40">
                     [{posShortcuts.clearCart}]
                   </span>
@@ -1377,8 +1734,8 @@ export const POSTab: React.FC<POSTabProps> = ({
 
         </div>
 
-        {/* LEFT SIDE PANEL IN RTL (lg:col-span-8): Sales Windows + Barcode Entry + Cart Items List */}
-        <div className={`lg:col-span-8 ${mobilePosTab === 'cart' ? 'flex' : 'hidden lg:flex'} flex-col gap-2 h-full min-h-0 overflow-hidden`}>
+        {/* LEFT SIDE PANEL IN RTL: Sales Windows + Barcode Entry + Cart Items List */}
+        <div className={`${showCustomerDisplaySidePanel ? 'lg:col-span-8 xl:col-span-4.5 2xl:col-span-5' : 'lg:col-span-8'} ${mobilePosTab === 'cart' ? 'flex' : 'hidden lg:flex'} flex-col gap-2 h-full min-h-0 overflow-hidden`}>
           
           {/* MULTI-WINDOW SALES TABS BAR (شريط نوافذ البيع المتعددة - أعلى حقل الباركود) */}
           <div className="cyber-card px-2 sm:px-3 py-1.5 rounded-2xl border border-blue-500/30 bg-[#0A101D]/90 shadow-lg shrink-0 flex items-center justify-between gap-2 overflow-x-auto custom-scrollbar z-20">
@@ -1387,13 +1744,14 @@ export const POSTab: React.FC<POSTabProps> = ({
             <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto py-0.5 custom-scrollbar w-full">
               <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-950/60 border border-blue-500/30 text-blue-300 text-xs font-bold shrink-0">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{isAr ? 'نوافذ البيع:' : 'Sales Windows:'}</span>
+                <span>{isAr ? 'نوافذ البيع:' : isKu ? 'پەنجەرەکانی فرۆشتن:' : 'Sales Windows:'}</span>
               </div>
 
               {/* Window Tabs */}
               {windows.map((win, index) => {
                 const hasItems = win.cart.length > 0;
                 const isActive = win.id === activeWindow.id;
+                const isWinReturn = Boolean(win.isReturnMode);
                 const itemCount = win.cart.reduce((sum, item) => sum + item.quantity, 0);
                 const windowTitle = isAr ? `نافذة ${index + 1}` : isKu ? `پەنجەرە ${index + 1}` : `Window ${index + 1}`;
 
@@ -1403,7 +1761,11 @@ export const POSTab: React.FC<POSTabProps> = ({
                     type="button"
                     onClick={() => setActiveWindowId(win.id)}
                     className={`group relative px-3 py-1 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 shrink-0 cursor-pointer border ${
-                      hasItems
+                      isWinReturn
+                        ? isActive
+                          ? 'bg-rose-500/30 border-2 border-rose-400 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.45)] ring-2 ring-rose-400/50 backdrop-blur-md font-black'
+                          : 'bg-rose-500/20 border-rose-400/70 text-rose-300 hover:bg-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.25)] backdrop-blur-md'
+                        : hasItems
                         ? isActive
                           ? 'bg-emerald-500/30 border-2 border-emerald-400 text-white shadow-[0_0_20px_rgba(16,185,129,0.45)] ring-2 ring-emerald-400/50 backdrop-blur-md font-black'
                           : 'bg-emerald-500/20 border-emerald-400/70 text-emerald-300 hover:bg-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.25)] backdrop-blur-md'
@@ -1412,17 +1774,28 @@ export const POSTab: React.FC<POSTabProps> = ({
                           : 'bg-[#070D1C]/80 border-slate-700/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
                     }`}
                   >
-                    {/* Glowing Green Dot if window has items */}
-                    {hasItems && (
+                    {/* Glowing Dot if window has items or is in return mode */}
+                    {isWinReturn ? (
+                      <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse shadow-[0_0_8px_#fb7185]" />
+                    ) : hasItems ? (
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-                    )}
+                    ) : null}
 
                     <span className="truncate max-w-[90px]">{windowTitle}</span>
+
+                    {/* Return Mode Tag if window is in return mode */}
+                    {isWinReturn && (
+                      <span className="px-1.5 py-0.2 rounded-md bg-rose-950 text-rose-300 text-[10px] font-bold border border-rose-500/50">
+                        {isAr ? 'مرتجع' : isKu ? 'گەڕاندنەوە' : 'Return'}
+                      </span>
+                    )}
 
                     {/* Badge count for items */}
                     {hasItems && (
                       <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                        isActive 
+                        isWinReturn
+                          ? 'bg-rose-950 text-rose-200 border border-rose-400/60'
+                          : isActive 
                           ? 'bg-emerald-950 text-emerald-200 border border-emerald-400/60' 
                           : 'bg-emerald-900/80 text-emerald-300 border border-emerald-500/40'
                       }`}>
@@ -1433,7 +1806,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                     {/* Close Window Button (x) */}
                     <span
                       onClick={(e) => handleRemoveWindow(e, win.id)}
-                      title={isAr ? 'إغلاق النافذة' : 'Close window'}
+                      title={isAr ? 'إغلاق النافذة' : isKu ? 'داخستنی پەنجەرە' : 'Close window'}
                       className={`p-0.5 rounded-md transition-colors ${
                         hasItems 
                           ? 'hover:bg-rose-500/30 text-emerald-200 hover:text-rose-300' 
@@ -1451,10 +1824,10 @@ export const POSTab: React.FC<POSTabProps> = ({
                 type="button"
                 onClick={handleAddWindow}
                 className="px-3 py-1 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.3)] hover:shadow-[0_0_18px_rgba(6,182,212,0.5)] cursor-pointer active:scale-95 shrink-0"
-                title={isAr ? `إضافة نافذة بيع جديدة (${posShortcuts.newWindow})` : `Add new sales window (${posShortcuts.newWindow})`}
+                title={isAr ? `إضافة نافذة بيع جديدة (${posShortcuts.newWindow})` : isKu ? `زیادکردنی پەنجەرەی نوێ (${posShortcuts.newWindow})` : `Add new sales window (${posShortcuts.newWindow})`}
               >
                 <Plus className="w-3.5 h-3.5 text-cyan-200" />
-                <span>{isAr ? 'نافذة جديدة' : 'New Window'}</span>
+                <span>{isAr ? 'نافذة جديدة' : isKu ? 'پەنجەرەی نوێ' : 'New Window'}</span>
                 <span className="px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 font-mono text-[10px] border border-cyan-400/40">
                   {posShortcuts.newWindow}
                 </span>
@@ -1527,35 +1900,40 @@ export const POSTab: React.FC<POSTabProps> = ({
 
             {/* ACTION BUTTONS INSIDE YELLOW LINE CONTAINER */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              
-              {/* YELLOW LINE DETAILS & DIAGNOSTICS BUTTON */}
-              <button
-                type="button"
-                onClick={() => setShowYellowLineModal(true)}
-                className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(245,158,11,0.25)] hover:border-amber-400"
-                title={isAr ? 'مركز تفاصيل وتشخيص الخط الأصفر وقارئ الباركود والمخزن' : isKu ? 'ناوەندی وردەکاری و فەرمانەکانی هێڵی زەرد' : 'Yellow Line Hub & Details'}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <span className="hidden md:inline">
-                  {isAr ? 'تفاصيل الخط الأصفر' : isKu ? 'وردەکاری هێڵی زەرد' : 'Yellow Line Details'}
-                </span>
-                <span className="md:hidden text-[10px] font-bold">{isAr ? 'تفاصيل' : isKu ? 'وردەکاری' : 'Details'}</span>
-              </button>
-
               {/* RETURN MODE / RETURNS HUB BUTTON */}
               <button
                 type="button"
-                onClick={() => setShowReturnsActionSheet(true)}
+                onClick={() => {
+                  setIsReturnMode(prev => {
+                    const nextState = !prev;
+                    setScanAlert({
+                      msg: nextState
+                        ? (isKu 
+                            ? '⚡ دۆخی گەڕاندنەوە چالاککرا (هەر بارکۆدێک یان کاڵایەک هەڵبژێری دەگەڕێندرێتەوە بۆ کۆگا)' 
+                            : isAr 
+                            ? '⚡ تم تفعيل وضع الإرجاع (امسح الباركود أو أضف المواد لإرجاعها للمخزن)' 
+                            : '⚡ Return mode enabled (Scan barcode or select item to restock & refund)')
+                        : (isKu 
+                            ? '✅ دۆخی فرۆشتنی ئاسایی چالاککرایەوە' 
+                            : isAr 
+                            ? '✅ تم العودة إلى وضع البيع العادي' 
+                            : '✅ Normal sale mode restored'),
+                      type: nextState ? 'error' : 'success'
+                    });
+                    focusBarcodeIfEnabled(50);
+                    return nextState;
+                  });
+                }}
                 className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border ${
                   isReturnMode
                     ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 ring-2 ring-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.6)] animate-pulse'
-                    : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-500/40 hover:text-rose-100'
+                    : 'bg-[#0B1120] hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
                 }`}
-                title={isAr ? 'خيارات وتفاصيل إرجاع المواد والفواتير' : isKu ? 'بژاردەکانی گەڕاندنەوەی کاڵا و پسوولەکان' : 'Returns Mode & Hub'}
+                title={isAr ? 'تفعيل / إيقاف وضع إرجاع المواد' : isKu ? 'چالاککردن / ناچالاککردنی دۆخی گەڕاندنەوەی کاڵا' : 'Toggle Return Mode'}
               >
                 <RotateCcw className={`w-3.5 h-3.5 ${isReturnMode ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">
-                  {isReturnMode ? (isAr ? 'وضع المرتجعات (نشط)' : isKu ? 'دۆخی گەڕاندنەوە (چالاک)' : 'Returns Mode') : (isAr ? 'إرجاع مواد' : isKu ? 'گەڕاندنەوەی کاڵا' : 'Returns')}
+                  {isReturnMode ? (isAr ? 'وضع المرتجعات (نشط)' : isKu ? 'دۆخی گەڕاندنەوە (چالاک)' : 'Returns Mode (Active)') : (isAr ? 'إرجاع مواد' : isKu ? 'گەڕاندنەوەی کاڵا' : 'Returns')}
                 </span>
                 <span className="sm:hidden">{isAr ? 'مرتجع' : isKu ? 'گەڕاندنەوە' : 'Return'}</span>
               </button>
@@ -1577,25 +1955,28 @@ export const POSTab: React.FC<POSTabProps> = ({
                   {products?.length ?? 0}
                 </span>
               </button>
+
             </div>
           </div>
 
           {/* CART ITEMS CONTAINER */}
-          <div className={`flex-1 cyber-card p-3 sm:p-3.5 rounded-3xl border transition-all flex flex-col justify-between h-full min-h-0 overflow-hidden space-y-2 ${
+          <div className={`flex-1 cyber-card p-2 sm:p-2.5 rounded-3xl border transition-all flex flex-col justify-between h-full min-h-0 overflow-hidden space-y-2 ${
             isReturnMode
               ? 'bg-[#12080D] border-rose-500/60 shadow-[0_0_25px_rgba(244,63,94,0.2)]'
               : 'bg-[#0B1120] border-blue-500/20'
           }`}>
           
-          <div className="space-y-3 flex-1 flex flex-col min-h-0">
+          <div className="space-y-2 flex-1 flex flex-col min-h-0">
             {/* Active Return Mode Banner */}
             {isReturnMode && (
-              <div className="p-2 rounded-xl bg-rose-950/80 border border-rose-500/60 text-rose-200 text-xs font-bold flex items-center justify-between gap-2 shadow-md animate-fadeIn">
+              <div className="p-2 rounded-xl bg-rose-950/80 border border-rose-500/60 text-rose-200 text-xs font-bold flex items-center justify-between gap-2 shadow-md animate-fadeIn shrink-0">
                 <div className="flex items-center gap-2">
                   <RotateCcw className="w-4 h-4 text-rose-400 animate-spin" />
                   <span>
                     {isAr 
                       ? '⚡ وضع الإرجاع نشط: امسح الباركود أو اختر المادة لإرجاعها وإعادة كميتها للمخزن تلقائياً.' 
+                      : isKu
+                      ? '⚡ دۆخی گەڕاندنەوە چالاکە: بارکۆد لێبدە یان دەرمان هەڵبژێرە بۆ گەڕاندنەوەی بڕەکەی بۆ کۆگا.'
                       : '⚡ Return mode active: Scan barcode or select item to restock & process refund.'}
                   </span>
                 </div>
@@ -1604,194 +1985,249 @@ export const POSTab: React.FC<POSTabProps> = ({
                   onClick={() => setIsReturnMode(false)}
                   className="px-2 py-0.5 rounded bg-rose-900/80 hover:bg-rose-800 text-rose-100 text-[10px] font-bold border border-rose-400/40"
                 >
-                  {isAr ? 'إلغاء المرتجع' : 'Cancel Return'}
+                  {isAr ? 'إلغاء المرتجع' : isKu ? 'هەڵوەشاندنەوەی گەڕاندنەوە' : 'Cancel Return'}
                 </button>
               </div>
             )}
 
-            {/* Header Title & Clear Button */}
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className={`p-1 rounded-xl border shadow-inner flex items-center justify-center ${
-                  isReturnMode
-                    ? 'bg-rose-500/20 border-rose-500/50'
-                    : 'bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 border-emerald-500/40'
-                }`}>
-                  <Cart3DGraphic size="sm" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <span className={isReturnMode ? 'text-rose-300' : ''}>
-                      {isReturnMode 
-                        ? (isAr ? 'سلة إرجاع المبيعات المباشرة (مرتجع)' : 'Sales Returns Cart') 
-                        : (isAr ? 'سلة المبيعات المباشرة' : 'Sales Checkout Cart')}
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    {isAr ? `عدد العناصر المضافة: (${cart.length}) أصناف` : `Total items: ${cart.length}`}
-                  </p>
-                </div>
-              </div>
-
-              {cart.length > 0 && (
-                <button
-                  onClick={clearCart}
-                  className="px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 text-xs font-bold flex items-center gap-1.5 transition-all"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{isAr ? 'تفريغ السلة' : 'Clear Cart'}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Cart Items List */}
-            <div className="space-y-2.5 flex-1 overflow-y-auto pr-1 min-h-0">
+            {/* Cart Items List & Raised Top Table */}
+            <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-0 flex flex-col">
               {cart.length === 0 ? (
-                <div className="py-12 sm:py-16 text-center text-slate-500 space-y-3 flex flex-col items-center justify-center">
-                  
+                <div className="py-12 sm:py-16 text-center text-slate-500 space-y-3 flex flex-col items-center justify-center m-auto">
                   {/* 3D Shopping Cart Visual Asset */}
                   <Cart3DGraphic size="lg" />
+                  <p className="text-xs text-slate-400 font-medium">
+                    {isAr ? 'السلة فارغة، اختر أو امسح باركود لإضافة أدوية' : isKu ? 'سەبەتە بەتاڵە، بارکۆد لێبدە یان دەرمان هەڵبژێرە' : 'Cart is empty, scan or select items'}
+                  </p>
                 </div>
               ) : (
-                cart.map((item, idx) => {
-                  const isFirstNewlyAdded = (idx === 0) && (item.product.id === lastAddedId);
-                  const isWholesaleOrCarton = item.saleType === 'wholesale' || item.saleType === 'carton';
-                  const unitPrice = getItemUnitPrice(item);
-
-                  let cardStyles = 'bg-[#070D1C] border border-blue-500/20 hover:border-cyan-500/30';
-                  if (isWholesaleOrCarton) {
-                    cardStyles = 'bg-gradient-to-r from-emerald-950/60 via-[#06151B] to-[#070D1C] border-2 border-emerald-500/80 shadow-[0_0_15px_rgba(16,185,129,0.25)]';
-                  } else if (isFirstNewlyAdded) {
-                    cardStyles = 'bg-gradient-to-r from-rose-950/60 via-[#180B12] to-[#070D1C] border-2 border-rose-500/80 shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-fadeIn';
-                  }
-
-                      return (
-                        <div
-                          key={`${item.product.id}-${item.saleType}`}
-                          className={`p-2.5 rounded-2xl transition-all flex flex-col gap-2 ${cardStyles}`}
+                <>
+                  {/* Blue Column Headers Bar (ترويسة الأعمدة التوضيحية فوق السلة مباشرة في الأعلى) */}
+                  <div className="hidden lg:flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[#091124] border border-cyan-500/30 text-[10.5px] font-bold text-slate-300 shadow-sm shrink-0">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-cyan-300">{isAr ? 'المادة الدوائية / الصنف' : isKu ? 'ناوی دەرمان / کاڵا' : 'Product / Medicine'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 rtl:space-x-reverse">
+                      {/* Optional Purchase Price Column for authorized users */}
+                      {canViewPurchasePrice && (
+                        <span className="w-20 text-center text-purple-300">{isAr ? 'سعر الشراء' : isKu ? 'نرخی کڕین' : 'Cost Price'}</span>
+                      )}
+                      <span className="w-20 text-center text-amber-300">{isAr ? 'داخل الكرتون' : isKu ? 'ناو کارتۆن' : 'In Carton'}</span>
+                      <span className="w-22 text-center text-cyan-300">{isAr ? 'السعر' : isKu ? 'نرخ' : 'Price'}</span>
+                      <span className="w-28 text-center text-slate-300">{isAr ? 'نوع البيع' : isKu ? 'جۆری فرۆشتن' : 'Sale Type'}</span>
+                      <span className="w-18 text-center text-emerald-300">{isAr ? 'العدد' : isKu ? 'ژمارە' : 'Qty'}</span>
+                      <span className="w-24 text-center text-emerald-400 text-[15px] font-bold">{isAr ? 'المجموع' : isKu ? 'کۆی گشتی' : 'Total'}</span>
+                      <div className="w-6 flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={clearCart}
+                          className="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/20 transition-all cursor-pointer"
+                          title={isAr ? 'تفريغ السلة بالكامل' : isKu ? 'بەتاڵکردنی سەبەتە' : 'Clear Cart'}
                         >
-                          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 w-full">
-                            <div className="flex items-center space-x-2 rtl:space-x-reverse min-w-0 flex-1">
-                              <span className="text-xl p-2 rounded-xl bg-slate-800/80 shrink-0 leading-none">
-                                {item.product.imageIcon}
-                              </span>
-                              <div className="min-w-0 flex-1 leading-tight">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="text-xs font-bold text-slate-100 truncate">
-                                    {isAr ? item.product.nameAr : item.product.name}
-                                  </p>
-                                  {item.product.scientificName && (
-                                    <span className="px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 text-[9px] font-mono">
-                                      🧪 {item.product.scientificName}
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {cart.map((item, idx) => {
+                    const isFirstNewlyAdded = (idx === 0) && (item.product.id === lastAddedId);
+                    const isWholesaleOrCarton = item.saleType === 'wholesale' || item.saleType === 'carton';
+                    const unitPrice = getItemUnitPrice(item);
+
+                    let cardStyles = 'bg-[#070D1C] border border-blue-500/20 hover:border-cyan-500/30';
+                    if (isReturnMode) {
+                      cardStyles = 'bg-[#180A10] border border-rose-500/40 hover:border-rose-400/60 shadow-[0_0_8px_rgba(244,63,94,0.15)]';
+                    } else if (isWholesaleOrCarton) {
+                      cardStyles = 'bg-gradient-to-r from-emerald-950/40 via-[#051417] to-[#070D1C] border border-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.2)]';
+                    } else if (isFirstNewlyAdded) {
+                      cardStyles = 'bg-gradient-to-r from-cyan-950/40 via-[#061826] to-[#070D1C] border border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.2)] animate-fadeIn';
+                    }
+
+                    return (
+                      <div
+                        key={`${item.product.id}-${item.saleType}`}
+                        className={`p-1.5 sm:p-2 rounded-xl transition-all flex flex-col gap-1.5 ${cardStyles}`}
+                      >
+                        <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 w-full">
+                          {/* 1. Product Info */}
+                          <div className="flex items-center space-x-2 rtl:space-x-reverse min-w-0 flex-1">
+                            <span className="text-lg p-1.5 rounded-lg bg-slate-800/80 shrink-0 leading-none">
+                              {item.product.imageIcon}
+                            </span>
+                            <div className="min-w-0 flex-1 leading-tight">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-xs font-bold text-slate-100 truncate">
+                                  {isAr ? item.product.nameAr : isKu ? (item.product.nameAr || item.product.name) : item.product.name}
+                                </p>
+                                {(item.quantity > item.product.stock || item.product.stock <= 0) && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-rose-950/90 text-rose-300 border border-rose-500/60 text-[9px] font-bold flex items-center gap-1 shadow-sm">
+                                    <span>⚠️</span>
+                                    <span>
+                                      {isKu
+                                        ? `قەرزی کۆگا: +${item.quantity - Math.max(0, item.product.stock)} دانە`
+                                        : isAr
+                                        ? `سحب على المكشوف: +${item.quantity - Math.max(0, item.product.stock)} ق`
+                                        : `Loan deficit: +${item.quantity - Math.max(0, item.product.stock)} pcs`}
                                     </span>
-                                  )}
-                                  {isFirstNewlyAdded && (
-                                    <span className="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[8.5px] font-bold shrink-0 animate-pulse">
-                                      {isAr ? '🔥 جديد' : 'New'}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[9.5px] text-slate-400 mt-1 flex-wrap">
-                                  {item.product.dosageForm && (
-                                    <span className="text-cyan-400 font-semibold">{item.product.dosageForm}</span>
-                                  )}
-                                  <span>•</span>
-                                  <span className="font-mono text-slate-400">{item.product.barcode}</span>
-                                  <span>•</span>
-                                  <span className="font-bold text-amber-300">
-                                    {settings.currencySymbol}{formatNumber(unitPrice)} / {item.saleType === 'carton' ? (isAr ? 'كرتون' : 'carton') : item.saleType === 'blister' ? (isAr ? 'شريط' : 'strip') : (item.saleType === 'wholesale' ? (isAr ? 'جملة' : 'wholesale') : (isAr ? 'علبة' : 'box'))}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 text-[9px] text-slate-400 mt-0.5 flex-wrap">
+                                {item.product.dosageForm && (
+                                  <span className="text-cyan-400 font-semibold">{item.product.dosageForm}</span>
+                                )}
+                                <span>•</span>
+                                <span className="font-mono text-slate-400">{item.product.barcode}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Controls Row on right side */}
+                          <div className="flex items-center gap-2 rtl:space-x-reverse shrink-0 w-full lg:w-auto justify-between lg:justify-end flex-wrap sm:flex-nowrap pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-800/60">
+                            
+                            {/* Purchase / Cost Price (سعر الشراء) - Displayed if cashier/user has permission */}
+                            {canViewPurchasePrice && (
+                              <div className="w-20 text-center shrink-0 flex flex-col items-center">
+                                <span className="lg:hidden text-[8.5px] text-purple-400 mb-0.5 font-bold">{isAr ? 'سعر الشراء' : isKu ? 'نرخی کڕین' : 'Cost Price'}</span>
+                                <div className="px-1.5 py-0.5 rounded-lg bg-purple-950/40 border border-purple-500/30 text-purple-300 text-[10.5px] font-mono font-bold flex items-center justify-center gap-1 w-full shadow-inner" title={isAr ? 'سعر شراء وتكلفة المادة' : isKu ? 'نرخی کڕینی دەرمان' : 'Purchase / Cost Price'}>
+                                  <span className="text-[11px] font-black text-purple-300 font-mono tracking-tight">
+                                    {settings.currencySymbol}{formatNumber(
+                                      item.saleType === 'carton'
+                                        ? (item.product.cartonPurchasePrice || (item.product.costPerUnit * (item.product.unitsPerCarton || 1)) || 0)
+                                        : (item.product.costPerUnit || item.product.cost || 0)
+                                    )}
                                   </span>
                                 </div>
                               </div>
+                            )}
+
+                            {/* 2. Yellow Circle Spot: عدد المواد داخل الكرتون */}
+                            <div className="w-20 text-center shrink-0 flex flex-col items-center">
+                              <span className="lg:hidden text-[8.5px] text-amber-400 mb-0.5 font-bold">{isAr ? 'داخل الكرتون' : isKu ? 'ناو کارتۆن' : 'In Carton'}</span>
+                              <div className="px-1.5 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10.5px] font-mono font-bold flex items-center justify-center gap-1 w-full" title={isAr ? 'عدد المواد داخل الكرتون' : isKu ? 'ژمارەی دانە لەناو کارتۆن' : 'Units inside carton'}>
+                                <Package className="w-3 h-3 text-amber-400 shrink-0" />
+                                <span>{item.product.unitsPerCarton || 1} {isAr ? 'علبة' : isKu ? 'قوتی' : 'pcs'}</span>
+                              </div>
                             </div>
 
-                            {/* Sale Type Pills (مفرد / شريط / جملة / كرتون) */}
-                            <div className="flex items-center gap-0.5 bg-[#0B1120] p-0.5 rounded-lg border border-slate-800 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => updateSaleType(item.product.id, item.saleType, 'retail')}
-                                className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-                                  item.saleType === 'retail'
-                                    ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
-                                    : 'text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                {isAr ? 'علبة' : 'Box'}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => updateSaleType(item.product.id, item.saleType, 'blister')}
-                                className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-                                  item.saleType === 'blister'
-                                    ? 'bg-amber-400 text-slate-950 font-extrabold shadow-sm'
-                                    : 'text-slate-400 hover:text-white'
-                                }`}
-                                title={isAr ? 'بيع بالشريط الحبة' : 'Sell strip'}
-                              >
-                                {isAr ? 'شريط' : 'Strip'}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => updateSaleType(item.product.id, item.saleType, 'wholesale')}
-                                className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-                                  item.saleType === 'wholesale'
-                                    ? 'bg-emerald-500 text-slate-950 font-extrabold shadow-sm'
-                                    : 'text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                {isAr ? 'جملة' : 'WS'}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => updateSaleType(item.product.id, item.saleType, 'carton')}
-                                className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-                                  item.saleType === 'carton'
-                                    ? 'bg-emerald-600 text-slate-950 font-extrabold shadow-sm'
-                                    : 'text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                {isAr ? 'كرتون' : 'CT'}
-                              </button>
+                            {/* 3. Red Circle Spot: السعر */}
+                            <div className="w-22 text-center shrink-0 flex flex-col items-center">
+                              <span className="lg:hidden text-[8.5px] text-cyan-400 mb-0.5 font-bold">{isAr ? 'السعر' : isKu ? 'نرخ' : 'Price'}</span>
+                              <div className="px-1.5 py-0.5 rounded-lg bg-slate-900/90 border border-cyan-500/30 text-center w-full shadow-inner">
+                                <span className="text-[13px] font-black text-amber-300 font-mono tracking-tight leading-none block">
+                                  {settings.currencySymbol}{formatNumber(unitPrice)}
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="flex items-center space-x-2 rtl:space-x-reverse shrink-0">
-                              {/* Quantity Controls */}
-                              <div className="flex items-center space-x-1 rtl:space-x-reverse bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+                            {/* 4. Sale Type Pills (مفرد / شريط / جملة / كرتون - يدعم الكردي) */}
+                            <div className="w-28 shrink-0 flex flex-col items-center">
+                              <span className="lg:hidden text-[8.5px] text-slate-400 mb-0.5 font-bold">{isAr ? 'نوع البيع' : isKu ? 'جۆری فرۆشتن' : 'Sale Type'}</span>
+                              <div className="flex items-center gap-0.5 bg-[#0B1120] p-0.5 rounded-lg border border-slate-800 w-full justify-center">
                                 <button
-                                  onClick={() => updateQuantity(item.product.id, item.saleType, -1)}
-                                  className="p-0.5 hover:bg-slate-800 rounded text-slate-300"
+                                  type="button"
+                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'retail')}
+                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
+                                    item.saleType === 'retail'
+                                      ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
+                                      : 'text-slate-400 hover:text-white'
+                                  }`}
+                                  title={isAr ? 'بيع بالعلبة (مفرد)' : isKu ? 'فرۆشتن بە قوتی (تاک)' : 'Box'}
                                 >
-                                  <Minus className="w-3 h-3" />
+                                  {isAr ? 'علبة' : isKu ? 'قوتی' : 'Box'}
                                 </button>
-                                <span className="text-[11px] font-bold text-white px-1.5 font-mono">{item.quantity}</span>
+
                                 <button
-                                  onClick={() => updateQuantity(item.product.id, item.saleType, 1)}
-                                  className="p-0.5 hover:bg-slate-800 rounded text-slate-300"
+                                  type="button"
+                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'blister')}
+                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
+                                    item.saleType === 'blister'
+                                      ? 'bg-amber-400 text-slate-950 font-extrabold shadow-sm'
+                                      : 'text-slate-400 hover:text-white'
+                                  }`}
+                                  title={isAr ? 'بيع بالشريط' : isKu ? 'فرۆشتن بە شریت' : 'Strip'}
                                 >
-                                  <Plus className="w-3 h-3" />
+                                  {isAr ? 'شريط' : isKu ? 'شریت' : 'Str'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'wholesale')}
+                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
+                                    item.saleType === 'wholesale'
+                                      ? 'bg-emerald-500 text-slate-950 font-extrabold shadow-sm'
+                                      : 'text-slate-400 hover:text-white'
+                                  }`}
+                                  title={isAr ? 'بيع بسعر الجملة' : isKu ? 'فرۆشتن بە کۆ' : 'Wholesale'}
+                                >
+                                  {isAr ? 'جملة' : isKu ? 'کۆ' : 'WS'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'carton')}
+                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
+                                    item.saleType === 'carton'
+                                      ? 'bg-emerald-600 text-slate-950 font-extrabold shadow-sm'
+                                      : 'text-slate-400 hover:text-white'
+                                  }`}
+                                  title={isAr ? 'بيع بالكرتون' : isKu ? 'فرۆشتن بە کارتۆن' : 'Carton'}
+                                >
+                                  {isAr ? 'كرتون' : isKu ? 'کارتۆن' : 'CT'}
                                 </button>
                               </div>
+                            </div>
 
-                              {/* Total for this line */}
-                              <p className="text-[11px] font-black text-emerald-400 w-16 text-left rtl:text-right font-mono">
-                                {settings.currencySymbol}{formatNumber(unitPrice * item.quantity)}
-                              </p>
+                            {/* 5. Quantity Controls */}
+                            <div className="w-18 shrink-0 flex flex-col items-center">
+                              <span className="lg:hidden text-[8.5px] text-emerald-400 mb-0.5 font-bold">{isAr ? 'العدد' : isKu ? 'ژمارە' : 'Qty'}</span>
+                              <div className="flex items-center space-x-0.5 rtl:space-x-reverse bg-slate-900 border border-slate-800 rounded-lg p-0.5 w-full justify-between">
+                                <button
+                                  onClick={() => updateQuantity(item.product.id, item.saleType, -1)}
+                                  className="p-0.5 hover:bg-slate-800 rounded text-slate-300 active:scale-95"
+                                  title={isAr ? 'إنقاص العدد' : isKu ? 'کەمکردنەوەی ژمارە' : 'Decrease'}
+                                >
+                                  <Minus className="w-2.5 h-2.5" />
+                                </button>
+                                <span className="text-[11px] font-bold text-white px-0.5 font-mono">{item.quantity}</span>
+                                <button
+                                  onClick={() => updateQuantity(item.product.id, item.saleType, 1)}
+                                  className="p-0.5 hover:bg-slate-800 rounded text-slate-300 active:scale-95"
+                                  title={isAr ? 'زيادة العدد' : isKu ? 'زیادکردنی ژمارە' : 'Increase'}
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            </div>
 
-                              {/* Remove Button */}
+                            {/* 6. Total for this line */}
+                            <div className="w-24 shrink-0 flex flex-col items-center">
+                              <span className="lg:hidden text-[10px] text-emerald-400 mb-0.5 font-bold">{isAr ? 'المجموع' : isKu ? 'کۆی گشتی' : 'Total'}</span>
+                              <div className="px-1.5 py-0.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-center w-full">
+                                <p className="text-[15px] font-black text-emerald-400 font-mono truncate leading-none">
+                                  {settings.currencySymbol}{formatNumber(unitPrice * item.quantity)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* 7. Remove Button */}
+                            <div className="w-6 shrink-0 flex items-center justify-center">
                               <button
                                 onClick={() => removeFromCart(item.product.id, item.saleType)}
-                                className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-500/10 transition-all"
+                                className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-500/10 transition-all cursor-pointer"
+                                title={isAr ? 'حذف من السلة' : isKu ? 'سڕینەوە لە سەبەتە' : 'Remove item'}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
+
                           </div>
                         </div>
-                      );
-                })
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
 
@@ -1817,6 +2253,17 @@ export const POSTab: React.FC<POSTabProps> = ({
 
         </div>
 
+        {/* CUSTOMER DISPLAY EMBEDDED SIDE PANEL (Visible when side panel toggled on xl+ screens) */}
+        {showCustomerDisplaySidePanel && (
+          <div className="hidden xl:flex xl:col-span-4 flex-col h-full min-h-0 overflow-hidden rounded-3xl border border-cyan-500/40 shadow-2xl bg-[#080D1A] animate-fadeIn relative">
+            <CustomerDisplayScreen
+              isStandalone={false}
+              isEmbeddedSidePanel={true}
+              onClose={() => setShowCustomerDisplaySidePanel(false)}
+            />
+          </div>
+        )}
+
       </div>
 
     </div>
@@ -1834,10 +2281,10 @@ export const POSTab: React.FC<POSTabProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    {isAr ? 'مواد المخزن المتوفرة للبيع' : 'Store Stock Inventory Catalog'}
+                    {isAr ? 'مواد المخزن المتوفرة للبيع' : isKu ? 'کاڵا بەردەستەکانی کۆگا بۆ فرۆشتن' : 'Store Stock Inventory Catalog'}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {isAr ? 'تصفح كافة السلع والمنتجات وانقر لإضافتها مباشرة إلى سلة المبيعات' : 'Browse products and tap to add straight to sales cart'}
+                    {isAr ? 'تصفح كافة السلع والمنتجات وانقر لإضافتها مباشرة إلى سلة المبيعات' : isKu ? 'گەڕان لە هەموو دەرمانەکان و کلیک بکە بۆ زیادکردن بۆ سەبەتە' : 'Browse products and tap to add straight to sales cart'}
                   </p>
                 </div>
               </div>
@@ -1858,7 +2305,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={isAr ? 'بحث باسم المنتج، الفئة، أو رقم الباركود...' : 'Search product name, category, or barcode...'}
+                  placeholder={isAr ? 'بحث باسم المنتج، الفئة، أو رقم الباركود...' : isKu ? 'گەڕان بە ناوی دەرمان، بەش، یان بارکۆد...' : 'Search product name, category, or barcode...'}
                   className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-2.5 rounded-xl border border-blue-500/20 focus:outline-none focus:border-emerald-500"
                 />
               </div>
@@ -1872,7 +2319,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                       : 'bg-[#070D1C] text-slate-400 hover:text-white'
                   }`}
                 >
-                  🔥 {isAr ? 'الكل' : 'All'}
+                  🔥 {isAr ? 'الكل' : isKu ? 'هەموو' : 'All'}
                 </button>
                 {CATEGORIES.map(cat => (
                   <button
@@ -1885,7 +2332,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                     }`}
                   >
                     <span>{cat.icon}</span>
-                    <span>{isAr ? cat.labelAr : cat.labelEn}</span>
+                    <span>{isAr ? cat.labelAr : isKu ? cat.labelAr : cat.labelEn}</span>
                   </button>
                 ))}
               </div>
@@ -1916,19 +2363,19 @@ export const POSTab: React.FC<POSTabProps> = ({
                         <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full ${
                           p.stock <= 0 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-slate-800 text-slate-300'
                         }`}>
-                          {p.stock <= 0 ? (isAr ? 'نفد (متاح)' : '0 left') : `${p.stock} ${p.unit}`}
+                          {p.stock <= 0 ? (isAr ? 'نفد (متاح)' : isKu ? 'تەواوبوو' : '0 left') : `${p.stock} ${p.unit}`}
                         </span>
                         {totalInCart > 0 && (
                           <span className="bg-emerald-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full">
-                            +{totalInCart} {isAr ? 'بالسلة' : 'in cart'}
+                            +{totalInCart} {isAr ? 'بالسلة' : isKu ? 'لە سەبەتەدا' : 'in cart'}
                           </span>
                         )}
                       </div>
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold text-slate-200 line-clamp-1" title={isAr ? p.nameAr : p.name}>
-                        {isAr ? p.nameAr : p.name}
+                      <p className="text-xs font-bold text-slate-200 line-clamp-1" title={isAr ? p.nameAr : isKu ? p.nameAr : p.name}>
+                        {isAr ? p.nameAr : isKu ? p.nameAr : p.name}
                       </p>
                       <p className="text-[9.5px] text-slate-400 font-mono truncate">
                         {p.barcode}
@@ -1938,15 +2385,15 @@ export const POSTab: React.FC<POSTabProps> = ({
                     {/* Prices Breakdown: Retail / Wholesale / Carton */}
                     <div className="bg-[#0B1120] p-1.5 rounded-xl border border-slate-800/80 text-[9.5px] space-y-0.5">
                       <div className="flex justify-between items-center text-slate-300">
-                        <span className="text-cyan-400 font-semibold">{isAr ? 'مفرد:' : 'Ret:'}</span>
+                        <span className="text-cyan-400 font-semibold">{isAr ? 'مفرد:' : isKu ? 'تاک:' : 'Ret:'}</span>
                         <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(retailP)}</span>
                       </div>
                       <div className="flex justify-between items-center text-slate-300">
-                        <span className="text-amber-400 font-semibold">{isAr ? 'جملة:' : 'WS:'}</span>
+                        <span className="text-amber-400 font-semibold">{isAr ? 'جملة:' : isKu ? 'کۆ:' : 'WS:'}</span>
                         <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(wholesaleP)}</span>
                       </div>
                       <div className="flex justify-between items-center text-slate-300">
-                        <span className="text-purple-400 font-semibold">{isAr ? 'كرتون:' : 'Ctn:'}</span>
+                        <span className="text-purple-400 font-semibold">{isAr ? 'كرتون:' : isKu ? 'کارتۆن:' : 'Ctn:'}</span>
                         <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(cartonP)}</span>
                       </div>
                     </div>
@@ -1959,7 +2406,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                         className="py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 text-[9.5px] font-bold border border-cyan-500/30 transition-all flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
-                        <span>{isAr ? 'مفرد' : 'Ret'}</span>
+                        <span>{isAr ? 'مفرد' : isKu ? 'تاک' : 'Ret'}</span>
                       </button>
 
                       <button
@@ -1968,7 +2415,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                         className="py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-[9.5px] font-bold border border-amber-500/30 transition-all flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
-                        <span>{isAr ? 'جملة' : 'WS'}</span>
+                        <span>{isAr ? 'جملة' : isKu ? 'کۆ' : 'WS'}</span>
                       </button>
 
                       <button
@@ -1977,7 +2424,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                         className="py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500 text-purple-300 hover:text-slate-950 text-[9.5px] font-bold border border-purple-500/30 transition-all flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
-                        <span>{isAr ? 'كرتون' : 'Ctn'}</span>
+                        <span>{isAr ? 'كرتون' : isKu ? 'کارتۆن' : 'Ctn'}</span>
                       </button>
                     </div>
 
@@ -1989,14 +2436,14 @@ export const POSTab: React.FC<POSTabProps> = ({
             {/* Modal Footer */}
             <div className="p-4 border-t border-slate-800 bg-[#070D1C] flex items-center justify-between">
               <div className="text-xs text-slate-400 font-semibold">
-                {isAr ? `إجمالي المنتجات المعروضة: ${filteredProducts.length}` : `Displaying ${filteredProducts.length} items`}
+                {isAr ? `إجمالي المنتجات المعروضة: ${filteredProducts.length}` : isKu ? `کۆی کاڵا بەردەستەکان: ${filteredProducts.length}` : `Displaying ${filteredProducts.length} items`}
               </div>
 
               <button
                 onClick={() => setShowInventory(false)}
                 className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:brightness-110 transition-all flex items-center gap-1.5"
               >
-                <span>{isAr ? 'العودة إلى سلة المبيعات' : 'Return to Sales Cart'}</span>
+                <span>{isAr ? 'العودة إلى سلة المبيعات' : isKu ? 'گەڕانەوە بۆ سەبەتەی فرۆشتن' : 'Return to Sales Cart'}</span>
                 <ArrowRight className="w-4 h-4 rtl:rotate-180" />
               </button>
             </div>
@@ -2016,10 +2463,10 @@ export const POSTab: React.FC<POSTabProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">
-                    {isAr ? 'بيانات الوصفة الدوائية والمريض' : 'Prescription & Patient Info'}
+                    {isAr ? 'بيانات الوصفة الدوائية والمريض' : isKu ? 'زانیاری ڕەچەتەی پزیشکی و نەخۆش' : 'Prescription & Patient Info'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    {isAr ? 'تسجيل اسم الطبيب المعالج والمعلومات لإضافتها للفاتورة' : 'Record doctor and patient details for this transaction'}
+                    {isAr ? 'تسجيل اسم الطبيب المعالج والمعلومات لإضافتها للفاتورة' : isKu ? 'تۆمارکردنی ناوی پزیشک و نەخۆش بۆ پسوولە' : 'Record doctor and patient details for this transaction'}
                   </p>
                 </div>
               </div>
@@ -2033,47 +2480,47 @@ export const POSTab: React.FC<POSTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div className="space-y-1">
-                <label className="text-slate-300 font-bold block">{isAr ? 'اسم الطبيب المعالج / العيادة:' : 'Doctor / Clinic Name:'}</label>
+                <label className="text-slate-300 font-bold block">{isAr ? 'اسم الطبيب المعالج / العيادة:' : isKu ? 'ناوی پزیشک / کلینیک:' : 'Doctor / Clinic Name:'}</label>
                 <input
                   type="text"
                   value={prescriptionInfo.doctorName}
                   onChange={(e) => setPrescriptionInfo(prev => ({ ...prev, doctorName: e.target.value }))}
-                  placeholder={isAr ? 'مثال: د. أحمد السامرائي - اختصاص باطنية' : 'e.g. Dr. John Smith'}
+                  placeholder={isAr ? 'مثال: د. أحمد السامرائي - اختصاص باطنية' : isKu ? 'نموونە: د. ئارام علی - پسپۆڕی هەناوی' : 'e.g. Dr. John Smith'}
                   className="w-full bg-[#070D1C] text-slate-100 p-2.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-bold block">{isAr ? 'اسم المريض:' : 'Patient Name:'}</label>
+                  <label className="text-slate-300 font-bold block">{isAr ? 'اسم المريض:' : isKu ? 'ناوی نەخۆش:' : 'Patient Name:'}</label>
                   <input
                     type="text"
                     value={prescriptionInfo.patientName}
                     onChange={(e) => setPrescriptionInfo(prev => ({ ...prev, patientName: e.target.value }))}
-                    placeholder={isAr ? 'اسم المريض الثلاثي' : 'Patient full name'}
+                    placeholder={isAr ? 'اسم المريض الثلاثي' : isKu ? 'ناوی سیانی نەخۆش' : 'Patient full name'}
                     className="w-full bg-[#070D1C] text-slate-100 p-2.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-bold block">{isAr ? 'عمر المريض / هاتف:' : 'Age / Phone:'}</label>
+                  <label className="text-slate-300 font-bold block">{isAr ? 'عمر المريض / هاتف:' : isKu ? 'تەمەن / مۆبایل:' : 'Age / Phone:'}</label>
                   <input
                     type="text"
                     value={prescriptionInfo.patientAge}
                     onChange={(e) => setPrescriptionInfo(prev => ({ ...prev, patientAge: e.target.value }))}
-                    placeholder={isAr ? 'مثال: 34 سنة' : 'e.g. 34 yrs'}
+                    placeholder={isAr ? 'مثال: 34 سنة' : isKu ? 'نموونە: 34 ساڵ' : 'e.g. 34 yrs'}
                     className="w-full bg-[#070D1C] text-slate-100 p-2.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-slate-300 font-bold block">{isAr ? 'تشخيص / ملاحظات التناوب والتحذيرات:' : 'Diagnosis / Special Precautions:'}</label>
+                <label className="text-slate-300 font-bold block">{isAr ? 'تشخيص / ملاحظات التناوب والتحذيرات:' : isKu ? 'تێبینی دەرمانساز و ڕێنمایی بەکارهێنان:' : 'Diagnosis / Special Precautions:'}</label>
                 <textarea
                   rows={2}
                   value={prescriptionInfo.prescriptionNotes}
                   onChange={(e) => setPrescriptionInfo(prev => ({ ...prev, prescriptionNotes: e.target.value }))}
-                  placeholder={isAr ? 'ملاحظات الصيدلي (مثل: يمنع مع مرضى الضغط، تؤخذ الحبة بعد الأكل)' : 'Pharmacist precautions...'}
+                  placeholder={isAr ? 'ملاحظات الصيدلي (مثل: يمنع مع مرضى الضغط، تؤخذ الحبة بعد الأكل)' : isKu ? 'ڕێنمایی دەرمانساز (وەک: دوای نان بخورێت، بۆ پەستانی خوێن نابێت)' : 'Pharmacist precautions...'}
                   className="w-full bg-[#070D1C] text-slate-100 p-2.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
                 />
               </div>
@@ -2084,7 +2531,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                 onClick={() => setShowPrescriptionModal(false)}
                 className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition-all"
               >
-                {isAr ? 'حفظ وإغلاق' : 'Save & Close'}
+                {isAr ? 'حفظ وإغلاق' : isKu ? 'پاشەکەوت و داخستن' : 'Save & Close'}
               </button>
             </div>
           </div>
@@ -2102,10 +2549,10 @@ export const POSTab: React.FC<POSTabProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">
-                    {isAr ? 'محرك البحث عن بدائل الأدوية بالمادة الفعالة' : 'Drug Alternatives Finder'}
+                    {isAr ? 'محرك البحث عن بدائل الأدوية بالمادة الفعالة' : isKu ? 'بزوێنەری گەڕان بۆ بەدیلی دەرمانەکان' : 'Drug Alternatives Finder'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    {isAr ? 'ابحث باسم المادة الفعالة (Scientific Name) لإيجاد الأدوية البديلة المتوفرة بالمخزن' : 'Find alternative medicines sharing the active ingredient in inventory'}
+                    {isAr ? 'ابحث باسم المادة الفعالة (Scientific Name) لإيجاد الأدوية البديلة المتوفرة بالمخزن' : isKu ? 'گەڕان بە ناوی زانستی بۆ دۆزینەوەی دەرمانی بەدیل لە کۆگادا' : 'Find alternative medicines sharing the active ingredient in inventory'}
                   </p>
                 </div>
               </div>
@@ -2127,14 +2574,14 @@ export const POSTab: React.FC<POSTabProps> = ({
                 type="text"
                 value={alternativeSearch}
                 onChange={(e) => setAlternativeSearch(e.target.value)}
-                placeholder={isAr ? 'اكتب المادة الفعالة (مثلاً: Paracetamol, Ibuprofen, Amoxicillin)...' : 'Search active ingredient (e.g. Paracetamol, Amoxicillin)...'}
+                placeholder={isAr ? 'اكتب المادة الفعالة (مثلاً: Paracetamol, Ibuprofen, Amoxicillin)...' : isKu ? 'ناوی مادەی چالاک بنووسە (وەک: Paracetamol, Ibuprofen, Amoxicillin)...' : 'Search active ingredient (e.g. Paracetamol, Amoxicillin)...'}
                 className="w-full bg-[#070D1C] text-xs font-mono text-cyan-200 placeholder-slate-500 px-9 py-2.5 rounded-xl border border-cyan-500/40 focus:border-cyan-300 focus:outline-none"
               />
             </div>
 
             {/* Quick Active Ingredient Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
-              <span className="text-slate-400 font-bold shrink-0">{isAr ? 'المواد الأكثر تداولاً:' : 'Common:'}</span>
+              <span className="text-slate-400 font-bold shrink-0">{isAr ? 'المواد الأكثر تداولاً:' : isKu ? 'مادە باوەکان:' : 'Common:'}</span>
               {['Paracetamol', 'Ibuprofen', 'Amoxicillin', 'Omeprazole', 'Cetirizine'].map(ing => (
                 <button
                   key={ing}
@@ -2178,12 +2625,12 @@ export const POSTab: React.FC<POSTabProps> = ({
                             )}
                           </div>
                           <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
-                            <span>{p.dosageForm || (isAr ? 'عقار طبي' : 'Medicine')}</span>
+                            <span>{p.dosageForm || (isAr ? 'عقار طبي' : isKu ? 'دەرمان' : 'Medicine')}</span>
                             <span>•</span>
                             <span className="text-emerald-400 font-mono font-bold">{settings.currencySymbol}{formatNumber(retailP)}</span>
                             <span>•</span>
                             <span className={p.stock > 0 ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
-                              {isAr ? `المتفر بالصيدلية: ${p.stock}` : `Stock: ${p.stock}`}
+                              {isAr ? `المتوفر بالصيدلية: ${p.stock}` : isKu ? `بەردەست لە کۆگا: ${p.stock}` : `Stock: ${p.stock}`}
                             </span>
                           </p>
                         </div>
@@ -2198,7 +2645,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                         className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs border border-cyan-400/40 shadow-lg cursor-pointer shrink-0 flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>{isAr ? 'إضافة للسلة' : 'Add to Cart'}</span>
+                        <span>{isAr ? 'إضافة للسلة' : isKu ? 'بۆ سەبەتە' : 'Add to Cart'}</span>
                       </button>
                     </div>
                   );
@@ -2458,128 +2905,12 @@ export const POSTab: React.FC<POSTabProps> = ({
         </div>
       )}
 
-      {/* RETURNS ACTION SHEET MODAL */}
-      {showReturnsActionSheet && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-          <div className="bg-[#0B1120] border-2 border-rose-500/60 rounded-3xl w-full max-w-md flex flex-col justify-between shadow-2xl overflow-hidden">
-            <div className="p-4 sm:p-5 border-b border-rose-500/30 flex items-center justify-between bg-[#070D1C]">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40">
-                  <RotateCcw className="w-5 h-5 animate-spin" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">
-                    {isAr ? 'خيارات إرجاع واسترداد المواد' : isKu ? 'بژاردەکانی گەڕاندنەوەی کاڵا' : 'Item Return & Refund Options'}
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    {isAr ? 'اختر طريقة الإرجاع المناسبة' : isKu ? 'شێوازی گەڕاندنەوە دیاری بکە' : 'Select preferred return method'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowReturnsActionSheet(false)}
-                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-2.5">
-              {/* Option 1: Toggle instant return in current cart */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsReturnMode(!isReturnMode);
-                  setShowReturnsActionSheet(false);
-                }}
-                className="w-full p-3.5 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-left rtl:text-right flex items-center justify-between gap-3 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="p-2 rounded-xl bg-rose-500/20 text-rose-400 group-hover:scale-110 transition-transform">
-                    <BarcodeIcon className="w-5 h-5" />
-                  </span>
-                  <div>
-                    <div className="text-xs font-bold text-white">
-                      {isReturnMode 
-                        ? (isAr ? 'إلغاء وضع المرتجعات بالسلة' : isKu ? 'ناچالاککردنی دۆخی گەڕاندنەوە' : 'Disable Cart Return Mode') 
-                        : (isAr ? 'تفعيل وضع الإرجاع المباشر بالسلة' : isKu ? 'چالاککردنی دۆخی گەڕاندنەوە لە سەبەتەدا' : 'Enable Instant Cart Returns')}
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {isAr ? 'مسح الباركود لإرجاع المادة واسترداد قيمتها مباشرة' : isKu ? 'خوێندنەوەی بارکۆد بۆ گەڕاندنەوەی ڕاستەوخۆ' : 'Scan barcode to refund directly'}
-                    </div>
-                  </div>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${isReturnMode ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                  {isReturnMode ? (isAr ? 'مفعل' : isKu ? 'چالاکە' : 'Active') : (isAr ? 'تفعيل' : isKu ? 'چالاککردن' : 'Enable')}
-                </span>
-              </button>
-
-              {/* Option 2: Full Sales Return Modal */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReturnsActionSheet(false);
-                  if (onOpenSalesReturn) {
-                    onOpenSalesReturn();
-                  }
-                }}
-                className="w-full p-3.5 rounded-2xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-left rtl:text-right flex items-center justify-between gap-3 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 group-hover:scale-110 transition-transform">
-                    <FileText className="w-5 h-5" />
-                  </span>
-                  <div>
-                    <div className="text-xs font-bold text-white">
-                      {isAr ? 'واجهة استرجاع الفواتير المكتملة' : isKu ? 'گەڕاندنەوەی پسوولە تەواوکراوەکان' : 'Completed Invoices Return Hub'}
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {isAr ? 'البحث برقم الوصل واسترجاع المواد بالفاتورة الأصلية' : isKu ? 'گەڕان بەپێی ژمارەی پسوولە و گەڕاندنەوە' : 'Lookup receipt number and refund items'}
-                    </div>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-cyan-400 rtl:rotate-180" />
-              </button>
-
-              {/* Option 3: Return to Delegate / Supplier */}
-              {onOpenDelegateReturns && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowReturnsActionSheet(false);
-                    onOpenDelegateReturns();
-                  }}
-                  className="w-full p-3.5 rounded-2xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/40 text-left rtl:text-right flex items-center justify-between gap-3 transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
-                      <Undo2 className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <div className="text-xs font-bold text-white">
-                        {isAr ? 'إرجاع واسترداد مواد إلى مندوب / مورد' : isKu ? 'گەڕاندنەوەی کاڵا بۆ مەندوب و کۆمپانیا' : 'Return Items to Delegate / Supplier'}
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        {isAr ? 'توثيق بضائع المرتجعات للمندوب مع خصم المخزن' : isKu ? 'تۆمارکردنی گەڕاندنەوە لەگەڵ کەمکردنەوە لە کۆگا' : 'Document vendor return slips and deduct inventory'}
-                      </div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-amber-400 rtl:rotate-180" />
-                </button>
-              )}
-            </div>
-
-            <div className="p-3.5 border-t border-slate-800 bg-[#070D1C] flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowReturnsActionSheet(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
-              >
-                {isAr ? 'إغلاق' : isKu ? 'داخستن' : 'Close'}
-              </button>
-            </div>
-          </div>
+      {/* Customer Display Copied Toast Notification */}
+      {customerDisplayCopiedToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-cyan-950/95 border-2 border-cyan-400 text-cyan-100 px-4 py-3 rounded-2xl shadow-[0_0_25px_rgba(6,182,212,0.5)] flex items-center gap-2.5 animate-fadeIn text-xs font-bold backdrop-blur-md">
+          <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+          <Check className="w-4 h-4 text-cyan-300 shrink-0" />
+          <span>{isAr ? 'تم نسخ رابط شاشة الزبون بنجاح! يمكنك فتحه على شاشة ثانية، آيباد أو هاتف محمول.' : 'Customer display link copied! Open on secondary monitor or tablet.'}</span>
         </div>
       )}
 

@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { SaleTransaction, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
+import { formatDisplayDateTime, formatDisplayDate, formatDisplayTime } from '../lib/dateUtils';
+import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
 interface CompletedReceiptsModalProps {
   isOpen: boolean;
@@ -373,21 +375,23 @@ export const CompletedReceiptsModal: React.FC<CompletedReceiptsModalProps> = ({
 
             {/* Custom Date Inputs (if custom selected) */}
             {dateRangeMode === 'custom' && (
-              <div className="flex items-center gap-2 bg-[#0F172A] px-3 py-1 rounded-xl border border-cyan-500/40 animate-fadeIn">
+              <div className="flex flex-wrap items-center gap-2 bg-[#0F172A] px-3 py-1.5 rounded-xl border border-cyan-500/40 animate-fadeIn">
                 <span className="text-[11px] text-slate-300 font-medium">{isAr ? 'من:' : 'From:'}</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-slate-900 text-cyan-300 text-xs px-2 py-1 rounded-lg border border-slate-700 focus:outline-none focus:border-cyan-400"
-                />
+                <div className="w-44">
+                  <DatePickerDDMMYYYY
+                    value={startDate}
+                    onChange={(dStr) => setStartDate(dStr)}
+                    lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
+                  />
+                </div>
                 <span className="text-[11px] text-slate-300 font-medium">{isAr ? 'إلى:' : 'To:'}</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-slate-900 text-cyan-300 text-xs px-2 py-1 rounded-lg border border-slate-700 focus:outline-none focus:border-cyan-400"
-                />
+                <div className="w-44">
+                  <DatePickerDDMMYYYY
+                    value={endDate}
+                    onChange={(dStr) => setEndDate(dStr)}
+                    lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
+                  />
+                </div>
               </div>
             )}
 
@@ -448,7 +452,7 @@ export const CompletedReceiptsModal: React.FC<CompletedReceiptsModalProps> = ({
 
                       <span className={`text-[11px] flex items-center gap-1 ${isReturned ? 'text-rose-200' : 'text-slate-400'}`}>
                         <Calendar className={`w-3 h-3 ${isReturned ? 'text-rose-400' : 'text-slate-500'}`} />
-                        <span>{sale.timestamp}</span>
+                        <span className="font-mono">{formatDisplayDateTime(sale.timestamp, lang)}</span>
                       </span>
 
                       {sale.status === 'refunded' && (

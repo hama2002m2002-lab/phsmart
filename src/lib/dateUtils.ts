@@ -77,37 +77,50 @@ export function isToday(timestamp: any): boolean {
 }
 
 /**
- * Formats a Date object or timestamp string for display in Gregorian calendar Arabic/English.
- * Avoids Hijri calendar conversion bugs (e.g. ar-SA producing year 2036).
+ * Formats a Date object or timestamp string for display with Day/Month/Year (DD/MM/YYYY).
+ * Avoids Hijri calendar conversion bugs and enforces DD/MM/YYYY and 12-hour clock.
  */
 export function formatDisplayDate(timestamp: any, lang: string = 'ar'): string {
   const d = parseDate(timestamp);
-  const locale = lang === 'ar' ? 'ar-EG' : lang === 'ku' ? 'ckb-IQ' : 'en-US';
-  return d.toLocaleDateString(locale, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 export function formatDisplayTime(timestamp: any, lang: string = 'ar'): string {
   const d = parseDate(timestamp);
-  const locale = lang === 'ar' ? 'ar-EG' : lang === 'ku' ? 'ckb-IQ' : 'en-US';
-  return d.toLocaleTimeString(locale, {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  if (isNaN(d.getTime())) return '';
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const isPM = hours >= 12;
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  const period = lang === 'ku' ? (isPM ? 'د.ن' : 'ب.ن') : lang === 'en' ? (isPM ? 'PM' : 'AM') : (isPM ? 'م' : 'ص');
+  return `${hours}:${minutes} ${period}`;
 }
 
 export function formatDisplayDateTime(timestamp: any, lang: string = 'ar'): string {
   const d = parseDate(timestamp);
-  const locale = lang === 'ar' ? 'ar-EG' : lang === 'ku' ? 'ckb-IQ' : 'en-US';
-  return d.toLocaleString(locale, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const timeStr = formatDisplayTime(d, lang);
+  return `${day}/${month}/${year} - ${timeStr}`;
 }
+
+export function formatDateDDMMYYYY(timestamp: any): string {
+  const d = parseDate(timestamp);
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+export function formatTime12Hour(timestamp: any, lang: string = 'ar'): string {
+  return formatDisplayTime(timestamp, lang);
+}
+

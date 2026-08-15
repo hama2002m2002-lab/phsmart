@@ -513,3 +513,10 @@ html.theme-light body {
     color: black !important;
   }
 }
+
+/* Times New Roman for POS Interface */
+.pos-tab-times-font,
+.pos-tab-times-font * {
+  font-family: 'Times New Roman', Times, serif !important;
+}
+

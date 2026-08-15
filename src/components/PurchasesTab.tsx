@@ -24,6 +24,8 @@ import {
   Info
 } from 'lucide-react';
 import { Product, Supplier, StoreSettings, PurchaseInvoice, PurchaseInvoiceItem } from '../types';
+import { formatDateDDMMYYYY, formatTime12Hour } from '../lib/dateUtils';
+import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
 interface PurchasesTabProps {
   products: Product[];
@@ -50,7 +52,10 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
+  const isKu = lang === 'ku';
   const currency = settings.currencySymbol;
+
+  const t = (ar: string, ku: string, en: string = ar) => isKu ? ku : isAr ? ar : en;
 
   // ------------------------------------------------------------------
   // 1. HEADER INFO (بيانات الفاتورة الرئيسية)
@@ -214,12 +219,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
   // ------------------------------------------------------------------
   const handleAddItemToGrid = () => {
     if (!productNameInput.trim()) {
-      alert(isAr ? 'برجاء إدخال اسم المادة' : 'Please enter product name');
+      alert(t('برجاء إدخال اسم المادة', 'تکایە ناوی کاڵا بنووسە', 'Please enter product name'));
       return;
     }
 
     if (currentTotalPieces <= 0) {
-      alert(isAr ? 'برجاء إدخال كمية مشتراة أكبر من صفر' : 'Please enter purchased quantity > 0');
+      alert(t('برجاء إدخال كمية مشتراة أكبر من صفر', 'تکایە بڕی کڕدراو زیاتر لە سفر بنووسە', 'Please enter purchased quantity > 0'));
       return;
     }
 
@@ -273,11 +278,11 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
   const handleSaveInvoice = () => {
     if (draftItems.length === 0) {
-      alert(isAr ? 'جدول الفاتورة فارغ! يرجى إضافة مادة واحدة على الأقل.' : 'Invoice grid is empty! Please add at least one item.');
+      alert(t('جدول الفاتورة فارغ! يرجى إضافة مادة واحدة على الأقل.', 'خشتەی پسوڵە بەتاڵە! تکایە لانیکەم کاڵایەک زیاد بکە.', 'Invoice grid is empty! Please add at least one item.'));
       return;
     }
 
-    const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = formatTime12Hour(new Date(), lang);
 
     const invoiceItemsToSave: PurchaseInvoiceItem[] = draftItems.map(item => ({
       id: item.id,
@@ -300,7 +305,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       invoiceNumber: invoiceNumber,
       date: invoiceDate,
       time: timeStr,
-      supplierName: selectedSupplierName || (isAr ? 'مورد غير مسمى' : 'Unnamed Supplier'),
+      supplierName: selectedSupplierName || t('مورد غير مسمى', 'دابینکەری بێ ناو', 'Unnamed Supplier'),
       supplierPhone: delegatePhone || 'N/A',
       paymentType: paymentType,
       paidAmount: paidAmountCash,
@@ -376,10 +381,11 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       });
     }
 
-    alert(isAr 
-      ? `✅ تمت إضافة وحفظ فاتورة المشتريات رقم (${invoiceNumber}) وتحديث أسعار المخزون والأرباح بنجاح!` 
-      : `Purchase invoice ${invoiceNumber} saved successfully!`
-    );
+    alert(t(
+      `✅ تمت إضافة وحفظ فاتورة المشتريات رقم (${invoiceNumber}) وتحديث أسعار المخزون والأرباح بنجاح!`,
+      `✅ پسوڵەی کڕینی ژمارە (${invoiceNumber}) بە سەرکەوتوویی تۆمارکرا و کۆگا نوێکرایەوە!`,
+      `Purchase invoice ${invoiceNumber} saved successfully!`
+    ));
 
     handleResetForm();
   };
@@ -404,7 +410,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <button
               onClick={onBackToDashboard}
               className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
-              title="العودة"
+              title={t('العودة', 'گەڕانەوە', 'Back')}
             >
               <ArrowRight className="w-4 h-4 rtl:rotate-180" />
             </button>
@@ -417,7 +423,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <h1 className="text-sm font-black text-white">
-                فاتورة شراء جديدة (Stock Entry)
+                {t('فاتورة شراء جديدة (Stock Entry)', 'پسوڵەی کڕینی نوێ (Stock Entry)', 'New Purchase Invoice')}
               </h1>
               <span className="px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold">
                 PRO v2.5
@@ -432,7 +438,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
-            <span>جديدة</span>
+            <span>{t('جديدة', 'نوێ', 'New')}</span>
           </button>
 
           <button
@@ -440,7 +446,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             className="px-3 py-1.5 rounded-xl bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <History className="w-3.5 h-3.5 text-cyan-400" />
-            <span>السجل ({purchaseInvoices.length})</span>
+            <span>{t(`السجل (${purchaseInvoices.length})`, `مێژوو (${purchaseInvoices.length})`, `History (${purchaseInvoices.length})`)}</span>
           </button>
         </div>
       </div>
@@ -452,13 +458,13 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
         
         {/* Supplier */}
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <span className="text-slate-400 font-bold text-[11px] shrink-0">المورد:</span>
+          <span className="text-slate-400 font-bold text-[11px] shrink-0">{t('المورد:', 'دابینکەر:', 'Supplier:')}</span>
           <input
             type="text"
             list="suppliers-dropdown-compact"
             value={selectedSupplierName}
             onChange={(e) => setSelectedSupplierName(e.target.value)}
-            placeholder="اختر أو اكتب اسم المورد..."
+            placeholder={t('اختر أو اكتب اسم المورد...', 'ناوی دابینکەر دیاری بکە یان بنووسە...', 'Select or enter supplier name...')}
             className="w-full bg-[#060b14] text-white font-bold text-xs py-1.5 px-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-cyan-400"
           />
           <datalist id="suppliers-dropdown-compact">
@@ -470,7 +476,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
         {/* Invoice Number */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-slate-400 font-bold text-[11px]">الوصل:</span>
+          <span className="text-slate-400 font-bold text-[11px]">{t('الوصل:', 'پسوڵە:', 'Invoice:')}</span>
           <input
             type="text"
             value={invoiceNumber}
@@ -479,14 +485,13 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           />
         </div>
 
-        {/* Invoice Date */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-slate-400 font-bold text-[11px]">التاريخ:</span>
-          <input
-            type="date"
+        {/* Invoice Date (DD/MM/YYYY) */}
+        <div className="flex items-center gap-1.5 shrink-0 min-w-[170px]">
+          <span className="text-slate-400 font-bold text-[11px]">{t('التاريخ:', 'بەروار:', 'Date:')}</span>
+          <DatePickerDDMMYYYY
             value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
-            className="w-32 bg-[#060b14] text-slate-200 font-mono text-xs py-1.5 px-2 rounded-xl border border-slate-700 text-center"
+            onChange={(dStr) => setInvoiceDate(dStr)}
+            lang={lang}
           />
         </div>
 
@@ -501,7 +506,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            نقداً
+            {t('نقداً', 'نەقد', 'Cash')}
           </button>
           <button
             type="button"
@@ -512,7 +517,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            آجل
+            {t('آجل', 'قەرز', 'Credit')}
           </button>
         </div>
 
@@ -521,7 +526,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           type="button"
           onClick={() => setShowHeaderMoreModal(true)}
           className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all shrink-0 cursor-pointer"
-          title="تفاصيل إضافية والملاحظات"
+          title={t('تفاصيل إضافية والملاحظات', 'وردەکاری زیاتر و تێبینییەکان', 'More Details & Notes')}
         >
           <Settings className="w-4 h-4 text-cyan-400" />
         </button>
@@ -538,7 +543,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           {/* 1. اسم المادة / البحث */}
           <div className="md:col-span-4 relative">
             <label className="text-[10.5px] font-bold text-slate-300 block mb-1">
-              • اسم المادة:
+              • {t('اسم المادة:', 'ناوی کاڵا:', 'Item Name:')}
             </label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-cyan-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
@@ -551,7 +556,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   setSearchQuery(e.target.value);
                   setIsSearchFocused(true);
                 }}
-                placeholder="ابحث عن مادة أو اكتب اسمها..."
+                placeholder={t('ابحث عن مادة أو اكتب اسمها...', 'بگەڕێ بۆ کاڵا یان ناوی بنووسە...', 'Search product or enter name...')}
                 className="w-full bg-[#060b14] text-cyan-300 font-bold text-xs py-1.5 pr-8 pl-2.5 rounded-xl border border-cyan-500/40 focus:outline-none focus:border-cyan-400"
               />
             </div>
@@ -560,7 +565,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             {isSearchFocused && searchQuery && (
               <div className="absolute top-full right-0 left-0 mt-1 bg-[#0a1124] border border-cyan-500/50 rounded-xl shadow-2xl overflow-hidden z-50 p-1.5 max-h-52 overflow-y-auto">
                 <div className="flex items-center justify-between px-2 py-1 border-b border-slate-800 text-[10px] text-slate-400">
-                  <span>نتائج البحث:</span>
+                  <span>{t('نتائج البحث:', 'ئەنجامەکانی گەڕان:', 'Search Results:')}</span>
                   <button onClick={() => setIsSearchFocused(false)} className="text-slate-400 hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
@@ -568,7 +573,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
                 {filteredSearchResults.length === 0 ? (
                   <div className="p-2 text-center text-slate-400 text-xs">
-                    مادة جديدة
+                    {t('مادة جديدة', 'کاڵای نوێ', 'New Item')}
                   </div>
                 ) : (
                   filteredSearchResults.map(prod => (
@@ -582,7 +587,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                         <span className="text-[9.5px] text-slate-400 font-mono">{prod.barcode}</span>
                       </div>
                       <span className="text-[10px] text-amber-300 font-mono font-bold shrink-0">
-                        الرصيد: {prod.stock}
+                        {t('الرصيد:', 'باڵانس:', 'Stock:')} {prod.stock}
                       </span>
                     </div>
                   ))
@@ -594,21 +599,21 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           {/* 2. العدد بالكرتون أو بالمفرد */}
           <div className="md:col-span-3">
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10.5px] font-bold text-slate-300">• العدد:</label>
+              <label className="text-[10.5px] font-bold text-slate-300">• {t('العدد:', 'ژمارە / بڕ:', 'Quantity:')}</label>
               <div className="flex items-center gap-1 text-[10px] bg-[#060b14] p-0.5 rounded-lg border border-slate-800">
                 <button
                   type="button"
                   onClick={() => setPurchaseUnitMode('carton')}
                   className={`px-1.5 py-0.5 rounded ${purchaseUnitMode === 'carton' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}
                 >
-                  كرتون
+                  {t('كرتون', 'کارتۆن', 'Carton')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPurchaseUnitMode('piece')}
                   className={`px-1.5 py-0.5 rounded ${purchaseUnitMode === 'piece' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}
                 >
-                  مفرد
+                  {t('مفرد', 'دانە', 'Piece')}
                 </button>
               </div>
             </div>
@@ -622,7 +627,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   onChange={(e) => setCartonsCount(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-full bg-[#060b14] text-amber-300 font-mono font-bold text-xs py-1.5 px-2 rounded-xl border border-slate-700 text-center"
                 />
-                <span className="text-[10px] text-slate-400 shrink-0">كرتون ({currentTotalPieces} قطعة)</span>
+                <span className="text-[10px] text-slate-400 shrink-0">{t(`كرتون (${currentTotalPieces} قطعة)`, `کارتۆن (${currentTotalPieces} دانە)`, `Carton (${currentTotalPieces} pcs)`)}</span>
               </div>
             ) : (
               <div className="flex items-center gap-1">
@@ -633,7 +638,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   onChange={(e) => setSinglePieceQty(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-full bg-[#060b14] text-amber-300 font-mono font-bold text-xs py-1.5 px-2 rounded-xl border border-slate-700 text-center"
                 />
-                <span className="text-[10px] text-slate-400 shrink-0">قطعة</span>
+                <span className="text-[10px] text-slate-400 shrink-0">{t('قطعة', 'دانە', 'Pieces')}</span>
               </div>
             )}
           </div>
@@ -641,7 +646,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           {/* 3. سعر الشراء القديم */}
           <div className="md:col-span-2">
             <label className="text-[10.5px] font-bold text-slate-400 block mb-1">
-              • الشراء القديم ({purchaseUnitMode === 'carton' ? 'للكرتون' : 'للفرادي'}):
+              • {t(`الشراء القديم (${purchaseUnitMode === 'carton' ? 'للكرتون' : 'للفرادي'}):`, `کڕینی پێشوو (${purchaseUnitMode === 'carton' ? 'کارتۆن' : 'دانە'}):`, `Old Cost (${purchaseUnitMode === 'carton' ? 'Carton' : 'Piece'}):`)}
             </label>
             <div className="w-full bg-[#060b14] text-slate-300 font-mono font-bold text-xs py-1.5 px-2 rounded-xl border border-slate-800 text-center flex items-center justify-between">
               <span>{displayOldPurchasePrice.toLocaleString()}</span>
@@ -652,7 +657,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           {/* 4. سعر الشراء الجديد */}
           <div className="md:col-span-3">
             <label className="text-[10.5px] font-bold text-emerald-300 block mb-1">
-              • سعر الشراء الجديد ({purchaseUnitMode === 'carton' ? 'للكرتون' : 'للفرادي'}):
+              • {t(`سعر الشراء الجديد (${purchaseUnitMode === 'carton' ? 'للكرتون' : 'للفرادي'}):`, `نرخی کڕینی نوێ (${purchaseUnitMode === 'carton' ? 'کارتۆن' : 'دانە'}):`, `New Cost (${purchaseUnitMode === 'carton' ? 'Carton' : 'Piece'}):`)}
             </label>
             <div className="flex items-center gap-1">
               {purchaseUnitMode === 'carton' ? (
@@ -683,7 +688,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           
           {/* 5. مجموع الشراء + مؤشر تغير السعر */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300">مجموع الشراء للمادة:</span>
+            <span className="text-xs font-bold text-slate-300">{t('مجموع الشراء للمادة:', 'کۆی کڕینی کاڵاکە:', 'Item Purchase Total:')}</span>
             <span className="px-3 py-1 rounded-xl bg-cyan-950 text-cyan-300 border border-cyan-500/40 font-mono font-black text-xs">
               {currentTotalItemPurchaseAmount.toLocaleString()} {currency}
             </span>
@@ -692,12 +697,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             {isPriceIncreased ? (
               <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 text-[10px] font-bold flex items-center gap-1">
                 <ArrowUpRight className="w-3 h-3 text-rose-400" />
-                <span>ارتفع (+{priceDifference.toLocaleString()})</span>
+                <span>{t(`ارتفع (+${priceDifference.toLocaleString()})`, `بەرزبووەوە (+${priceDifference.toLocaleString()})`, `Increased (+${priceDifference.toLocaleString()})`)}</span>
               </span>
             ) : isPriceDecreased ? (
               <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold flex items-center gap-1">
                 <ArrowDownRight className="w-3 h-3 text-emerald-400" />
-                <span>انخفض ({priceDifference.toLocaleString()})</span>
+                <span>{t(`انخفض (${priceDifference.toLocaleString()})`, `داشکاوە (${priceDifference.toLocaleString()})`, `Decreased (${priceDifference.toLocaleString()})`)}</span>
               </span>
             ) : null}
           </div>
@@ -712,7 +717,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-1 transition-all cursor-pointer"
             >
               <Tag className="w-3.5 h-3.5 text-cyan-400" />
-              <span>الباركود والعبوة ({piecesPerCarton})</span>
+              <span>{t(`الباركود والعبوة (${piecesPerCarton})`, `بارکۆد و پاکەت (${piecesPerCarton})`, `Barcode & Pack (${piecesPerCarton})`)}</span>
             </button>
 
             {/* Button: Retail Price & Profit */}
@@ -722,7 +727,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold border border-slate-700 flex items-center gap-1 transition-all cursor-pointer"
             >
               <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-              <span>سعر البيع والأرباح ({retailSellingPrice} {currency})</span>
+              <span>{t(`سعر البيع والأرباح (${retailSellingPrice} ${currency})`, `نرخی فرۆشتن و قازانج (${retailSellingPrice} ${currency})`, `Sale Price & Profit (${retailSellingPrice} ${currency})`)}</span>
             </button>
 
             {/* Button: Cost Calculation Method */}
@@ -732,7 +737,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-bold border border-slate-700 flex items-center gap-1 transition-all cursor-pointer"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
-              <span>طريقة احتساب التكلفة ({costUpdateMethod === 'weighted_average' ? 'المتوسط المرجح' : 'السعر الجديد'})</span>
+              <span>{t(`طريقة احتساب التكلفة (${costUpdateMethod === 'weighted_average' ? 'المتوسط المرجح' : 'السعر الجديد'})`, `شێوازی تێچوو (${costUpdateMethod === 'weighted_average' ? 'تێکڕای هاوسەنگ' : 'نرخی نوێ'})`, `Cost Method (${costUpdateMethod === 'weighted_average' ? 'Weighted Avg' : 'New Price'})`)}</span>
             </button>
 
             {/* 6. ADD ITEM BUTTON */}
@@ -742,7 +747,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة للفاتورة</span>
+              <span>{t('إضافة للفاتورة', 'زیادکردن بۆ پسوڵە', 'Add to Invoice')}</span>
             </button>
 
           </div>
@@ -758,21 +763,21 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
         {draftItems.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs">
             <Package className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-50" />
-            جدول المواد فارغ حالياً. استخدم الشريط أعلاه لإضافة المواد المشتراة.
+            {t('جدول المواد فارغ حالياً. استخدم الشريط أعلاه لإضافة المواد المشتراة.', 'خشتەی کاڵاکان ئێستا بەتاڵە. شریتی سەرەوە بەکاربهێنە بۆ زیادکردنی کاڵاکان.', 'Item grid is empty. Use the top bar to add items.')}
           </div>
         ) : (
           <table className="w-full text-right border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 text-[10.5px] bg-[#0a1120]">
                 <th className="py-2 px-3">#</th>
-                <th className="py-2 px-3">اسم المادة</th>
-                <th className="py-2 px-3 text-center">نوع ووحدة الشراء</th>
-                <th className="py-2 px-3 text-center">الربط والكمية بالقطع</th>
-                <th className="py-2 px-3 text-center">التكلفة (قديم / جديد)</th>
-                <th className="py-2 px-3 text-center">سعر البيع للمفرد</th>
-                <th className="py-2 px-3 text-center">مجموع الشراء</th>
-                <th className="py-2 px-3 text-center">الربح المتوقع</th>
-                <th className="py-2 px-3 text-center">حذف</th>
+                <th className="py-2 px-3">{t('اسم المادة', 'ناوی کاڵا', 'Product Name')}</th>
+                <th className="py-2 px-3 text-center">{t('نوع ووحدة الشراء', 'جۆر و یەکەی کڕین', 'Unit Type')}</th>
+                <th className="py-2 px-3 text-center">{t('الربط والكمية بالقطع', 'بڕ بە دانە', 'Total Qty (Pcs)')}</th>
+                <th className="py-2 px-3 text-center">{t('التكلفة (قديم / جديد)', 'تێچوو (کۆن / نوێ)', 'Cost (Old / New)')}</th>
+                <th className="py-2 px-3 text-center">{t('سعر البيع للمفرد', 'نرخی فرۆشتنی تاک', 'Retail Price')}</th>
+                <th className="py-2 px-3 text-center">{t('مجموع الشراء', 'کۆی کڕین', 'Total Purchase')}</th>
+                <th className="py-2 px-3 text-center">{t('الربح المتوقع', 'قازانجی پێشبینیکراو', 'Expected Profit')}</th>
+                <th className="py-2 px-3 text-center">{t('حذف', 'سڕینەوە', 'Delete')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
@@ -786,16 +791,16 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   <td className="py-2 px-3 text-center font-mono">
                     {item.purchaseUnitMode === 'carton' ? (
                       <span className="px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 font-bold border border-cyan-500/30">
-                        {item.cartonsCount} كرتون
+                        {item.cartonsCount} {t('كرتون', 'کارتۆن', 'Carton')}
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-md bg-slate-800 text-amber-300 font-bold">
-                        مفرد (قطع)
+                        {t('مفرد (قطع)', 'تاک (دانە)', 'Piece (Singles)')}
                       </span>
                     )}
                   </td>
                   <td className="py-2 px-3 text-center font-mono font-bold text-amber-300">
-                    {item.totalPieces} قطعة
+                    {item.totalPieces} {t('قطعة', 'دانە', 'Pcs')}
                   </td>
                   <td className="py-2 px-3 text-center font-mono">
                     <div className="text-[9.5px] text-slate-500 line-through">
@@ -822,6 +827,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                     <button
                       onClick={() => handleRemoveItemFromGrid(item.id)}
                       className="p-1 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 transition-all cursor-pointer"
+                      title={t('حذف', 'سڕینەوە', 'Delete')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -842,7 +848,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           
           {/* TOTAL INVOICE AMOUNT */}
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold">• إجمالي الفاتورة:</span>
+            <span className="text-slate-400 font-bold">• {t('إجمالي الفاتورة:', 'کۆی پسوڵە:', 'Total Invoice:')}</span>
             <span className="text-lg font-mono font-black text-cyan-300">
               {totalInvoiceAmount.toLocaleString()} <span className="text-xs text-slate-400 font-normal">{currency}</span>
             </span>
@@ -850,15 +856,15 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
           {/* TOTAL ITEMS & PIECES */}
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold">• المواد والقطع:</span>
+            <span className="text-slate-400 font-bold">• {t('المواد والقطع:', 'کاڵا و دانەکان:', 'Items & Pieces:')}</span>
             <span className="font-mono font-bold text-amber-300">
-              {totalItemsCount} مواد ({totalPiecesCount} قطعة)
+              {t(`${totalItemsCount} مواد (${totalPiecesCount} قطعة)`, `${totalItemsCount} کاڵا (${totalPiecesCount} دانە)`, `${totalItemsCount} items (${totalPiecesCount} pcs)`)}
             </span>
           </div>
 
           {/* TOTAL EXPECTED PROFIT */}
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold">• الأرباح المتوقعة:</span>
+            <span className="text-slate-400 font-bold">• {t('الأرباح المتوقعة:', 'قازانجی پێشبینیکراو:', 'Expected Profit:')}</span>
             <span className="font-mono font-black text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
               +{totalInvoiceExpectedProfit.toLocaleString()} {currency}
             </span>
@@ -871,7 +877,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <Calculator className="w-3.5 h-3.5 text-cyan-400" />
-            <span>الخصم والتسوية (صافي: {netTotalPayable.toLocaleString()} {currency})</span>
+            <span>{t(`الخصم والتسوية (صافي: ${netTotalPayable.toLocaleString()} ${currency})`, `داشکاندن و یەکلاییکردنەوە (صافی: ${netTotalPayable.toLocaleString()} ${currency})`, `Discount & Net: ${netTotalPayable.toLocaleString()} ${currency}`)}</span>
           </button>
 
         </div>
@@ -883,14 +889,14 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>[حفظ وتحديث المخزون والأسعار]</span>
+            <span>{t('[حفظ وتحديث المخزون والأسعار]', '[پاشەکەوتکردن و نوێکردنەوەی کۆگا و نرخ]', '[Save & Update Stock & Prices]')}</span>
           </button>
 
           <button
             onClick={handleResetForm}
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 transition-all cursor-pointer"
           >
-            إلغاء
+            {t('إلغاء', 'پاشگەزبوونەوە', 'Cancel')}
           </button>
         </div>
 
@@ -907,7 +913,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-sm text-cyan-300 flex items-center gap-2">
                 <Settings className="w-4 h-4 text-cyan-400" />
-                <span>تفاصيل إضافية لفاتورة التوريد</span>
+                <span>{t('تفاصيل إضافية لفاتورة التوريد', 'وردەکاری زیاتری پسوڵەی کڕین', 'Extra Invoice Details')}</span>
               </h3>
               <button onClick={() => setShowHeaderMoreModal(false)} className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -916,7 +922,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-300 font-bold block mb-1">رقم هاتف المورد / المندوب:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('رقم هاتف المورد / المندوب:', 'ژمارەی تەلەفۆنی دابینکەر / نوێنەر:', 'Supplier Phone:')}</label>
                 <input
                   type="text"
                   value={delegatePhone}
@@ -927,12 +933,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">ملاحظات الفاتورة:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('ملاحظات الفاتورة:', 'تێبینییەکانی پسوڵە:', 'Invoice Notes:')}</label>
                 <textarea
                   rows={3}
                   value={invoiceNotes}
                   onChange={(e) => setInvoiceNotes(e.target.value)}
-                  placeholder="ملاحظات حول حالة الشحنة أو تاريخ التوريد..."
+                  placeholder={t('ملاحظات حول حالة الشحنة أو تاريخ التوريد...', 'تێبینی لەسەر بار یان بەرواری گەیشتن...', 'Notes about shipment or date...')}
                   className="w-full bg-[#060b14] text-slate-200 py-1.5 px-3 rounded-xl border border-slate-700 focus:outline-none focus:border-cyan-400 resize-none"
                 />
               </div>
@@ -943,7 +949,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 onClick={() => setShowHeaderMoreModal(false)}
                 className="px-4 py-1.5 rounded-xl bg-cyan-600 text-white font-bold text-xs"
               >
-                تأكيد
+                {t('تأكيد', 'پەسەندکردن', 'Confirm')}
               </button>
             </div>
           </div>
@@ -957,7 +963,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-sm text-cyan-300 flex items-center gap-2">
                 <Tag className="w-4 h-4 text-cyan-400" />
-                <span>تفاصيل الباركود والعبوة للمادة</span>
+                <span>{t('تفاصيل الباركود والعبوة للمادة', 'وردەکاری بارکۆد و پاکەتی کاڵا', 'Item Barcode & Pack Details')}</span>
               </h3>
               <button onClick={() => setShowItemDetailsModal(false)} className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -966,7 +972,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-300 font-bold block mb-1">الباركود الخاصة بالمادة:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('الباركود الخاصة بالمادة:', 'بارکۆدی تایبەت بە کاڵا:', 'Item Barcode:')}</label>
                 <input
                   type="text"
                   value={barcodeInput}
@@ -976,7 +982,11 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                     if (trimmed) {
                       const dup = products.find(p => p.barcode.trim().toLowerCase() === trimmed.toLowerCase() && p.id !== selectedProduct?.id);
                       if (dup) {
-                        alert(isAr ? `⚠️ الباركود (${trimmed}) مسجل مسبقاً لمادة أخرى (${dup.nameAr || dup.name})!\nتم منع تعبئة الباركود المكرر لتفادي التضارب في المخزون.` : `⚠️ Barcode (${trimmed}) is already registered to (${dup.name}).`);
+                        alert(t(
+                          `⚠️ الباركود (${trimmed}) مسجل مسبقاً لمادة أخرى (${dup.nameAr || dup.name})!\nتم منع تعبئة الباركود المكرر لتفادي التضارب في المخزون.`,
+                          `⚠️ بارکۆدی (${trimmed}) پێشتر بۆ کاڵای تر تۆمارکراوە (${dup.nameAr || dup.name})!`,
+                          `⚠️ Barcode (${trimmed}) is already registered to (${dup.name}).`
+                        ));
                         setBarcodeInput('');
                         return;
                       }
@@ -989,7 +999,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">عدد القطع داخل الكرتون الواحد:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('عدد القطع داخل الكرتون الواحد:', 'ژمارەی دانە لە یەک کارتۆندا:', 'Pieces per Carton:')}</label>
                 <input
                   type="number"
                   min="1"
@@ -1005,7 +1015,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 onClick={() => setShowItemDetailsModal(false)}
                 className="px-4 py-1.5 rounded-xl bg-cyan-600 text-white font-bold text-xs"
               >
-                حفظ الإعدادات
+                {t('حفظ الإعدادات', 'پاشەکەوتکردن', 'Save')}
               </button>
             </div>
           </div>
@@ -1019,7 +1029,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-sm text-amber-300 flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-amber-400" />
-                <span>احتساب الأرباح وسعر البيع للمفرد</span>
+                <span>{t('احتساب الأرباح وسعر البيع للمفرد', 'هەژمارکردنی قازانج و نرخی فرۆشتنی تاک', 'Profit & Retail Price Calculator')}</span>
               </h3>
               <button onClick={() => setShowProfitModal(false)} className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -1028,7 +1038,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-emerald-300 font-bold block mb-1">سعر البيع للمفرد للزبون:</label>
+                <label className="text-emerald-300 font-bold block mb-1">{t('سعر البيع للمفرد للزبون:', 'نرخی فرۆشتنی تاک بۆ کڕیار:', 'Retail Sale Price:')}</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -1043,19 +1053,19 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
               <div className="p-3 rounded-xl bg-[#060b14] border border-slate-800 space-y-1.5">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">تكلفة الشراء للقطعة:</span>
+                  <span className="text-slate-400">{t('تكلفة الشراء للقطعة:', 'تێچووی کڕینی یەک دانە:', 'Cost per Piece:')}</span>
                   <span className="font-mono font-bold text-cyan-300">{effectivePieceCost.toLocaleString()} {currency}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">ربح القطعة الواحدة:</span>
+                  <span className="text-slate-400">{t('ربح القطعة الواحدة:', 'قازانجی یەک دانە:', 'Profit per Piece:')}</span>
                   <span className="font-mono font-bold text-amber-300">{currentPieceProfit.toLocaleString()} {currency}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">نسبة الربح %:</span>
+                  <span className="text-slate-400">{t('نسبة الربح %:', 'ڕێژەی قازانج ٪:', 'Profit Margin %:')}</span>
                   <span className="font-mono font-bold text-purple-300">{currentProfitMarginPercent}%</span>
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-800">
-                  <span className="text-white font-bold">إجمالي الربح المتوقع للمادة:</span>
+                  <span className="text-white font-bold">{t('إجمالي الربح المتوقع للمادة:', 'کۆی قازانجی پێشبینیکراو بۆ کاڵاکە:', 'Total Expected Profit:')}</span>
                   <span className="font-mono font-black text-emerald-400">+{currentTotalItemExpectedProfit.toLocaleString()} {currency}</span>
                 </div>
               </div>
@@ -1066,7 +1076,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 onClick={() => setShowProfitModal(false)}
                 className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs"
               >
-                تطبيق
+                {t('تطبيق', 'جێبەجێکردن', 'Apply')}
               </button>
             </div>
           </div>
@@ -1080,7 +1090,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-sm text-purple-300 flex items-center gap-2">
                 <SlidersHorizontal className="w-4 h-4 text-purple-400" />
-                <span>طريقة تحديث تكلفة المخزون</span>
+                <span>{t('طريقة تحديث تكلفة المخزون', 'شێوازی نوێکردنەوەی تێچووی کۆگا', 'Inventory Cost Method')}</span>
               </h3>
               <button onClick={() => setShowCostMethodModal(false)} className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -1104,12 +1114,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   className="mt-0.5 accent-purple-400"
                 />
                 <div>
-                  <span className="block font-bold text-white">1. المتوسط المرجح (Weighted Average Cost)</span>
+                  <span className="block font-bold text-white">1. {t('المتوسط المرجح (Weighted Average Cost)', 'تێکڕای هاوسەنگ (Weighted Average Cost)', 'Weighted Average Cost')}</span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
-                    الدمج بين الكميات والتكلفة القديمة والجديدة.
+                    {t('الدمج بين الكميات والتكلفة القديمة والجديدة.', 'تێکەڵکردنی بڕ و تێچووی کۆن و نوێ.', 'Blend old and new quantities and costs.')}
                   </span>
                   <span className="text-[10.5px] text-emerald-400 font-bold block mt-1">
-                    =&gt; التكلفة المحسوبة: {calculatedWeightedCost.toLocaleString()} {currency}
+                    =&gt; {t('التكلفة المحسوبة:', 'تێچووی هەژمارکراو:', 'Calculated Cost:')} {calculatedWeightedCost.toLocaleString()} {currency}
                   </span>
                 </div>
               </label>
@@ -1130,12 +1140,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   className="mt-0.5 accent-purple-400"
                 />
                 <div>
-                  <span className="block font-bold text-white">2. اعتماد السعر الجديد مباشرة</span>
+                  <span className="block font-bold text-white">2. {t('اعتماد السعر الجديد مباشرة', 'پشتڕاستکردنەوەی ڕاستەوخۆی نرخی نوێ', 'Direct New Price')}</span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
-                    تحديث تكلفة كافة القطع الحالية لسعر الشراء الجديد.
+                    {t('تحديث تكلفة كافة القطع الحالية لسعر الشراء الجديد.', 'نوێکردنەوەی تێچووی هەموو دانەکانی ئێستا بۆ نرخی نوێ.', 'Update cost of all current pieces to new purchase price.')}
                   </span>
                   <span className="text-[10.5px] text-cyan-400 font-bold block mt-1">
-                    =&gt; التكلفة المحسوبة: {currentNewPieceCost.toLocaleString()} {currency}
+                    =&gt; {t('التكلفة المحسوبة:', 'تێچووی هەژمارکراو:', 'Calculated Cost:')} {currentNewPieceCost.toLocaleString()} {currency}
                   </span>
                 </div>
               </label>
@@ -1146,7 +1156,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 onClick={() => setShowCostMethodModal(false)}
                 className="px-4 py-1.5 rounded-xl bg-purple-600 text-white font-bold text-xs"
               >
-                حفظ الإختيار
+                {t('حفظ الإختيار', 'پاشەکەوتکردنی هەڵبژاردن', 'Save Selection')}
               </button>
             </div>
           </div>
@@ -1160,7 +1170,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-sm text-cyan-300 flex items-center gap-2">
                 <Calculator className="w-4 h-4 text-cyan-400" />
-                <span>الخصم والتسوية المالي للفاتورة</span>
+                <span>{t('الخصم والتسوية المالي للفاتورة', 'داشکاندن و یەکلاییکردنەوەی دارایی پسوڵە', 'Financial Discount & Settlement')}</span>
               </h3>
               <button onClick={() => setShowSettlementModal(false)} className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -1169,7 +1179,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-300 font-bold block mb-1">الخصم المكتسب من المورد:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('الخصم المكتسب من المورد:', 'داشکاندنی بەدەستهاتوو لە دابینکەر:', 'Discount from Supplier:')}</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -1183,14 +1193,14 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">الصافي النهائي للوصل:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('الصافي النهائي للوصل:', 'کۆی صافی کۆتایی پسوڵە:', 'Net Final Total:')}</label>
                 <div className="w-full bg-[#060b14] text-emerald-400 font-mono font-black py-2 px-3 rounded-xl border border-emerald-500/40 text-center text-sm">
                   {netTotalPayable.toLocaleString()} {currency}
                 </div>
               </div>
 
               <div>
-                <label className="text-slate-300 font-bold block mb-1">المبلغ المدفوع نقدًا للمورد:</label>
+                <label className="text-slate-300 font-bold block mb-1">{t('المبلغ المدفوع نقدًا للمورد:', 'بڕی دراو بە نەقد بە دابینکەر:', 'Amount Paid in Cash:')}</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -1205,7 +1215,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
               {remainingDebtAmount > 0 && (
                 <div className="p-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-300 font-bold text-[11px] text-center">
-                  المبلغ المتبقي كدين على المحل: {remainingDebtAmount.toLocaleString()} {currency}
+                  {t(`المبلغ المتبقي كدين على المحل: ${remainingDebtAmount.toLocaleString()} ${currency}`, `بڕی ماوە وەک قەرز لەسەر فرۆشگا: ${remainingDebtAmount.toLocaleString()} ${currency}`, `Remaining Debt Balance: ${remainingDebtAmount.toLocaleString()} ${currency}`)}
                 </div>
               )}
             </div>
@@ -1215,7 +1225,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 onClick={() => setShowSettlementModal(false)}
                 className="px-4 py-1.5 rounded-xl bg-cyan-600 text-white font-bold text-xs"
               >
-                تم
+                {t('تم', 'تەواو', 'Done')}
               </button>
             </div>
           </div>
@@ -1230,7 +1240,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               <div className="flex items-center gap-2">
                 <History className="w-4 h-4 text-cyan-400" />
                 <h3 className="font-bold text-sm text-white">
-                  سجل فواتير التوريد والمشتريات ({purchaseInvoices.length})
+                  {t(`سجل فواتير التوريد والمشتريات (${purchaseInvoices.length})`, `مێژووی پسوڵەکانی کڕین (${purchaseInvoices.length})`, `Purchase Invoices History (${purchaseInvoices.length})`)}
                 </h3>
               </div>
               <button onClick={() => setShowHistoryModal(false)} className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
@@ -1240,17 +1250,19 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
               {purchaseInvoices.length === 0 ? (
-                <p className="text-center py-8 text-slate-400 text-xs">لا توجد فواتير شراء سابقة مسجلة</p>
+                <p className="text-center py-8 text-slate-400 text-xs">{t('لا توجد فواتير شراء سابقة مسجلة', 'هیچ پسوڵەیەکی کڕینی پێشوو تۆمار نەکراوە', 'No previous purchase invoices recorded')}</p>
               ) : (
                 purchaseInvoices.map(inv => (
                   <div key={inv.id} className="p-3 rounded-xl bg-[#060b14] border border-slate-800 hover:border-cyan-500/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div>
                       <div className="flex items-center gap-2 font-mono font-bold text-cyan-300">
                         <span>{inv.invoiceNumber}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{inv.date}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                          {formatDateDDMMYYYY(inv.date)} {inv.time ? `• ${inv.time}` : ''}
+                        </span>
                       </div>
                       <p className="font-bold text-white mt-0.5">{inv.supplierName}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{inv.items.length} مواد بالفاتورة</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{t(`${inv.items.length} مواد بالفاتورة`, `${inv.items.length} کاڵا لە پسوڵەدا`, `${inv.items.length} items in invoice`)}</p>
                     </div>
 
                     <div className="text-left rtl:text-right font-mono">
@@ -1258,11 +1270,11 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                         {currency}{inv.totalInvoiceAmount.toLocaleString()}
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        مدفوع: {currency}{inv.paidAmount.toLocaleString()}
+                        {t('مدفوع:', 'دراو:', 'Paid:')} {currency}{inv.paidAmount.toLocaleString()}
                       </span>
                       {inv.remainingAmount > 0 && (
                         <span className="text-[10px] text-amber-400 font-bold block">
-                          متبقي (دين): {currency}{inv.remainingAmount.toLocaleString()}
+                          {t('متبقي (دين):', 'ماوە (قەرز):', 'Remaining:')} {currency}{inv.remainingAmount.toLocaleString()}
                         </span>
                       )}
                     </div>

@@ -28,6 +28,7 @@ import { SaleTransaction, StoreSettings } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { isToday, parseDate, formatDisplayDate, formatDisplayTime, formatDisplayDateTime } from '../lib/dateUtils';
 import { ReceiptModal } from './ReceiptModal';
+import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
 interface ShiftReportModalProps {
   isOpen: boolean;
@@ -324,17 +325,15 @@ export const ShiftReportModal: React.FC<ShiftReportModalProps> = ({
                 {isAr ? 'جميع الأوقات' : 'All Time'}
               </button>
 
-              {/* Custom Date Picker Calendar */}
-              <div className={`flex items-center gap-2 px-3 py-1 rounded-xl border transition-all ${dateFilterMode === 'custom' ? 'bg-cyan-950/80 border-cyan-400 text-cyan-200' : 'bg-slate-800 border-slate-700 text-slate-300'}`}>
-                <span className="text-[11px] font-bold">{isAr ? 'تقويم التاريخ:' : 'Calendar Date:'}</span>
-                <input
-                  type="date"
+              {/* Custom Date Picker Calendar (DD/MM/YYYY) */}
+              <div className="w-56">
+                <DatePickerDDMMYYYY
                   value={selectedCustomDate}
-                  onChange={(e) => {
-                    setSelectedCustomDate(e.target.value);
+                  onChange={(dateStr) => {
+                    setSelectedCustomDate(dateStr);
                     setDateFilterMode('custom');
                   }}
-                  className="bg-transparent text-cyan-300 font-mono font-bold text-xs focus:outline-none cursor-pointer"
+                  lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
                 />
               </div>
             </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X } from 'lucide-react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -23,6 +23,7 @@ interface HeaderProps {
   onOpenSalesReturn?: () => void;
   onOpenCashDrawer?: () => void;
   onOpenShiftReport?: () => void;
+  onOpenCustomerDisplay?: () => void;
   onOpenMobileSync?: () => void;
   onOpenDesktopApp?: () => void;
   onOpenCSharpCode?: () => void;
@@ -42,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSalesReturn,
   onOpenCashDrawer,
   onOpenShiftReport,
+  onOpenCustomerDisplay,
   onToggleSidebar,
   isSidebarOpen = false,
 }) => {

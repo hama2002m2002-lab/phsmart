@@ -17,20 +17,21 @@ const firebaseConfig = {
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore DB
-export const db = getFirestore(app);
+// Initialize Firestore DB with exact configured database ID
+const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || localConfig.firestoreDatabaseId || '').trim();
+export const db = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
 
 // Enable IndexedDB Local Persistence for Hybrid Offline-First Storage
 if (typeof window !== 'undefined') {
   enableIndexedDbPersistence(db).catch((err: any) => {
-    if (err.code === 'failed-precondition') {
+    if (err?.code === 'failed-precondition') {
       // Multiple tabs open, persistence can only be enabled in one tab at a time.
-      console.warn('Persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore persistence notice: Multiple tabs open');
+    } else if (err?.code === 'unimplemented') {
       // The current browser does not support all of the features required to enable persistence
-      console.warn('Persistence not supported by browser');
+      console.warn('Firestore persistence not supported by browser');
     } else {
-      console.warn('Firestore persistence warning:', err);
+      console.warn('Firestore persistence notice:', err);
     }
   });
 }

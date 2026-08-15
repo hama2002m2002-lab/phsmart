@@ -23,7 +23,8 @@ import {
   Receipt,
   Settings,
   Smile,
-  Crown
+  Crown,
+  DollarSign
 } from 'lucide-react';
 import { UserAccount, UserPermissions, StoreSettings } from '../types';
 import { BitmojiAvatarSelector, defaultBitmojiPresets, bitmojiToDataUri } from './BitmojiAvatarSelector';
@@ -44,6 +45,7 @@ const defaultPermissions: UserPermissions = {
   canManageCustomers: true,
   canManageOrders: true,
   canManageSettings: false,
+  canViewPurchasePriceInPOS: true,
 };
 
 const adminPermissions: UserPermissions = {
@@ -59,6 +61,7 @@ const adminPermissions: UserPermissions = {
   canViewAnalytics: true,
   canViewReports: true,
   canManageSettings: true,
+  canViewPurchasePriceInPOS: true,
 };
 
 const cashierPermissions: UserPermissions = {
@@ -74,6 +77,7 @@ const cashierPermissions: UserPermissions = {
   canViewAnalytics: false,
   canViewReports: false,
   canManageSettings: false,
+  canViewPurchasePriceInPOS: false,
 };
 
 export const AccountModal: React.FC<AccountModalProps> = ({
@@ -719,6 +723,27 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 </div>
                 <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canManageSettings ? 'bg-emerald-600' : 'bg-slate-300'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canManageSettings ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </div>
+
+              {/* 13. View Purchase / Cost Price in POS */}
+              <div
+                onClick={() => togglePermission('canViewPurchasePriceInPOS')}
+                className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all select-none ${
+                  permissions.canViewPurchasePriceInPOS 
+                    ? 'bg-purple-50 border-purple-500 text-purple-900 font-bold shadow-sm' 
+                    : 'bg-slate-100 border-slate-300 text-slate-500'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-purple-600" />
+                  <div>
+                    <span className="block font-bold">{isKu ? 'نیشاندانی نرخی کڕین لە شاشەی کاشێر' : isAr ? 'إظهار سعر الشراء في واجهة الكاشير (POS)' : 'Show Cost Price in POS'}</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">{isKu ? 'ڕێگەدان بە کاشێر بۆ بینینی نرخی کڕین لە سەبەتە' : isAr ? 'السماح للكاشير بمشاهدة سعر الشراء في السلة' : 'Allow viewing purchase price in cart'}</span>
+                  </div>
+                </div>
+                <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${permissions.canViewPurchasePriceInPOS ? 'bg-purple-600' : 'bg-slate-300'}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${permissions.canViewPurchasePriceInPOS ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'}`} />
                 </div>
               </div>
 

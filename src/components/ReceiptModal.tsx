@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Printer, ShoppingBag, FileText, Layout, Copy, Check, Eye, Layers, Zap, Cpu, AlertCircle } from 'lucide-react';
 import { SaleTransaction, StoreSettings } from '../types';
 import { formatNumber } from '../lib/formatUtils';
+import { formatDisplayDateTime, formatDisplayTime, formatDisplayDate } from '../lib/dateUtils';
 import { BarcodeGraphic } from './BarcodeGraphic';
 import {
   isWebSerialSupported,
@@ -227,7 +228,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                {isAr ? `الكاشير المسؤول: ${sale.cashierName || 'غير مسمى'} • التاريخ: ${sale.timestamp}` : `Cashier: ${sale.cashierName || '-'} • Date: ${sale.timestamp}`}
+                {isAr ? `الكاشير المسؤول: ${sale.cashierName || 'غير مسمى'} • التاريخ: ${formatDisplayDateTime(sale.timestamp, lang)}` : `Cashier: ${sale.cashierName || '-'} • Date: ${formatDisplayDateTime(sale.timestamp, lang)}`}
               </p>
             </div>
           </div>
@@ -581,7 +582,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                     <div className="text-right rtl:text-left space-y-1 bg-[#0F172A] p-3 rounded-2xl border border-slate-700">
                       <div className="text-xs text-slate-400">{isAr ? 'رقم الفاتورة:' : 'Invoice No:'}</div>
                       <div className="text-lg font-black text-cyan-400 font-mono">{sale.invoiceNumber}</div>
-                      <div className="text-[11px] text-slate-300 font-mono">{sale.timestamp}</div>
+                      <div className="text-[11px] text-slate-300 font-mono">{formatDisplayDateTime(sale.timestamp, lang)}</div>
                       {showBarcode && (
                         <div className="pt-1.5 flex justify-end rtl:justify-start">
                           <BarcodeGraphic value={sale.invoiceNumber} height={32} showText={false} />
@@ -594,12 +595,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                   <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 bg-[#0F172A] p-3.5 rounded-2xl border border-slate-800 text-xs">
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">{isAr ? 'تاريخ ووقت الوصل:' : 'Receipt Time:'}</span>
-                      <strong className="text-cyan-300 font-mono text-[11px]">{sale.timestamp}</strong>
+                      <strong className="text-cyan-300 font-mono text-[11px]">{formatDisplayDateTime(sale.timestamp, lang)}</strong>
                     </div>
 
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">{isAr ? 'أول إضافة للمواد:' : 'First Item Added:'}</span>
-                      <strong className="text-amber-300 font-mono text-[11px]">{safeItems[0]?.addedAtTime || sale.timestamp}</strong>
+                      <strong className="text-amber-300 font-mono text-[11px]">{formatDisplayTime(safeItems[0]?.addedAtTime || sale.timestamp, lang)}</strong>
                     </div>
 
                     <div>
@@ -696,7 +697,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                               </td>
                               <td className="p-2.5 text-center">
                                 <span className="font-mono text-[10px] text-cyan-300 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30">
-                                  🕒 {item.addedAtTime || safeItems[0]?.addedAtTime || sale.timestamp}
+                                  🕒 {formatDisplayTime(item.addedAtTime || safeItems[0]?.addedAtTime || sale.timestamp, lang)}
                                 </span>
                               </td>
                               <td className="p-2.5 text-center">
@@ -825,11 +826,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">{isAr ? 'تاريخ الوصل:' : 'Date:'}</span>
-                      <span className="text-slate-200 font-mono text-[10px]">{sale.timestamp}</span>
+                      <span className="text-slate-200 font-mono text-[10px]">{formatDisplayDateTime(sale.timestamp, lang)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">{isAr ? 'أول إضافة للمواد:' : 'First Added:'}</span>
-                      <span className="text-amber-300 font-mono text-[10px]">{safeItems[0]?.addedAtTime || sale.timestamp}</span>
+                      <span className="text-amber-300 font-mono text-[10px]">{formatDisplayTime(safeItems[0]?.addedAtTime || sale.timestamp, lang)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">{isAr ? 'الكاشير:' : 'Cashier:'}</span>
@@ -869,7 +870,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                           <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
                             <span>{item.quantity} x {settings.currencySymbol}{formatNumber(item.price)}</span>
                             <span className="text-[9px] text-cyan-300 font-mono bg-cyan-950/80 px-1 py-0.2 rounded border border-cyan-800">
-                              🕒 {item.addedAtTime || safeItems[0]?.addedAtTime || sale.timestamp}
+                              🕒 {formatDisplayTime(item.addedAtTime || safeItems[0]?.addedAtTime || sale.timestamp, lang)}
                             </span>
                           </div>
                         </div>

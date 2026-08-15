@@ -32,6 +32,8 @@ import { DesktopAppModal } from './components/DesktopAppModal';
 import { CSharpExporterModal } from './components/CSharpExporterModal';
 import { CashierAccountsModal } from './components/CashierAccountsModal';
 import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAvatarSelector';
+import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
+import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
 
 import {
   initialProducts,
@@ -69,7 +71,11 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(state));
+      if (state === undefined) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, JSON.stringify(state));
+      }
     } catch (err) {
       console.warn(`Failed to save to localStorage key "${key}":`, err);
     }
@@ -102,8 +108,8 @@ const initialUserAccounts: UserAccount[] = [
 ];
 
 export function App() {
-  // Current logged in user is null on app launch to force login screen immediately
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  // Current logged in user is persisted so updates and reloads never revert to the PIN login screen
+  const [currentUser, setCurrentUser] = usePersistentState<UserAccount | null>('supermarket_current_user_v1', initialUserAccounts[0]);
   const [userAccounts, setUserAccounts] = usePersistentState<UserAccount[]>('supermarket_user_accounts_v3', initialUserAccounts);
 
   // Ensure legacy fake accounts (like user-cashier-2002) are removed
@@ -131,8 +137,9 @@ export function App() {
     });
   };
 
-  const [activeTab, setActiveTab] = useState<MainNavTab>('dashboard');
-  const [activeTopTab, setActiveTopTab] = useState<'overview' | 'analytics' | 'reports' | 'notifications'>('overview');
+  // Persist activeTab & activeTopTab so any update maintains the exact view the user is on
+  const [activeTab, setActiveTab] = usePersistentState<MainNavTab>('supermarket_active_tab_v1', 'dashboard');
+  const [activeTopTab, setActiveTopTab] = usePersistentState<'overview' | 'analytics' | 'reports' | 'notifications'>('supermarket_active_top_tab_v1', 'overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,6 +162,7 @@ export function App() {
   const [isDesktopAppModalOpen, setIsDesktopAppModalOpen] = useState(false);
   const [isCSharpModalOpen, setIsCSharpModalOpen] = useState(false);
   const [isAccountsModalOpen, setIsAccountsModalOpen] = useState(false);
+  const [isYellowLineModalOpen, setIsYellowLineModalOpen] = useState(false);
   const [isReportsFullscreen, setIsReportsFullscreen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -347,12 +355,21 @@ export function App() {
     setSalesHistory(prev => [newSale, ...prev]);
     syncWriteDocument('sales', newSale.id, newSale);
 
-    // Sync sold product stocks to Firestore immediately
+    const isRefund = newSale.status === 'refunded';
+
+    // Sync sold or returned product stocks to Firestore immediately taking carton units into account
     newSale.items.forEach(item => {
       const updatedProd = products.find(p => p.id === item.productId);
       if (updatedProd) {
-        const newStock = Math.max(0, updatedProd.stock - item.quantity);
-        const prodData = { ...updatedProd, stock: newStock };
+        let unitsMultiplier = 1;
+        if (item.saleType === 'carton') {
+          unitsMultiplier = (updatedProd.unitsPerCarton && updatedProd.unitsPerCarton > 0) ? updatedProd.unitsPerCarton : 1;
+        }
+        const totalUnitsChange = item.quantity * unitsMultiplier;
+        const newStock = isRefund 
+          ? (updatedProd.stock + totalUnitsChange) 
+          : (updatedProd.stock - totalUnitsChange);
+        const prodData = { ...updatedProd, stock: newStock, totalUnits: newStock };
         syncWriteDocument('products', item.productId, prodData);
       }
     });
@@ -459,18 +476,75 @@ export function App() {
     const usersData = backup.userAccounts || backup.users;
     if (usersData && Array.isArray(usersData)) {
       setUserAccounts(usersData);
-      localStorage.setItem('supermarket_user_accounts_v1', JSON.stringify(usersData));
+      localStorage.setItem('supermarket_user_accounts_v3', JSON.stringify(usersData));
       syncBulkWriteCollection('users', usersData);
       restoredCount++;
     }
     if (backup.settings && typeof backup.settings === 'object') {
       setSettings(backup.settings);
-      localStorage.setItem('supermarket_settings_v1', JSON.stringify(backup.settings));
+      localStorage.setItem('supermarket_settings_v3', JSON.stringify(backup.settings));
       syncWriteDocument('settings', 'store', backup.settings);
       restoredCount++;
     }
+    // Restore damaged logs
+    if (backup.damagedLogs && Array.isArray(backup.damagedLogs)) {
+      localStorage.setItem('pos_damaged_items_logs', JSON.stringify(backup.damagedLogs));
+      restoredCount++;
+    }
+    // Restore delegate returns
+    if (backup.delegateReturns && Array.isArray(backup.delegateReturns)) {
+      localStorage.setItem('pos_delegate_returns_logs', JSON.stringify(backup.delegateReturns));
+      restoredCount++;
+    }
+    // Restore operating expenses
+    if (backup.operatingExpenses && Array.isArray(backup.operatingExpenses)) {
+      localStorage.setItem('pos_custom_operating_expenses', JSON.stringify(backup.operatingExpenses));
+      restoredCount++;
+    }
+    // Restore custom expense types
+    if (backup.customExpenseTypes && Array.isArray(backup.customExpenseTypes)) {
+      localStorage.setItem('pos_custom_expense_types', JSON.stringify(backup.customExpenseTypes));
+      restoredCount++;
+    }
+    // Restore cash adjustments
+    if (backup.cashAdjustments && Array.isArray(backup.cashAdjustments)) {
+      localStorage.setItem('pos_cash_adjustments', JSON.stringify(backup.cashAdjustments));
+      restoredCount++;
+    }
+
+    // Trigger storage event for live sub-components
+    try {
+      window.dispatchEvent(new Event('storage'));
+    } catch {
+      // ignore
+    }
+
     return restoredCount;
   };
+
+  const [isCustomerDisplayRoute, setIsCustomerDisplayRoute] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.location.search.includes('view=customer-display') || window.location.hash.includes('customer-display');
+  });
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const isDisplay = window.location.search.includes('view=customer-display') || window.location.hash.includes('customer-display');
+      setIsCustomerDisplayRoute(isDisplay);
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
+  // If this window was opened specifically as a standalone Customer Display (e.g. secondary monitor / tablet)
+  if (isCustomerDisplayRoute) {
+    return <CustomerDisplayScreen isStandalone={true} />;
+  }
 
   // If user is not logged in, render the futuristic LoginScreen
   if (!currentUser) {
@@ -595,6 +669,8 @@ export function App() {
             onSaleCompleted={handleSaleCompleted}
             showInventory={showPOSInventory}
             setShowInventory={setShowPOSInventory}
+            showYellowLineModal={isYellowLineModalOpen}
+            setShowYellowLineModal={setIsYellowLineModalOpen}
             isAnyModalOpen={isAnyModalOpen}
             salesHistory={salesHistory}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
@@ -607,6 +683,7 @@ export function App() {
             }}
             onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
             onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
+            onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
             currentUser={currentUser}
           />
         );
@@ -852,6 +929,7 @@ export function App() {
         onOpenDesktopApp={() => setIsDesktopAppModalOpen(true)}
         onOpenCSharpCode={() => setIsCSharpModalOpen(true)}
         onOpenAccountsModal={() => setIsAccountsModalOpen(true)}
+        onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
         isFirebaseSynced={isFirebaseSynced}
         onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
         isSidebarOpen={isSidebarOpen}
@@ -970,7 +1048,7 @@ export function App() {
             >
               <Package className={`w-5 h-5 mb-0.5 ${activeTab === 'products' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
               <span className="text-[10px] leading-tight font-bold">
-                {settings.language === 'ku' ? 'کاڵاکان' : settings.language === 'ar' ? 'المنتجات' : 'Products'}
+                {settings.language === 'ku' ? 'کۆگا' : settings.language === 'ar' ? 'المخزن' : 'Warehouse'}
               </span>
               {lowStockCount > 0 && (
                 <span className="absolute -top-1 end-1 w-4 h-4 bg-amber-500 text-slate-950 font-black text-[9px] rounded-full flex items-center justify-center border border-[#0B1120] animate-pulse">

@@ -93,6 +93,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           canViewAnalytics: true,
           canViewReports: true,
           canManageSettings: true,
+          canViewPurchasePriceInPOS: true,
         };
       } else if (preset === 'cashier') {
         newPerms = {
@@ -108,6 +109,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           canViewAnalytics: false,
           canViewReports: false,
           canManageSettings: false,
+          canViewPurchasePriceInPOS: false,
         };
       } else {
         newPerms = {
@@ -123,6 +125,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           canViewAnalytics: false,
           canViewReports: false,
           canManageSettings: false,
+          canViewPurchasePriceInPOS: false,
         };
       }
       const updatedUser = { ...usr, permissions: newPerms };
@@ -263,6 +266,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       descEn: 'Manage system settings and user credentials', 
       icon: ShieldAlert, 
       getVal: (p?: UserPermissions) => p?.canManageSettings ?? false 
+    },
+    { 
+      key: 'canViewPurchasePriceInPOS', 
+      labelAr: 'إظهار سعر الشراء في سلة الكاشير (POS)', 
+      labelKu: 'نیشاندانی نرخی کڕین لە شاشەی کاشێر (POS)', 
+      labelEn: 'Show Purchase Price in POS Cart', 
+      descAr: 'السماح لمستخدم الكاشير بمشاهدة سعر تكلفة وشراء المادة في السلة', 
+      descKu: 'ڕێگەدان بە کاشێر بۆ بینینی نرخی تێچوو و کڕینی دەرمان لە سەبەتەدا', 
+      descEn: 'Allow cashier to see medicine purchase and cost price in sales cart', 
+      icon: DollarSign, 
+      getVal: (p?: UserPermissions) => p?.canViewPurchasePriceInPOS ?? false 
     },
   ];
 
@@ -1354,31 +1368,57 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   try {
                     if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
                       const excelParsed = await parseExcelBackupFile(file);
-                      if (excelParsed.products && excelParsed.products.length > 0) {
-                        const existingProds = products || JSON.parse(localStorage.getItem('supermarket_products_v1') || '[]');
-                        const merged = [...excelParsed.products];
-                        existingProds.forEach((p: Product) => {
-                          if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                            merged.push(p);
-                          }
-                        });
+                      const hasData = (excelParsed.products && excelParsed.products.length > 0) ||
+                        (excelParsed.suppliers && excelParsed.suppliers.length > 0) ||
+                        (excelParsed.customers && excelParsed.customers.length > 0) ||
+                        (excelParsed.purchaseInvoices && excelParsed.purchaseInvoices.length > 0);
+
+                      if (hasData) {
+                        let mergedProducts = excelParsed.products;
+                        if (excelParsed.products && excelParsed.products.length > 0) {
+                          const existingProds = products || JSON.parse(localStorage.getItem('supermarket_products_v1') || '[]');
+                          const merged = [...excelParsed.products];
+                          existingProds.forEach((p: Product) => {
+                            if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
+                              merged.push(p);
+                            }
+                          });
+                          mergedProducts = merged;
+                        }
 
                         const backupPayload = {
                           ...excelParsed,
-                          products: merged
+                          products: mergedProducts
                         };
 
                         if (onImportBackup) {
                           onImportBackup(backupPayload);
                         } else {
-                          localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
-                          syncBulkWriteCollection('products', merged);
+                          if (mergedProducts) {
+                            localStorage.setItem('supermarket_products_v1', JSON.stringify(mergedProducts));
+                            syncBulkWriteCollection('products', mergedProducts);
+                          }
+                          if (excelParsed.suppliers) {
+                            localStorage.setItem('supermarket_suppliers_v1', JSON.stringify(excelParsed.suppliers));
+                            syncBulkWriteCollection('suppliers', excelParsed.suppliers);
+                          }
+                          if (excelParsed.customers) {
+                            localStorage.setItem('supermarket_customers_v1', JSON.stringify(excelParsed.customers));
+                            syncBulkWriteCollection('customers', excelParsed.customers);
+                          }
+                          if (excelParsed.purchaseInvoices) {
+                            localStorage.setItem('supermarket_purchases_v1', JSON.stringify(excelParsed.purchaseInvoices));
+                            syncBulkWriteCollection('purchases', excelParsed.purchaseInvoices);
+                          }
                         }
 
-                        setImportStatus(isKu ? `✅ بە سەرکەوتوویی ${excelParsed.products.length} کاڵا هاوردەکران و ڕێکخران لە کۆگادا!` : isAr ? `✅ تم استيراد وترتيب ${excelParsed.products.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${excelParsed.products.length} products into inventory!`);
-                        setTimeout(() => setImportStatus(''), 5000);
+                        const prodCount = excelParsed.products?.length || 0;
+                        const supCount = excelParsed.suppliers?.length || 0;
+                        const custCount = excelParsed.customers?.length || 0;
+                        setImportStatus(isKu ? `✅ بە سەرکەوتوویی هەموو داتاکان (${prodCount} کاڵا، ${supCount} دابینکەر، ${custCount} کڕیار) هاوردەکران!` : isAr ? `✅ تم استيراد واستعادة كافة البيانات بنجاح (${prodCount} مادة، ${supCount} مورد، ${custCount} عميل)!` : `✅ Successfully imported all data (${prodCount} products, ${supCount} suppliers, ${custCount} customers)!`);
+                        setTimeout(() => setImportStatus(''), 6000);
                       } else {
-                        alert(isKu ? 'هیچ پەڕەیەکی دروستی کاڵاکان لە فایلی ئێکسڵ نەدۆزرایەوە!' : isAr ? 'لم يتم العثور على ورقة مواد صالحة في ملف الإكسل!' : 'No valid products sheet found in Excel file!');
+                        alert(isKu ? 'هیچ داتایەکی دروست لە فایلی ئێکسڵ نەدۆزرایەوە!' : isAr ? 'لم يتم العثور على أوراق بيانات صالحة في ملف الإكسل!' : 'No valid data sheets found in Excel file!');
                       }
                     } else {
                       const reader = new FileReader();
@@ -1399,8 +1439,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                             if (parsedData.customers) localStorage.setItem('supermarket_customers_v1', JSON.stringify(parsedData.customers));
                           }
                           const prodsCount = Array.isArray(parsedData.products) ? parsedData.products.length : (Array.isArray(parsedData) ? parsedData.length : 0);
-                          setImportStatus(isKu ? `✅ هەموو زانیارییەکان (${prodsCount} کاڵا) بە سەرکەوتوویی گەڕێنرانەوە!` : isAr ? `✅ تم استعادة وترتيب كافة البيانات (${prodsCount} مادة) بنجاح!` : 'Data restored successfully!');
-                          setTimeout(() => setImportStatus(''), 5000);
+                          setImportStatus(isKu ? `✅ هەموو زانیارییەکان و ڕاپۆرتەکان بە سەرکەوتوویی گەڕێنرانەوە!` : isAr ? `✅ تم استعادة وترتيب كافة البيانات والتقارير والعمليات بنجاح!` : 'All store data & reports restored successfully!');
+                          setTimeout(() => setImportStatus(''), 6000);
                         } catch (err) {
                           alert(isKu ? 'پەڕگەی پاشەکەوتی JSON دروست نییە!' : isAr ? 'ملف النسخة الاحتياطية غير صالح!' : 'Invalid backup JSON file!');
                         }
@@ -1424,7 +1464,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   const currentSuppliers = suppliers || JSON.parse(localStorage.getItem('supermarket_suppliers_v1') || '[]');
                   const currentCustomers = customers || JSON.parse(localStorage.getItem('supermarket_customers_v1') || '[]');
                   const currentPurchases = purchaseInvoices || JSON.parse(localStorage.getItem('supermarket_purchases_v1') || '[]');
-                  const currentUsers = userAccounts || JSON.parse(localStorage.getItem('supermarket_user_accounts_v1') || '[]');
+                  const currentUsers = userAccounts || JSON.parse(localStorage.getItem('supermarket_user_accounts_v3') || localStorage.getItem('supermarket_user_accounts_v1') || '[]');
+                  const currentOrders = orders || JSON.parse(localStorage.getItem('supermarket_orders_v1') || '[]');
+                  const currentNotifs = notifications || JSON.parse(localStorage.getItem('supermarket_notifications_v1') || '[]');
+                  const currentDamaged = JSON.parse(localStorage.getItem('pos_damaged_items_logs') || '[]');
+                  const currentDelegateReturns = JSON.parse(localStorage.getItem('pos_delegate_returns_logs') || '[]');
+                  const currentExpenses = JSON.parse(localStorage.getItem('pos_custom_operating_expenses') || '[]');
+                  const currentExpenseTypes = JSON.parse(localStorage.getItem('pos_custom_expense_types') || '[]');
+                  const currentCashAdjustments = JSON.parse(localStorage.getItem('pos_cash_adjustments') || '[]');
 
                   exportStoreToExcel({
                     products: currentProducts,
@@ -1433,6 +1480,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     customers: currentCustomers,
                     purchaseInvoices: currentPurchases,
                     userAccounts: currentUsers,
+                    orders: currentOrders,
+                    notifications: currentNotifs,
+                    damagedLogs: currentDamaged,
+                    delegateReturns: currentDelegateReturns,
+                    operatingExpenses: currentExpenses,
+                    customExpenseTypes: currentExpenseTypes,
+                    cashAdjustments: currentCashAdjustments,
                     settings: settings,
                     exportedAt: new Date().toISOString()
                   });
@@ -1440,7 +1494,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 text-white font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:brightness-110 active:scale-95"
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
-                <span>{isKu ? '📊 هەناردەکردنی کۆپییەکی یەدەگی گشتگیر (Excel .xlsx)' : isAr ? '📊 تصدير نسخة احتياطية شاملة (Excel .xlsx)' : 'Export Full Store Backup (Excel .xlsx)'}</span>
+                <span>{isKu ? '📊 هەناردەکردنی هەموو داتاکان و ڕاپۆرتەکان (Excel .xlsx)' : isAr ? '📊 تصدير كافة البيانات والتقارير الشاملة (Excel .xlsx)' : 'Export Full Store & Reports Backup (Excel .xlsx)'}</span>
               </button>
 
               {/* Excel Products Only Button */}
@@ -1466,22 +1520,29 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     suppliers: suppliers || JSON.parse(localStorage.getItem('supermarket_suppliers_v1') || '[]'),
                     customers: customers || JSON.parse(localStorage.getItem('supermarket_customers_v1') || '[]'),
                     purchaseInvoices: purchaseInvoices || JSON.parse(localStorage.getItem('supermarket_purchases_v1') || '[]'),
-                    userAccounts: userAccounts || JSON.parse(localStorage.getItem('supermarket_user_accounts_v1') || '[]'),
-                    settings: settings || JSON.parse(localStorage.getItem('supermarket_settings_v1') || '{}'),
+                    userAccounts: userAccounts || JSON.parse(localStorage.getItem('supermarket_user_accounts_v3') || localStorage.getItem('supermarket_user_accounts_v1') || '[]'),
+                    orders: orders || JSON.parse(localStorage.getItem('supermarket_orders_v1') || '[]'),
+                    notifications: notifications || JSON.parse(localStorage.getItem('supermarket_notifications_v1') || '[]'),
+                    damagedLogs: JSON.parse(localStorage.getItem('pos_damaged_items_logs') || '[]'),
+                    delegateReturns: JSON.parse(localStorage.getItem('pos_delegate_returns_logs') || '[]'),
+                    operatingExpenses: JSON.parse(localStorage.getItem('pos_custom_operating_expenses') || '[]'),
+                    customExpenseTypes: JSON.parse(localStorage.getItem('pos_custom_expense_types') || '[]'),
+                    cashAdjustments: JSON.parse(localStorage.getItem('pos_cash_adjustments') || '[]'),
+                    settings: settings || JSON.parse(localStorage.getItem('supermarket_settings_v3') || localStorage.getItem('supermarket_settings_v1') || '{}'),
                     exportedAt: new Date().toISOString()
                   };
                   const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `supermarket_store_backup_${new Date().toISOString().split('T')[0]}.json`;
+                  a.download = `supermarket_store_full_backup_${new Date().toISOString().split('T')[0]}.json`;
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
                 className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               >
                 <Download className="w-4 h-4" />
-                <span>{isKu ? 'هەناردەکردنی داتای JSON' : isAr ? 'تصدير بيانات JSON' : 'Export JSON Data'}</span>
+                <span>{isKu ? 'هەناردەکردنی هەموو داتای JSON' : isAr ? 'تصدير النسخة الاحتياطية الكاملة (JSON)' : 'Export Full Backup (JSON)'}</span>
               </button>
 
               {/* Import Excel or JSON Button */}
@@ -1491,7 +1552,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               >
                 <Upload className="w-4 h-4" />
-                <span>{isKu ? 'هاوردەکردنی پەڕگە (Excel / JSON)' : isAr ? 'استيراد ملف (Excel / JSON)' : 'Import (Excel / JSON)'}</span>
+                <span>{isKu ? 'هاوردەکردنی پەڕگە (Excel / JSON)' : isAr ? 'استيراد نسخة احتياطية (Excel / JSON)' : 'Import Backup (Excel / JSON)'}</span>
               </button>
             </div>
           </div>

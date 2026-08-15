@@ -15,7 +15,7 @@ export const uiTranslations: TranslationDict = {
   reports: { ar: 'التقارير المالية', en: 'Reports', ku: 'ڕاپۆرتە داراییەکان' },
   cashierAccounts: { ar: 'كشف حسابات الكاشيرية', en: 'Cashier Accounts', ku: 'کەشف حیسابی کاشێرەکان' },
   pos: { ar: 'الكاشير والبيع السريع (POS)', en: 'POS & Cashier', ku: 'کاشێر و فرۆشتنی خێرا (POS)' },
-  products: { ar: 'المنتجات والمخزون', en: 'Products & Inventory', ku: 'کاڵاکان و کۆگا' },
+  products: { ar: 'المخزن', en: 'Warehouse & Inventory', ku: 'کۆگا' },
   purchases: { ar: 'قسم الشراء وتوريد البضائع', en: 'Purchases & Restock', ku: 'کڕین و دابینکردن' },
   suppliers: { ar: 'الموردين والشركات', en: 'Suppliers & Vendors', ku: 'دابینکەران و کۆمپانیاکان' },
   customers: { ar: 'العملاء وبرنامج الولاء', en: 'Customers & Loyalty', ku: 'کڕیاران و بەرنامەی دڵسۆزی' },
@@ -67,8 +67,19 @@ export const uiTranslations: TranslationDict = {
   darkMode: { ar: 'الوضع الليلي (داكن)', en: 'Night Mode (Dark)', ku: 'دۆخی شەو (تاریک)' },
   lightMode: { ar: 'الوضع النهاري (فاتح)', en: 'Day Mode (Light)', ku: 'دۆخی ڕۆژ (ڕووناک)' },
 
-  // Categories (English and Arabic keys)
+  // Categories (English, Arabic & Kurdish keys)
   allCategories: { ar: 'جميع الأقسام', en: 'All Categories', ku: 'هەموو بەشەکان' },
+  'أدوية ومسكنات (OTC / Rx)': { ar: 'أدوية ومسكنات (OTC / Rx)', en: 'Medicines & Pain Relief (OTC / Rx)', ku: 'دەرمان و ئازارشکێنەکان (OTC / Rx)' },
+  'مضادات حيوية (Antibiotics)': { ar: 'مضادات حيوية (Antibiotics)', en: 'Antibiotics', ku: 'دژە بەکتریا و هەوکردن (Antibiotics)' },
+  'فيتامينات ومكملات (Vitamins & Supplements)': { ar: 'فيتامينات ومكملات (Vitamins & Supplements)', en: 'Vitamins & Supplements', ku: 'ڤیتامین و تەواوکەری خۆراکی' },
+  'أدوية الأمراض المزمنة (Chronic Care)': { ar: 'أدوية الأمراض المزمنة (Chronic Care)', en: 'Chronic Care Medicines', ku: 'دەرمانی نەخۆشییە درێژخایەنەکان' },
+  'العناية بالبشرة والتجميل (Skincare)': { ar: 'العناية بالبشرة والتجميل (Skincare)', en: 'Skincare & Cosmetics', ku: 'چاودێری پێست و جوانکاری (Skincare)' },
+  'صحة الأم والطفل (Mother & Baby)': { ar: 'صحة الأم والطفل (Mother & Baby)', en: 'Mother & Baby Care', ku: 'تەندروستی دایک و منداڵ' },
+  'مستلزمات وأجهزة طبية (Medical Supplies)': { ar: 'مستلزمات وأجهزة طبية (Medical Supplies)', en: 'Medical Supplies & Devices', ku: 'پێداویستی و ئامێری پزیشکی' },
+  'قطرات ومستحضرات عيون وأذن (Ophthalmic & ENT)': { ar: 'قطرات ومستحضرات عيون وأذن (Ophthalmic & ENT)', en: 'Eye & Ear Drops (Ophthalmic & ENT)', ku: 'دڵۆپێنەری چاو و گوێ (ENT)' },
+  'أدوية الجهاز الهضمي (Gastrointestinal)': { ar: 'أدوية الجهاز الهضمي (Gastrointestinal)', en: 'Gastrointestinal Medicines', ku: 'دەرمانی کۆئەندامی هەرس' },
+  'الألبان والمغذيات الطبية': { ar: 'الألبان والمغذيات الطبية', en: 'Medical Nutrition & Milk', ku: 'شیری پزیشکی و خۆراکی پێویست' },
+  'المنظفات والعناية الشخصية': { ar: 'المنظفات والعناية الشخصية', en: 'Hygiene & Personal Care', ku: 'پاککەرەوە و چاودێری کەسی' },
   'Dairy & Milk': { ar: 'الألبان والحليب', en: 'Dairy & Milk', ku: 'بەرهەمەکانی شیر / شیرەمەنی' },
   'Beverages & Juices': { ar: 'المشروبات والعصائر', en: 'Beverages & Juices', ku: 'خواردنەوەکان و شەربەت' },
   'Snacks & Sweets': { ar: 'الحلويات والسناكات', en: 'Snacks & Sweets', ku: 'شیرینی و گەستن' },
@@ -86,7 +97,6 @@ export const uiTranslations: TranslationDict = {
   'الخضار والفواكه': { ar: 'الخضار والفواكه', en: 'Fresh Produce', ku: 'سەوزە و میوەکان' },
   'الأغذية المجمدة': { ar: 'الأغذية المجمدة', en: 'Frozen Foods', ku: 'خواردنی بەستوو' },
   'المعلبات والزيوت': { ar: 'المعلبات والزيوت', en: 'Canned Goods', ku: 'قوتووبەندکراوەکان' },
-  'المنظفات والعناية': { ar: 'المنظفات والعناية', en: 'Household & Care', ku: 'پاککەرەوەکان و پێداویستی' },
 
   // POS Terms
   cartTitle: { ar: 'سلة المشتريات', en: 'Shopping Cart', ku: 'سەبەتەی کڕین' },

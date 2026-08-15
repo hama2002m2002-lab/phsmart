@@ -18,6 +18,7 @@ import {
 import { Product, SaleTransaction, StoreSettings, UserAccount } from '../types';
 import { parseDate, isToday, formatDisplayDateTime } from '../lib/dateUtils';
 import { formatNumber } from '../lib/formatUtils';
+import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
 interface InvoicesTabProps {
   products: Product[];
@@ -306,18 +307,15 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
             </select>
           </div>
 
-          {/* INTERACTIVE CALENDAR DATE PICKER */}
-          <div className="relative flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <input
-              type="date"
+          {/* INTERACTIVE CALENDAR DATE PICKER (DD/MM/YYYY) */}
+          <div className="relative flex items-center gap-1.5 min-w-[170px]">
+            <DatePickerDDMMYYYY
               value={customCalendarDate}
-              onChange={(e) => {
-                setCustomCalendarDate(e.target.value);
-                if (e.target.value) setDateFilterMode('custom');
+              onChange={(dateStr) => {
+                setCustomCalendarDate(dateStr);
+                if (dateStr) setDateFilterMode('custom');
               }}
-              className="w-full bg-[#080D1A] text-xs text-cyan-300 px-2.5 py-1.5 rounded-xl border border-cyan-500/40 focus:border-cyan-400 focus:outline-none font-mono font-bold"
-              title={isAr ? 'اختيار تاريخ محدد من التقويم' : 'Select Date from Calendar'}
+              lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
             />
           </div>
 
@@ -377,7 +375,7 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
 
                     {/* Timestamp */}
                     <td className={`py-1.5 px-3 font-mono text-[10px] whitespace-nowrap ${isReturned ? 'text-rose-200' : 'text-slate-300'}`}>
-                      <span className="font-semibold">{sale.timestamp}</span>
+                      <span className="font-semibold">{formatDisplayDateTime(sale.timestamp, lang)}</span>
                     </td>
 
                     {/* Customer */}

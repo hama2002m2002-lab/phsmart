@@ -15,14 +15,12 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator) {
+      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js?v=4.0').then(reg => {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(reg => {
             console.log('Service Worker registered successfully:', reg.scope);
-            // Trigger an immediate update check
-            reg.update();
           }).catch(err => {
-            console.warn('Service Worker registration failed:', err);
+            console.warn('Service Worker registration note (sandboxed/preview environment):', err?.message || err);
           });
 
           // Automatically reload if a new service worker takes over

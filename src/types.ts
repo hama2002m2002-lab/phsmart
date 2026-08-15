@@ -202,6 +202,61 @@ export interface POSKeyboardShortcuts {
   closeActiveWindow: string; // Default: 'F10'
 }
 
+export interface CustomerDisplayItem {
+  id: string;
+  productId: string;
+  name: string;
+  nameAr?: string;
+  nameKu?: string;
+  scientificName?: string;
+  barcode: string;
+  quantity: number;
+  saleType: SaleUnitType;
+  unitPrice: number;
+  total: number;
+  originalPrice?: number;
+  discountPerUnit?: number;
+  dosageInstruction?: string;
+  imageIcon?: string;
+  isNewlyAdded?: boolean;
+}
+
+export interface CustomerDisplayPayload {
+  activeWindowId: string;
+  windowIndex?: number;
+  items: CustomerDisplayItem[];
+  itemCount: number;
+  totalUnitsCount: number;
+  subtotal: number;
+  discountAmount: number;
+  tax: number;
+  total: number;
+  paymentMethod: 'cash' | 'card' | 'nfc' | 'debt';
+  cashTendered: number;
+  changeDue: number;
+  isReturnMode: boolean;
+  storeName: string;
+  storeNameAr?: string;
+  storeNameKu?: string;
+  currencySymbol: string;
+  phone?: string;
+  address?: string;
+  welcomeMessageAr?: string;
+  welcomeMessageKu?: string;
+  welcomeMessageEn?: string;
+  completedSale?: {
+    invoiceNumber: string;
+    total: number;
+    amountTendered?: number;
+    changeDue?: number;
+    paymentMethod: string;
+    itemsCount: number;
+    timestamp: string;
+  } | null;
+  cashierName?: string;
+  lastUpdated: number;
+}
+
 export interface StoreSettings {
   storeName: string;
   storeNameAr: string;
@@ -241,6 +296,7 @@ export interface UserPermissions {
   canViewAnalytics?: boolean;
   canViewReports: boolean;
   canManageSettings: boolean;
+  canViewPurchasePriceInPOS?: boolean; // إظهار سعر الشراء والتكلفة في واجهة الكاشير وسلة البيع
 }
 
 export interface UserAccount {

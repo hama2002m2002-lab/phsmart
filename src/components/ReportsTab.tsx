@@ -28,9 +28,10 @@ import {
 } from 'lucide-react';
 import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings, OperatingExpenseItem } from '../types';
 import { formatNumber } from '../lib/formatUtils';
-import { parseDate, isToday, formatDisplayDateTime } from '../lib/dateUtils';
+import { parseDate, isToday, formatDisplayDate, formatDisplayTime, formatDisplayDateTime, formatDateDDMMYYYY } from '../lib/dateUtils';
 import { getItemUnitCost, getItemTotalProfit } from '../lib/financialUtils';
 import { exportDataToExcel } from '../lib/excelExport';
+import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
 interface ReportsTabProps {
   products: Product[];
@@ -1554,9 +1555,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   const activeCategoryObj = categoriesConfig.find(c => c.id === activeCategory) || categoriesConfig[0];
   const activeSubTabObj = categoriesConfig.flatMap(c => c.subTabs).find(s => s.id === activeSubTab) || activeCategoryObj.subTabs[0];
 
-  if (isCashierAccountsOnly) {
-    return (
-      <div className={`space-y-4 pb-12 animate-fadeIn w-full ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+  return (
+    <div className="w-full">
+      {isCashierAccountsOnly ? (
+        <div className={`space-y-4 pb-12 animate-fadeIn w-full ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
         {/* COMPACT CASHIER ACCOUNTS HEADER WITH DROPDOWN CALENDAR & EXPORT CONTROLS */}
         <div className={`cyber-card p-2.5 sm:p-3.5 border rounded-2xl relative overflow-hidden shadow-md ${
           isLight 
@@ -1584,7 +1586,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 <p className={`text-[11px] mt-0.5 truncate ${isLight ? 'text-slate-600 font-medium' : 'text-slate-300'}`}>
                   {useCustomDateTime ? (
                     <span className="text-cyan-300 font-mono font-bold">
-                      {t(`من ${startDate} إلى ${endDate}`, `لە ${startDate} بۆ ${endDate}`, `From ${startDate} to ${endDate}`)}
+                      {t(`من ${formatDisplayDate(startDate, lang)} إلى ${formatDisplayDate(endDate, lang)}`, `لە ${formatDisplayDate(startDate, lang)} بۆ ${formatDisplayDate(endDate, lang)}`, `From ${formatDisplayDate(startDate, lang)} to ${formatDisplayDate(endDate, lang)}`)}
                       {startTime || endTime ? ` (${startTime || '00:00'} - ${endTime || '23:59'})` : ''}
                     </span>
                   ) : dateFilter === 'today' ? (
@@ -1664,28 +1666,26 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           {useCustomDateTime && (
             <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-2 animate-fadeIn text-xs bg-[#050A15]/80 p-2 sm:p-2.5 rounded-xl border border-cyan-500/30">
               <div className="space-y-0.5">
-                <label className="text-[10px] font-bold text-slate-300 block">{t('من تاريخ:', 'لە بەرواری:', 'From Date:')}</label>
-                <input
-                  type="date"
+                <label className="text-[10px] font-bold text-slate-300 block">{t('من تاريخ (يوم / شهر / سنة):', 'لە بەرواری (ڕۆژ / مانگ / ساڵ):', 'From Date (DD/MM/YYYY):')}</label>
+                <DatePickerDDMMYYYY
                   value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value);
+                  onChange={(dStr) => {
+                    setStartDate(dStr);
                     setUseCustomDateTime(true);
                   }}
-                  className="w-full bg-[#0B132B] border border-cyan-500/40 rounded-lg px-2 py-1 text-white font-mono text-xs focus:border-cyan-400 focus:outline-none"
+                  lang={lang}
                 />
               </div>
 
               <div className="space-y-0.5">
-                <label className="text-[10px] font-bold text-slate-300 block">{t('إلى تاريخ:', 'بۆ بەرواری:', 'To Date:')}</label>
-                <input
-                  type="date"
+                <label className="text-[10px] font-bold text-slate-300 block">{t('إلى تاريخ (يوم / شهر / سنة):', 'بۆ بەرواری (ڕۆژ / مانگ / ساڵ):', 'To Date (DD/MM/YYYY):')}</label>
+                <DatePickerDDMMYYYY
                   value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
+                  onChange={(dStr) => {
+                    setEndDate(dStr);
                     setUseCustomDateTime(true);
                   }}
-                  className="w-full bg-[#0B132B] border border-cyan-500/40 rounded-lg px-2 py-1 text-white font-mono text-xs focus:border-cyan-400 focus:outline-none"
+                  lang={lang}
                 />
               </div>
 
@@ -1865,9 +1865,20 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     </div>
                   </div>
 
-                  <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[9px] font-mono font-bold shrink-0">
-                    {c.invoiceCount > 0 ? t('نشط', 'چالاک', 'Active') : t('بدون مبيعات', 'بێ فرۆشتن', 'No Sales')}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setCashierPrintModalData(c)}
+                      className="px-1.5 py-0.5 rounded-lg bg-cyan-600/30 hover:bg-cyan-500 text-cyan-200 border border-cyan-500/40 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shrink-0"
+                      title={t('طباعة كشف حساب هذا الكاشير', 'چاپکردنی کەشف حیساب', 'Print Cashier Statement')}
+                    >
+                      <Printer className="w-3 h-3 text-cyan-300" />
+                      <span>{t('طباعة', 'چاپ', 'Print')}</span>
+                    </button>
+                    <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[9px] font-mono font-bold shrink-0">
+                      {c.invoiceCount > 0 ? t('نشط', 'چالاک', 'Active') : t('بدون مبيعات', 'بێ فرۆشتن', 'No Sales')}
+                    </span>
+                  </div>
                 </div>
 
                 {/* 5 INTERACTIVE METRIC BUTTON FIELDS */}
@@ -2097,13 +2108,16 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                                           </span>
                                         </div>
                                         <p className="text-[9px] font-mono text-rose-300/80">
-                                          {new Date(tx.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                                          {formatDisplayTime(tx.timestamp, lang)}
                                         </p>
                                       </div>
                                       <div className="flex items-center gap-2">
                                         <p className="font-bold text-rose-300 text-xs font-mono">-{currency} {tx.total.toLocaleString('en-US')}</p>
                                         <button
-                                          onClick={() => setSelectedInvoice(tx)}
+                                          onClick={() => {
+                                            setSelectedInvoice(tx);
+                                            onViewReceipt?.(tx);
+                                          }}
                                           className="py-1 px-2 rounded-lg bg-rose-600/40 hover:bg-rose-500 text-white border border-rose-400 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shrink-0"
                                           title={t('فتح معاينة الوصل والمرجوع', 'کردنەوەی پسوڵە', 'Open Refund Receipt')}
                                         >
@@ -2168,7 +2182,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                                       )}
                                     </div>
                                     <p className={`text-[9px] font-mono ${isRefunded ? 'text-rose-300/80' : 'text-slate-400'}`}>
-                                      {new Date(tx.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} • {tx.paymentMethod === 'cash' ? t('نقد', 'نەقد', 'Cash') : tx.paymentMethod}
+                                      {formatDisplayTime(tx.timestamp, lang)} • {tx.paymentMethod === 'cash' ? t('نقد', 'نەقد', 'Cash') : tx.paymentMethod}
                                     </p>
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -2178,7 +2192,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                                       </p>
                                     </div>
                                     <button
-                                      onClick={() => setSelectedInvoice(tx)}
+                                      onClick={() => {
+                                        setSelectedInvoice(tx);
+                                        onViewReceipt?.(tx);
+                                      }}
                                       className="py-1 px-2 rounded-lg bg-cyan-600/30 hover:bg-cyan-500 text-cyan-200 border border-cyan-500/40 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shrink-0"
                                       title={t('فتح معاينة الوصل والفاتورة الكاملة', 'کردنەوەی پسوڵە', 'Open Receipt Details')}
                                     >
@@ -2200,12 +2217,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           })}
         </div>
       </div>
-    );
-  }
-
-  if (!isDetailOpen) {
-    return (
-      <div className={`space-y-6 pb-12 animate-fadeIn w-full ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+      ) : !isDetailOpen ? (
+        <div className={`space-y-6 pb-12 animate-fadeIn w-full ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
         {/* ======================================================== */}
         {/* TOP HEADER BANNER (REPORTS HUB) */}
         {/* ======================================================== */}
@@ -2421,11 +2434,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           })}
         </div>
       </div>
-    );
-  }
-
-  return (
-    <div className={`space-y-4 pb-12 animate-fadeIn w-full ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+      ) : (
+        <div className={`space-y-4 pb-12 animate-fadeIn w-full ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
       
       {/* ======================================================== */}
       {/* FULLSCREEN VIEW HEADER WITH BACK BUTTON */}
@@ -3390,16 +3400,15 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>{t('تاريخ البداية (من):', 'بەرواری دەستپێک (لە):', 'Start Date (From):')}</span>
+                      <span>{t('تاريخ البداية (يوم / شهر / سنة):', 'بەرواری دەستپێک (ڕۆژ / مانگ / ساڵ):', 'Start Date (DD/MM/YYYY):')}</span>
                     </label>
-                    <input
-                      type="date"
+                    <DatePickerDDMMYYYY
                       value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
+                      onChange={(dStr) => {
+                        setStartDate(dStr);
                         setUseCustomDateTime(true);
                       }}
-                      className="w-full bg-[#090F1F] text-white text-xs font-mono font-bold px-3 py-2 rounded-xl border border-slate-700 focus:border-cyan-400 outline-none"
+                      lang={lang}
                     />
                   </div>
 
@@ -3423,16 +3432,15 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-rose-400" />
-                      <span>{t('تاريخ النهاية (إلى):', 'بەرواری کۆتایی (بۆ):', 'End Date (To):')}</span>
+                      <span>{t('تاريخ النهاية (يوم / شهر / سنة):', 'بەرواری کۆتایی (ڕۆژ / مانگ / ساڵ):', 'End Date (DD/MM/YYYY):')}</span>
                     </label>
-                    <input
-                      type="date"
+                    <DatePickerDDMMYYYY
                       value={endDate}
-                      onChange={(e) => {
-                        setEndDate(e.target.value);
+                      onChange={(dStr) => {
+                        setEndDate(dStr);
                         setUseCustomDateTime(true);
                       }}
-                      className="w-full bg-[#090F1F] text-white text-xs font-mono font-bold px-3 py-2 rounded-xl border border-slate-700 focus:border-rose-400 outline-none"
+                      lang={lang}
                     />
                   </div>
 
@@ -4915,6 +4923,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
         </div>
       )}
+      </div>
+      )}
 
       {/* ======================================================== */}
       {/* 5. FORMAL PRINTABLE STATEMENT MODAL */}
@@ -4943,7 +4953,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
                 <div className="text-right rtl:text-left text-xs text-slate-700">
                   <p className="font-black text-sm text-slate-900">OFFICIAL POS MANAGEMENT STATEMENT</p>
-                  <p className="mt-1 font-bold">{t('تاريخ التقرير:', 'بەرواری ڕاپۆرت:', 'Date:')} {new Date().toLocaleDateString('ar-EG')}</p>
+                  <p className="mt-1 font-bold">{t('تاريخ التقرير:', 'بەرواری ڕاپۆرت:', 'Date:')} {formatDisplayDate(new Date(), lang)}</p>
                   <p>{t('نوع الكشف:', 'جۆری ڕاپۆرت:', 'Type:')} {isKu ? activeCategoryObj.titleKu : (isAr ? activeCategoryObj.titleAr : activeCategoryObj.titleEn)}</p>
                 </div>
               </div>
@@ -5047,7 +5057,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
               {/* Time Range Info */}
               <div className="text-xs font-mono bg-slate-100 p-3 rounded-xl border border-slate-300 space-y-1">
-                <p><strong>{t('تاريخ التقرير:', 'بەرواری ڕاپۆرت:', 'Printed On:')}</strong> {new Date().toLocaleString('ar-EG')}</p>
+                <p><strong>{t('تاريخ التقرير:', 'بەرواری ڕاپۆرت:', 'Printed On:')}</strong> {formatDisplayDateTime(new Date(), lang)}</p>
                 <p><strong>{t('فترة الحساب:', 'ماوەی حیساب:', 'Period:')}</strong> {useCustomDateTime ? `${startDate} ${startTime} - ${endDate} ${endTime}` : dateFilter.toUpperCase()}</p>
                 <p><strong>{t('إجمالي الفواتير:', 'کۆی پسوڵەکان:', 'Total Invoices:')}</strong> {cashierPrintModalData.invoiceCount}</p>
               </div>
@@ -5120,7 +5130,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                               )}
                             </div>
                             <p className="text-[10px] text-slate-500 font-sans mt-0.5">
-                              {new Date(tx.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })} • {tx.paymentMethod === 'cash' ? t('نقد', 'نەقد', 'Cash') : tx.paymentMethod}
+                              {formatDisplayTime(tx.timestamp, lang)} • {tx.paymentMethod === 'cash' ? t('نقد', 'نەقد', 'Cash') : tx.paymentMethod}
                             </p>
                           </div>
                           <div className="text-right font-bold text-sm">
@@ -5192,7 +5202,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   <p className="text-xs text-slate-400 font-mono mt-0.5">
                     {t(`الكاشير المسؤول: ${selectedInvoice.cashierName || 'غير مسمى'}`, `کاشێر: ${selectedInvoice.cashierName || '-'}`, `Cashier: ${selectedInvoice.cashierName || '-'}`)}
                     {' • '}
-                    {new Date(selectedInvoice.timestamp).toLocaleString('ar-EG')}
+                    {formatDisplayDateTime(selectedInvoice.timestamp, lang)}
                   </p>
                 </div>
               </div>
@@ -5353,8 +5363,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             {/* Modal Footer Actions */}
             <div className="p-4 border-t border-cyan-500/20 bg-[#0A0F1D] flex items-center justify-between gap-3">
               <button
+                type="button"
                 onClick={() => {
-                  window.print();
+                  if (onViewReceipt) {
+                    onViewReceipt(selectedInvoice);
+                  } else {
+                    window.print();
+                  }
                 }}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:brightness-110 text-white font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95"
               >
