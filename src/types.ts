@@ -289,6 +289,7 @@ export interface UserPermissions {
   canAccessDashboard?: boolean;
   canAccessPOS: boolean;
   canManageProducts: boolean;
+  canViewWarehouse?: boolean; // السماح للكاشير باستعراض وتصفح المخزن والمواد المتبقية والأسعار (بدون كلفة أو تعديل)
   canManageInventoryAudit?: boolean;
   canManagePurchases?: boolean;
   canManageSuppliers: boolean;

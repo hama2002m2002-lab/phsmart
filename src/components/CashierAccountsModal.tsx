@@ -51,6 +51,7 @@ export const CashierAccountsModal: React.FC<CashierAccountsModalProps> = ({
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
+  const t = (ar: string, ku: string, en: string = ar) => isKu ? ku : isAr ? ar : en;
   const currency = settings.currencySymbol || (isAr ? 'د.ع' : isKu ? 'د.ع' : 'IQD');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -529,28 +530,17 @@ export const CashierAccountsModal: React.FC<CashierAccountsModalProps> = ({
                       </button>
                     </div>
 
-                    {/* Primary Action Buttons */}
-                    <div className="flex items-center gap-1.5 pt-1">
+                    {/* Primary Action Button */}
+                    <div className="pt-1">
                       {/* Print Account Statement */}
                       <button
                         type="button"
                         onClick={() => handlePrintCashierStatement(c)}
-                        className="flex-1 py-2 px-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-600 hover:brightness-110 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-md"
-                        title={isKu ? 'چاپکردنی کەشفی ئەژمار' : isAr ? 'طباعة كشف حساب الكاشير' : 'Print Statement'}
+                        className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-600 hover:brightness-110 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 shadow-md"
+                        title={t('طباعة كشف حساب الكاشير', 'چاپکردنی کەشفی ئەژمار', 'Print Statement')}
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        <span>{isKu ? 'چاپی کەشف' : isAr ? 'طباعة الكشف' : 'Print Statement'}</span>
-                      </button>
-
-                      {/* Open Full Interface Dialog */}
-                      <button
-                        type="button"
-                        onClick={() => openSubInterface(c.cashierName, 'sales')}
-                        className="py-2 px-3 rounded-xl bg-cyan-600/30 hover:bg-cyan-500 text-cyan-200 hover:text-white border border-cyan-500/40 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all active:scale-95"
-                        title={isKu ? 'کردنەوەی واجیهەی تەواو' : isAr ? 'فتح واجهة الفواتير والمرجوعات الكاملة' : 'Open Complete Interface'}
-                      >
-                        <FileText className="w-3.5 h-3.5 text-cyan-300" />
-                        <span>{isKu ? 'کردنەوەی تەواو' : isAr ? 'فتح الواجهة' : 'Open View'}</span>
+                        <span>{t('طباعة كشف الحساب والمبيعات', 'چاپی کەشفی ئەژمار و فرۆش', 'Print Account Statement')}</span>
                       </button>
                     </div>
 

@@ -509,13 +509,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black text-white flex items-center gap-2">
-                <span>{isAr ? 'تخصيص وطباعة ملصقات الباركود والأسعار' : 'Customize & Print Barcode Price Tags'}</span>
+                <span>{isKu ? 'دەستکاریکردن و چاپکردنی لەزگەی بارکۆد و نرخ' : isAr ? 'تخصيص وطباعة ملصقات الباركود والأسعار' : 'Customize & Print Barcode Price Tags'}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-mono">
                   {activeProduct.barcode}
                 </span>
               </h3>
               <p className="text-[11px] text-amber-300 font-medium">
-                {isAr ? 'التحكم الشامل بأحجام الخطوط، الألوان، أبعاد الملصق، ونوع السعر المعروض' : 'Full manual control over fonts, colors, label dimensions, and price tags'}
+                {isKu ? 'کۆنترۆڵی تەواوی قەبارەی فۆنت، ڕەنگەکان، قەبارەی لەزگە و جۆری نرخی پیشاندراو' : isAr ? 'التحكم الشامل بأحجام الخطوط، الألوان، أبعاد الملصق، ونوع السعر المعروض' : 'Full manual control over fonts, colors, label dimensions, and price tags'}
               </p>
             </div>
           </div>
@@ -531,7 +531,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               }`}
             >
               {savedSuccessMsg ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4 text-amber-400" />}
-              <span>{savedSuccessMsg ? (isAr ? 'تم حفظ الإعدادات!' : 'Saved!') : (isAr ? 'حفظ كإعداد افتراضي' : 'Save Default')}</span>
+              <span>{savedSuccessMsg ? (isKu ? 'ڕێکخستنەکان پاشەکەوت کران!' : isAr ? 'تم حفظ الإعدادات!' : 'Saved!') : (isKu ? 'پاشەکەوتکردن وەک بنەڕەت' : isAr ? 'حفظ كإعداد افتراضي' : 'Save Default')}</span>
             </button>
 
             <button
@@ -554,10 +554,10 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                   <BarcodeIcon className="w-4 h-4 text-cyan-400" />
-                  <span>{isAr ? 'اختيار المادة المراد طباعتها:' : 'Select Product:'}</span>
+                  <span>{isKu ? 'هەڵبژاردنی کاڵا بۆ چاپکردن:' : isAr ? 'اختيار المادة المراد طباعتها:' : 'Select Product:'}</span>
                 </label>
                 <span className="text-[10px] text-slate-400">
-                  {filteredProducts.length} {isAr ? 'مادة متاحة' : 'products'}
+                  {filteredProducts.length} {isKu ? 'کاڵای بەردەست' : isAr ? 'مادة متاحة' : 'products'}
                 </span>
               </div>
 
@@ -566,7 +566,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={isAr ? '🔍 بحث بالاسم، الباركود، التركيبة...' : '🔍 Search name, barcode...'}
+                  placeholder={isKu ? '🔍 گەڕان بەپێی ناو، بارکۆد...' : isAr ? '🔍 بحث بالاسم، الباركود، التركيبة...' : '🔍 Search name, barcode...'}
                   className="w-full bg-[#0B1120] text-xs text-slate-200 placeholder-slate-500 p-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-500/60 font-semibold"
                 />
 
@@ -580,11 +580,11 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 >
                   {filteredProducts.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.nameAr || p.name} — [{p.barcode}] — {settings.currencySymbol}{p.singleRetailPrice || p.price}
+                      {isKu ? (p.nameKu || p.nameAr || p.name) : (p.nameAr || p.name)} — [{p.barcode}] — {settings.currencySymbol}{p.singleRetailPrice || p.price}
                     </option>
                   ))}
                   {filteredProducts.length === 0 && (
-                    <option value="">لا توجد مادة تطابق كلمة البحث</option>
+                    <option value="">{isKu ? 'هیچ کاڵایەک نەدۆزرایەوە' : 'لا توجد مادة تطابق كلمة البحث'}</option>
                   )}
                 </select>
               </div>
@@ -595,11 +595,11 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
                   <Tag className="w-4 h-4 text-emerald-400" />
-                  <span>{isAr ? 'نوع السعر المعروض على الملصق:' : 'Price Option on Tag:'}</span>
+                  <span>{isKu ? 'جۆری نرخی پیشاندراو لەسەر لەزگە:' : isAr ? 'نوع السعر المعروض على الملصق:' : 'Price Option on Tag:'}</span>
                 </label>
                 {priceOption === 'custom' && (
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-amber-300 font-bold">{isAr ? 'سعر مخصص:' : 'Custom:'}</span>
+                    <span className="text-[10px] text-amber-300 font-bold">{isKu ? 'نرخی تایبەت:' : isAr ? 'سعر مخصص:' : 'Custom:'}</span>
                     <input
                       type="number"
                       value={customPriceVal}
@@ -621,7 +621,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] block font-black">{isAr ? 'المفرد' : 'Retail'}</span>
+                  <span className="text-[11px] block font-black">{isKu ? 'تاک' : isAr ? 'المفرد' : 'Retail'}</span>
                   <span className="text-[9.5px] opacity-80 font-mono">{currency}{formatNumber(singlePrice)}</span>
                 </button>
 
@@ -635,7 +635,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] block font-black">{isAr ? 'الكرتون' : 'Carton'}</span>
+                  <span className="text-[11px] block font-black">{isKu ? 'کارتۆن' : isAr ? 'الكرتون' : 'Carton'}</span>
                   <span className="text-[9.5px] opacity-80 font-mono">{currency}{formatNumber(cartonPrice)}</span>
                 </button>
 
@@ -649,7 +649,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] block font-black">{isAr ? 'الجملة' : 'Wholesale'}</span>
+                  <span className="text-[11px] block font-black">{isKu ? 'کۆ' : isAr ? 'الجملة' : 'Wholesale'}</span>
                   <span className="text-[9.5px] opacity-80 font-mono">{currency}{formatNumber(wholesalePrice)}</span>
                 </button>
 
@@ -663,7 +663,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] block font-black">{isAr ? 'الشريط' : 'Blister'}</span>
+                  <span className="text-[11px] block font-black">{isKu ? 'شریت' : isAr ? 'الشريط' : 'Blister'}</span>
                   <span className="text-[9.5px] opacity-80 font-mono">{currency}{formatNumber(blisterPrice)}</span>
                 </button>
 
@@ -680,8 +680,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] block font-black">{isAr ? 'مخصص' : 'Custom'}</span>
-                  <span className="text-[9.5px] opacity-80">{isAr ? 'إدخال يدوي' : 'Manual'}</span>
+                  <span className="text-[11px] block font-black">{isKu ? 'دیاریکراو' : isAr ? 'مخصص' : 'Custom'}</span>
+                  <span className="text-[9.5px] opacity-80">{isKu ? 'دەستی' : isAr ? 'إدخال يدوي' : 'Manual'}</span>
                 </button>
 
                 {/* All Three */}
@@ -694,8 +694,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-[11px] block font-black">{isAr ? 'ثلاثتهم' : 'All 3'}</span>
-                  <span className="text-[8.5px] opacity-90">{isAr ? 'مفرد+جملة+كرتون' : 'Full Tag'}</span>
+                  <span className="text-[11px] block font-black">{isKu ? 'هەر سێکیان' : isAr ? 'ثلاثتهم' : 'All 3'}</span>
+                  <span className="text-[8.5px] opacity-90">{isKu ? 'تاک+کۆ+کارتۆن' : isAr ? 'مفرد+جملة+كرتون' : 'Full Tag'}</span>
                 </button>
               </div>
             </div>
@@ -705,13 +705,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
                   <Sliders className="w-4 h-4 text-blue-400" />
-                  <span>{isAr ? 'أبعاد الورق وحجم الملصق:' : 'Label Dimensions & Size:'}</span>
+                  <span>{isKu ? 'ئەندازەکانی کاغەز و قەبارەی لەزگە:' : isAr ? 'أبعاد الورق وحجم الملصق:' : 'Label Dimensions & Size:'}</span>
                 </label>
               </div>
 
               {/* Presets */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] text-slate-400">{isAr ? 'أحجام جاهزة:' : 'Presets:'}</span>
+                <span className="text-[10px] text-slate-400">{isKu ? 'قەبارەی ئامادەکراو:' : isAr ? 'أحجام جاهزة:' : 'Presets:'}</span>
                 <button
                   type="button"
                   onClick={() => { setLabelWidthMm(50); setLabelHeightMm(30); }}
@@ -721,7 +721,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  50×30 mm ({isAr ? 'قياسي' : 'Standard'})
+                  50×30 mm ({isKu ? 'ستاندارد' : isAr ? 'قياسي' : 'Standard'})
                 </button>
                 <button
                   type="button"
@@ -732,7 +732,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  40×25 mm ({isAr ? 'علبة دواء' : 'Small Box'})
+                  40×25 mm ({isKu ? 'پاکەتی بچووک' : isAr ? 'علبة دواء' : 'Small Box'})
                 </button>
                 <button
                   type="button"
@@ -743,7 +743,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  38×25 mm ({isAr ? 'مصغر' : 'Mini'})
+                  38×25 mm ({isKu ? 'بچووک' : isAr ? 'مصغر' : 'Mini'})
                 </button>
                 <button
                   type="button"
@@ -754,7 +754,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  58×40 mm ({isAr ? 'تغليف كبير' : 'Package'})
+                  58×40 mm ({isKu ? 'پاکەتی گەورە' : isAr ? 'تغليف كبير' : 'Package'})
                 </button>
                 <button
                   type="button"
@@ -765,13 +765,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  70×50 mm ({isAr ? 'بطاقة رف' : 'Shelf Tag'})
+                  70×50 mm ({isKu ? 'کارتی ڕەفە' : isAr ? 'بطاقة رف' : 'Shelf Tag'})
                 </button>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                 <div>
-                  <span className="text-[10px] text-slate-400 block mb-1">{isAr ? 'العرض (mm):' : 'Width (mm):'}</span>
+                  <span className="text-[10px] text-slate-400 block mb-1">{isKu ? 'پانی (mm):' : isAr ? 'العرض (mm):' : 'Width (mm):'}</span>
                   <input
                     type="number"
                     value={labelWidthMm}
@@ -781,7 +781,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-400 block mb-1">{isAr ? 'الارتفاع (mm):' : 'Height (mm):'}</span>
+                  <span className="text-[10px] text-slate-400 block mb-1">{isKu ? 'بەرزی (mm):' : isAr ? 'الارتفاع (mm):' : 'Height (mm):'}</span>
                   <input
                     type="number"
                     value={labelHeightMm}
@@ -791,7 +791,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-400 block mb-1">{isAr ? 'الهامش الداخلي (px):' : 'Padding (px):'}</span>
+                  <span className="text-[10px] text-slate-400 block mb-1">{isKu ? 'بۆشایی ناوەوە (px):' : isAr ? 'الهامش الداخلي (px):' : 'Padding (px):'}</span>
                   <input
                     type="number"
                     min={0}
@@ -803,7 +803,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-400 block mb-1">{isAr ? 'عدد النسخ:' : 'Copies Count:'}</span>
+                  <span className="text-[10px] text-slate-400 block mb-1">{isKu ? 'ژمارەی لەبەرگیراوەکان:' : isAr ? 'عدد النسخ:' : 'Copies Count:'}</span>
                   <input
                     type="number"
                     min={1}
@@ -820,14 +820,14 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-[#10192D] border border-cyan-500/20 space-y-3">
               <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                 <Type className="w-4 h-4 text-cyan-400" />
-                <span>{isAr ? 'التحكم اليدوي بأحجام الخطوط وارتفاع الباركود:' : 'Manual Font & Barcode Sizes:'}</span>
+                <span>{isKu ? 'کۆنترۆڵی دەستی قەبارەی فۆنت و بەرزی بارکۆد:' : isAr ? 'التحكم اليدوي بأحجام الخطوط وارتفاع الباركود:' : 'Manual Font & Barcode Sizes:'}</span>
               </label>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 {/* Store Font Size */}
                 <div>
                   <div className="flex justify-between text-[10px] text-slate-300 mb-1">
-                    <span>{isAr ? 'خط المحل:' : 'Store Font:'}</span>
+                    <span>{isKu ? 'فۆنتی فرۆشگا:' : isAr ? 'خط المحل:' : 'Store Font:'}</span>
                     <span className="font-mono text-cyan-400 font-bold">{storeFontSize}px</span>
                   </div>
                   <input
@@ -843,7 +843,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 {/* Product Name Font Size */}
                 <div>
                   <div className="flex justify-between text-[10px] text-slate-300 mb-1">
-                    <span>{isAr ? 'خط الاسم:' : 'Title Size:'}</span>
+                    <span>{isKu ? 'فۆنتی ناو:' : isAr ? 'خط الاسم:' : 'Title Size:'}</span>
                     <span className="font-mono text-cyan-400 font-bold">{titleFontSize}px</span>
                   </div>
                   <input
@@ -859,7 +859,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 {/* Price Font Size */}
                 <div>
                   <div className="flex justify-between text-[10px] text-slate-300 mb-1">
-                    <span>{isAr ? 'خط السعر:' : 'Price Size:'}</span>
+                    <span>{isKu ? 'فۆنتی نرخ:' : isAr ? 'خط السعر:' : 'Price Size:'}</span>
                     <span className="font-mono text-emerald-400 font-bold">{priceFontSize}px</span>
                   </div>
                   <input
@@ -875,7 +875,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 {/* Barcode Graphic Height */}
                 <div>
                   <div className="flex justify-between text-[10px] text-slate-300 mb-1">
-                    <span>{isAr ? 'ارتفاع الباركود:' : 'Barcode Height:'}</span>
+                    <span>{isKu ? 'بەرزی بارکۆد:' : isAr ? 'ارتفاع الباركود:' : 'Barcode Height:'}</span>
                     <span className="font-mono text-amber-400 font-bold">{barcodeHeightPx}px</span>
                   </div>
                   <input
@@ -894,13 +894,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-[#10192D] border border-purple-500/20 space-y-2.5">
               <label className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
                 <Palette className="w-4 h-4 text-purple-400" />
-                <span>{isAr ? 'تخصيص ألوان الملصق بالإتاحة الكاملة:' : 'Custom Sticker Palette:'}</span>
+                <span>{isKu ? 'دەستکاریکردنی تەواوی ڕەنگەکانی لەزگە:' : isAr ? 'تخصيص ألوان الملصق بالإتاحة الكاملة:' : 'Custom Sticker Palette:'}</span>
               </label>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 {/* Background Color */}
                 <div>
-                  <span className="text-[10px] text-slate-300 block mb-1">{isAr ? 'خلفية الملصق:' : 'Background:'}</span>
+                  <span className="text-[10px] text-slate-300 block mb-1">{isKu ? 'پاشبنەمای لەزگە:' : isAr ? 'خلفية الملصق:' : 'Background:'}</span>
                   <div className="flex items-center gap-2 bg-[#0B1120] p-1.5 rounded-xl border border-slate-800">
                     <input
                       type="color"
@@ -914,7 +914,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
                 {/* Text Color */}
                 <div>
-                  <span className="text-[10px] text-slate-300 block mb-1">{isAr ? 'لون النص:' : 'Text Color:'}</span>
+                  <span className="text-[10px] text-slate-300 block mb-1">{isKu ? 'ڕەنگی دەق:' : isAr ? 'لون النص:' : 'Text Color:'}</span>
                   <div className="flex items-center gap-2 bg-[#0B1120] p-1.5 rounded-xl border border-slate-800">
                     <input
                       type="color"
@@ -928,7 +928,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
                 {/* Price Color */}
                 <div>
-                  <span className="text-[10px] text-slate-300 block mb-1">{isAr ? 'لون السعر:' : 'Price Color:'}</span>
+                  <span className="text-[10px] text-slate-300 block mb-1">{isKu ? 'ڕەنگی نرخ:' : isAr ? 'لون السعر:' : 'Price Color:'}</span>
                   <div className="flex items-center gap-2 bg-[#0B1120] p-1.5 rounded-xl border border-slate-800">
                     <input
                       type="color"
@@ -942,7 +942,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
                 {/* Border Color */}
                 <div>
-                  <span className="text-[10px] text-slate-300 block mb-1">{isAr ? 'لون الإطار:' : 'Border Color:'}</span>
+                  <span className="text-[10px] text-slate-300 block mb-1">{isKu ? 'ڕەنگی چێوە:' : isAr ? 'لون الإطار:' : 'Border Color:'}</span>
                   <div className="flex items-center gap-2 bg-[#0B1120] p-1.5 rounded-xl border border-slate-800">
                     <input
                       type="color"
@@ -959,7 +959,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             {/* 6. Display Element Checkbox Toggles */}
             <div className="p-3.5 rounded-2xl bg-[#10192D] border border-slate-800 space-y-2">
               <span className="text-xs font-bold text-slate-300 block mb-1">
-                {isAr ? 'إظهار وإخفاء عناصر الملصق:' : 'Toggle Label Elements:'}
+                {isKu ? 'پیشاندان و شاردنەوەی بەشەکانی لەزگە:' : isAr ? 'إظهار وإخفاء عناصر الملصق:' : 'Toggle Label Elements:'}
               </span>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
@@ -970,7 +970,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowStoreName(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'اسم المحل' : 'Store Name'}</span>
+                  <span>{isKu ? 'ناوی فرۆشگا' : isAr ? 'اسم المحل' : 'Store Name'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -980,7 +980,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowScientificName(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'الاسم العلمي' : 'Sci Name'}</span>
+                  <span>{isKu ? 'ناوی زانستی' : isAr ? 'الاسم العلمي' : 'Sci Name'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -990,7 +990,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowDosageForm(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'الشكل الدوائي' : 'Dosage Form'}</span>
+                  <span>{isKu ? 'شێوازی دەرمان' : isAr ? 'الشكل الدوائي' : 'Dosage Form'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -1000,7 +1000,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowBatchNumber(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'رقم Batch' : 'Batch No'}</span>
+                  <span>{isKu ? 'ژمارەی باچ' : isAr ? 'رقم Batch' : 'Batch No'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -1010,7 +1010,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowExpiryDate(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'تاريخ الانتهاء' : 'Expiry Date'}</span>
+                  <span>{isKu ? 'بەرواری بەسەرچوون' : isAr ? 'تاريخ الانتهاء' : 'Expiry Date'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -1020,7 +1020,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowCurrencySymbol(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'رمز العملة' : 'Currency'}</span>
+                  <span>{isKu ? 'هێمای دراو' : isAr ? 'رمز العملة' : 'Currency'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -1030,7 +1030,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowPriceLabel(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'تسمية السعر' : 'Price Label'}</span>
+                  <span>{isKu ? 'ناونیشانی نرخ' : isAr ? 'تسمية السعر' : 'Price Label'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
@@ -1040,7 +1040,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     onChange={(e) => setShowBarcodeText(e.target.checked)}
                     className="accent-cyan-500 w-3.5 h-3.5 rounded"
                   />
-                  <span>{isAr ? 'الباركود الرقمي' : 'Barcode Text'}</span>
+                  <span>{isKu ? 'دەقی بارکۆد' : isAr ? 'الباركود الرقمي' : 'Barcode Text'}</span>
                 </label>
               </div>
             </div>
@@ -1054,7 +1054,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <div className="w-full flex items-center justify-between">
                 <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Eye className="w-4 h-4 text-cyan-400" />
-                  <span>{isAr ? 'معاينة الملصق المباشرة:' : 'Live Tag Preview:'}</span>
+                  <span>{isKu ? 'پێشبینینی ڕاستەوخۆی لەزگە:' : isAr ? 'معاينة الملصق المباشرة:' : 'Live Tag Preview:'}</span>
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">
                   {labelWidthMm}×{labelHeightMm} mm
@@ -1080,7 +1080,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     style={{ color: textColor, fontSize: `${storeFontSize}px` }}
                     className="font-extrabold block tracking-tight leading-none truncate max-w-full"
                   >
-                    {settings.storeNameAr || settings.storeName}
+                    {isKu ? (settings.storeNameKu || settings.storeNameAr || settings.storeName) : (settings.storeNameAr || settings.storeName)}
                   </span>
                 )}
 
@@ -1089,7 +1089,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                   style={{ color: textColor, fontSize: `${titleFontSize}px` }}
                   className="font-black leading-tight truncate max-w-full px-1 my-0.5"
                 >
-                  {activeProduct.nameAr || activeProduct.name}
+                  {isKu ? (activeProduct.nameKu || activeProduct.nameAr || activeProduct.name) : (activeProduct.nameAr || activeProduct.name)}
                 </h4>
 
                 {/* Optional Scientific Name */}
@@ -1118,10 +1118,10 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                       </span>
                       {showPriceLabel && (
                         <span style={{ color: textColor, fontSize: `${Math.max(8, priceFontSize - 7)}px` }} className="font-bold opacity-80">
-                          {priceOption === 'single' ? 'سعر المفرد' :
-                           priceOption === 'carton' ? `سعر الكرتون (${activeProduct.unitsPerCarton || 12} قطعة)` :
-                           priceOption === 'wholesale' ? 'سعر الجملة' :
-                           priceOption === 'blister' ? 'سعر الشريط' : 'سعر مخصص'}
+                          {priceOption === 'single' ? (isKu ? 'نرخی تاک' : 'سعر المفرد') :
+                           priceOption === 'carton' ? (isKu ? `نرخی کارتۆن (${activeProduct.unitsPerCarton || 12} دانە)` : `سعر الكرتون (${activeProduct.unitsPerCarton || 12} قطعة)`) :
+                           priceOption === 'wholesale' ? (isKu ? 'نرخی کۆ' : 'سعر الجملة') :
+                           priceOption === 'blister' ? (isKu ? 'نرخی شریت' : 'سعر الشريط') : (isKu ? 'نرخی دیاریکراو' : 'سعر مخصص')}
                         </span>
                       )}
                     </div>
@@ -1129,15 +1129,15 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     /* All Three Prices */
                     <div className="flex items-center justify-around w-full py-1 border-y border-slate-300 text-[10px]" style={{ color: textColor }}>
                       <div className="flex flex-col">
-                        <span className="text-[8.5px] font-bold opacity-75">مفرد</span>
+                        <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'تاک' : 'مفرد'}</span>
                         <span className="font-mono font-black text-emerald-600">{currency}{formatNumber(singlePrice)}</span>
                       </div>
                       <div className="flex flex-col border-x border-slate-300 px-1.5">
-                        <span className="text-[8.5px] font-bold opacity-75">جملة</span>
+                        <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کۆ' : 'جملة'}</span>
                         <span className="font-mono font-black text-blue-600">{currency}{formatNumber(wholesalePrice)}</span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[8.5px] font-bold opacity-75">كرتون</span>
+                        <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کارتۆن' : 'كرتون'}</span>
                         <span className="font-mono font-black text-purple-600">{currency}{formatNumber(cartonPrice)}</span>
                       </div>
                     </div>
@@ -1169,7 +1169,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               </div>
 
               <div className="text-center text-[11px] text-slate-400">
-                {isAr ? 'متوافق مع طابعات الباركود والحرارية Xprinter, Zebra, Bixolon' : 'Compatible with all label & thermal printers'}
+                {isKu ? 'گونجاوە لەگەڵ سەرجەم چاپکەرە گەرمییەکان و لەزگەکانی Xprinter, Zebra, Bixolon' : isAr ? 'متوافق مع طابعات الباركود والحرارية Xprinter, Zebra, Bixolon' : 'Compatible with all label & thermal printers'}
               </div>
             </div>
 
@@ -1181,7 +1181,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 className="w-full py-3 px-6 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 hover:brightness-110 text-white font-black text-sm shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
               >
                 <Printer className="w-5 h-5 text-amber-100 animate-bounce" />
-                <span>{isAr ? `طباعة مباشرة الآن (${copiesCount} ملصق)` : `Direct Print Now (${copiesCount} Copies)`}</span>
+                <span>{isKu ? `چاپکردنی ڕاستەوخۆ (${copiesCount} لەزگە)` : isAr ? `طباعة مباشرة الآن (${copiesCount} ملصق)` : `Direct Print Now (${copiesCount} Copies)`}</span>
               </button>
 
               <button
@@ -1190,7 +1190,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 <Layers className="w-4 h-4 text-cyan-400" />
-                <span>{isAr ? 'طباعة في نافذة منبثقة جديدة' : 'Print in New Popup Window'}</span>
+                <span>{isKu ? 'چاپکردن لە پەنجەرەیەکی نوێدا' : isAr ? 'طباعة في نافذة منبثقة جديدة' : 'Print in New Popup Window'}</span>
               </button>
             </div>
 
@@ -1202,14 +1202,14 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         <div className="px-6 py-3 border-t border-slate-800 bg-[#0B1120] flex items-center justify-between text-xs text-slate-400 shrink-0">
           <span className="flex items-center gap-1.5 text-[11px]">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>{isAr ? 'جاهز للطباعة بدقة 203dpi / 300dpi' : 'Ready for 203dpi / 300dpi printing'}</span>
+            <span>{isKu ? 'ئامادەیە بۆ چاپ بە ڕوونی 203dpi / 300dpi' : isAr ? 'جاهز للطباعة بدقة 203dpi / 300dpi' : 'Ready for 203dpi / 300dpi printing'}</span>
           </span>
 
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-all cursor-pointer"
           >
-            {isAr ? 'إغلاق' : 'Close'}
+            {isKu ? 'داخستن' : isAr ? 'إغلاق' : 'Close'}
           </button>
         </div>
 

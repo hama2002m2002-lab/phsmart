@@ -50,10 +50,10 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black text-white flex items-center gap-2">
-                <span>{isAr ? 'ربط السوبرماركت بالموبايل عبر الشبكة (LAN / Wi-Fi)' : 'Connect Mobile via Local Wi-Fi Network'}</span>
+                <span>{isKu ? 'بەستنەوەی مارکێت بە مۆبایل لە ڕێگەی تۆڕی ناوخۆیی (LAN / Wi-Fi)' : isAr ? 'ربط السوبرماركت بالموبايل عبر الشبكة (LAN / Wi-Fi)' : 'Connect Mobile via Local Wi-Fi Network'}</span>
               </h3>
               <p className="text-[11px] text-cyan-300 font-medium">
-                {isAr ? 'استخدام الموبايل كـ قارئ باركود لاسلكي أو كاشير إضافي' : 'Use mobile phone as wireless barcode scanner or remote POS'}
+                {isKu ? 'بەکارهێنانی مۆبایل وەک سکانەری بارکۆدی بێ وایەر یان کاشێری زیادە' : isAr ? 'استخدام الموبايل كـ قارئ باركود لاسلكي أو كاشير إضافي' : 'Use mobile phone as wireless barcode scanner or remote POS'}
               </p>
             </div>
           </div>
@@ -78,10 +78,10 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
               </div>
               <div>
                 <span className="text-xs font-bold text-white block">
-                  {isAr ? 'شبكة Wi-Fi / LAN المحلية جاهزة للربط' : 'Local Wi-Fi Network Ready'}
+                  {isKu ? 'تۆڕی ناوخۆیی Wi-Fi / LAN ئامادەیە بۆ بەستنەوە' : isAr ? 'شبكة Wi-Fi / LAN المحلية جاهزة للربط' : 'Local Wi-Fi Network Ready'}
                 </span>
                 <span className="text-[10.5px] text-slate-400">
-                  {isAr ? 'عنوان الجهاز الحالي:' : 'Current Host Address:'} <span className="font-mono text-cyan-300 font-bold">{ipDisplay}</span>
+                  {isKu ? 'ناونیشانی ئامێری ئێستا:' : isAr ? 'عنوان الجهاز الحالي:' : 'Current Host Address:'} <span className="font-mono text-cyan-300 font-bold">{ipDisplay}</span>
                 </span>
               </div>
             </div>
@@ -95,14 +95,14 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
               }`}
             >
               <Radio className={`w-3.5 h-3.5 ${simulatedMobileConnected ? 'text-emerald-400 animate-ping' : 'text-cyan-400'}`} />
-              <span>{simulatedMobileConnected ? (isAr ? '🟢 الهاتف متصل' : '🟢 Mobile Paired') : (isAr ? 'فحص الاتصال' : 'Check Sync')}</span>
+              <span>{simulatedMobileConnected ? (isKu ? '🟢 مۆبایل بەستراوەتەوە' : isAr ? '🟢 الهاتف متصل' : '🟢 Mobile Paired') : (isKu ? 'پشکنینی بەستنەوە' : isAr ? 'فحص الاتصال' : 'Check Sync')}</span>
             </button>
           </div>
 
           {/* Mode Selector */}
           <div>
             <label className="text-xs font-bold text-slate-300 mb-2 block">
-              {isAr ? 'اختر وضع التشغيل للموبايل:' : 'Select Mobile Operating Mode:'}
+              {isKu ? 'شێوازی کارکردنی مۆبایل هەڵبژێرە:' : isAr ? 'اختر وضع التشغيل للموبايل:' : 'Select Mobile Operating Mode:'}
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -115,8 +115,8 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
                 }`}
               >
                 <Zap className="w-5 h-5 mx-auto mb-1 text-cyan-400" />
-                <span className="text-xs font-bold block">{isAr ? '📷 ماسح باركود' : 'Barcode Scanner'}</span>
-                <span className="text-[9.5px] opacity-75">{isAr ? 'مسح مباشر للكاشير' : 'Direct POS Scan'}</span>
+                <span className="text-xs font-bold block">{isKu ? '📷 سکانەری بارکۆد' : isAr ? '📷 ماسح باركود' : 'Barcode Scanner'}</span>
+                <span className="text-[9.5px] opacity-75">{isKu ? 'سکانکردنی ڕاستەوخۆ بۆ کاشێر' : isAr ? 'مسح مباشر للكاشير' : 'Direct POS Scan'}</span>
               </button>
 
               <button
@@ -129,8 +129,8 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
                 }`}
               >
                 <Smartphone className="w-5 h-5 mx-auto mb-1 text-blue-400" />
-                <span className="text-xs font-bold block">{isAr ? '🛒 كاشير متنقل' : 'Mobile POS'}</span>
-                <span className="text-[9.5px] opacity-75">{isAr ? 'واجهة مبيعات كاملة' : 'Full Mobile POS'}</span>
+                <span className="text-xs font-bold block">{isKu ? '🛒 کاشێری گەڕۆک' : isAr ? '🛒 كاشير متنقل' : 'Mobile POS'}</span>
+                <span className="text-[9.5px] opacity-75">{isKu ? 'ڕووکاری تەواوی فرۆشتن' : isAr ? 'واجهة مبيعات كاملة' : 'Full Mobile POS'}</span>
               </button>
 
               <button
@@ -143,8 +143,8 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
                 }`}
               >
                 <QrCode className="w-5 h-5 mx-auto mb-1 text-purple-400" />
-                <span className="text-xs font-bold block">{isAr ? '📋 جرد المخزن' : 'Inventory Audit'}</span>
-                <span className="text-[9.5px] opacity-75">{isAr ? 'تحديث الكميات' : 'Update Stock'}</span>
+                <span className="text-xs font-bold block">{isKu ? '📋 جردی کۆگا' : isAr ? '📋 جرد المخزن' : 'Inventory Audit'}</span>
+                <span className="text-[9.5px] opacity-75">{isKu ? 'نوێکردنەوەی بڕەکان' : isAr ? 'تحديث الكميات' : 'Update Stock'}</span>
               </button>
             </div>
           </div>
@@ -153,7 +153,7 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
           <div className="p-5 rounded-2xl bg-white text-slate-950 flex flex-col items-center justify-center space-y-3 shadow-2xl relative border-4 border-cyan-500/40">
             <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <QrCode className="w-4 h-4 text-cyan-600" />
-              <span>{isAr ? 'امسح الـ QR للكاميرا بالموبايل:' : 'Scan QR Code with Phone Camera:'}</span>
+              <span>{isKu ? 'کۆدی QR بە کامێرای مۆبایلەکەت سکان بکە:' : isAr ? 'امسح الـ QR للكاميرا بالموبايل:' : 'Scan QR Code with Phone Camera:'}</span>
             </span>
 
             {/* Generated SVG QR Code Graphic */}
@@ -212,7 +212,7 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
 
             <div className="w-full text-center">
               <span className="text-[10.5px] font-bold text-slate-600 block">
-                {isAr ? 'أو افتح متصفح الموبايل واكتب الرابط التالي:' : 'Or enter this web URL on mobile browser:'}
+                {isKu ? 'یان وێبگەڕی مۆبایلەکەت بکەرەوە و ئەم بەستەرە بنووسە:' : isAr ? 'أو افتح متصفح الموبايل واكتب الرابط التالي:' : 'Or enter this web URL on mobile browser:'}
               </span>
               <div className="mt-1 flex items-center justify-between bg-slate-100 p-2 rounded-xl border border-slate-300 font-mono text-xs font-bold text-slate-800">
                 <span className="truncate max-w-[260px] text-cyan-700">{currentOrigin}</span>
@@ -222,7 +222,7 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
                   className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
                 >
                   {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? (isAr ? 'تم النسخ' : 'Copied') : (isAr ? 'نسخ' : 'Copy')}</span>
+                  <span>{copied ? (isKu ? 'کۆپیکرا' : isAr ? 'تم النسخ' : 'Copied') : (isKu ? 'کۆپیکردن' : isAr ? 'نسخ' : 'Copy')}</span>
                 </button>
               </div>
             </div>
@@ -232,12 +232,12 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
           <div className="p-4 rounded-2xl bg-[#10192D] border border-slate-800 space-y-2 text-xs">
             <h4 className="font-bold text-cyan-300 flex items-center gap-1.5">
               <Shield className="w-4 h-4 text-cyan-400" />
-              <span>{isAr ? 'خطوات الربط السريع:' : 'Quick Pairing Instructions:'}</span>
+              <span>{isKu ? 'هەنگاوەکانی بەستنەوەی خێرا:' : isAr ? 'خطوات الربط السريع:' : 'Quick Pairing Instructions:'}</span>
             </h4>
             <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11.5px] leading-relaxed">
-              <li>{isAr ? 'تأكد أن الموبايل واللابتوب متصلان بنفس شبكة الراوتر (Wi-Fi).' : 'Ensure mobile and PC are connected to the exact same Wi-Fi router.'}</li>
-              <li>{isAr ? 'افتح تطبيق الكاميرا في الموبايل ووجّهها نحو الـ QR أعلاه.' : 'Open Camera app on your mobile phone and point to the QR code.'}</li>
-              <li>{isAr ? 'سيفتح برنامج الماركيت فوراً على هاتفكم دون الحاجة لتثبيت أي تطبيق!' : 'The POS app will open instantly on your phone screen with zero setup.'}</li>
+              <li>{isKu ? 'دڵنیابە مۆبایل و کۆمپیوتەرەکەت بە یەک تۆڕی Wi-Fi پەیوەستکراون.' : isAr ? 'تأكد أن الموبايل واللابتوب متصلان بنفس شبكة الراوتر (Wi-Fi).' : 'Ensure mobile and PC are connected to the exact same Wi-Fi router.'}</li>
+              <li>{isKu ? 'کامێرای مۆبایلەکەت بکەرەوە و ڕووی بکە لە کۆدی QR ی سەرەوە.' : isAr ? 'افتح تطبيق الكاميرا في الموبايل ووجّهها نحو الـ QR أعلاه.' : 'Open Camera app on your mobile phone and point to the QR code.'}</li>
+              <li>{isKu ? 'بەرنامەی مارکێت ڕاستەوخۆ لە مۆبایلەکەتدا دەکرێتەوە بەبێ پێویستی دامەزراندن!' : isAr ? 'سيفتح برنامج الماركيت فوراً على هاتفكم دون الحاجة لتثبيت أي تطبيق!' : 'The POS app will open instantly on your phone screen with zero setup.'}</li>
             </ol>
           </div>
 
@@ -247,14 +247,14 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
         <div className="px-6 py-4 border-t border-slate-800 bg-[#0B1120] flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>{isAr ? 'مزامنة فورية للمبيعات والباركود' : 'Real-time sales & barcode sync'}</span>
+            <span>{isKu ? 'هاوئاهەنگی ڕاستەوخۆ بۆ فرۆشتن و بارکۆد' : isAr ? 'مزامنة فورية للمبيعات والباركود' : 'Real-time sales & barcode sync'}</span>
           </div>
 
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-xs shadow-md hover:brightness-110 cursor-pointer"
           >
-            {isAr ? 'تم / إغلاق' : 'Done / Close'}
+            {isKu ? 'تەواو / داخستن' : isAr ? 'تم / إغلاق' : 'Done / Close'}
           </button>
         </div>
 

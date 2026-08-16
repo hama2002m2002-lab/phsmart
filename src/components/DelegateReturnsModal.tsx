@@ -522,19 +522,19 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
               <div className="p-4 rounded-2xl bg-[#070D1C] border border-amber-500/30 space-y-3">
                 <label className="text-xs font-bold text-amber-300 flex items-center gap-2">
                   <User className="w-4 h-4" />
-                  <span>{isAr ? '2. بيانات المندوب / الشركة المستلمة للبضاعة:' : isKu ? '٢. زانیاری مەندوب یان کۆمپانیای وەرگر:' : '2. Delegate & Supplier Info:'}</span>
+                  <span>{t('2. بيانات المندوب / الشركة المستلمة للبضاعة:', '٢. زانیاری مەندوب یان کۆمپانیای وەرگری کاڵا:', '2. Delegate & Supplier Info:')}</span>
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? 'اسم المندوب / الشخص المستلم:' : isKu ? 'ناوی مەندوب / کەسی وەرگر:' : 'Delegate Name / Receiver:'} <span className="text-rose-400">*</span>
+                      {t('اسم المندوب / الشخص المستلم:', 'ناوی مەندوب / کەسی وەرگر:', 'Delegate Name / Receiver:')} <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="text"
                       value={delegateName}
                       onChange={(e) => setDelegateName(e.target.value)}
-                      placeholder={isAr ? 'مثال: مندوب شركة دجلة / علي أحمد' : isKu ? 'نموونە: مەندوبی کۆمپانیا' : 'e.g. Vendor Representative'}
+                      placeholder={t('مثال: مندوب شركة دجلة / علي أحمد', 'نموونە: مەندوبی کۆمپانیا / عەلی ئەحمەد', 'e.g. Vendor Representative')}
                       className="w-full bg-[#0B132B] text-xs text-slate-100 px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none font-sans"
                       required
                     />
@@ -542,17 +542,17 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
 
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? 'الشركة / المورد المسجل بالنظام (اختياري للربط المالي):' : isKu ? 'کۆمپانیای تۆمارکراو لە سیستم:' : 'Linked Supplier (Optional):'}
+                      {t('الشركة / المورد المسجل بالنظام (اختياري للربط المالي):', 'کۆمپانیا / دابینکەری تۆمارکراو لە سیستم (ئارەزوومەندانە):', 'Linked Supplier (Optional):')}
                     </label>
                     <select
                       value={selectedSupplierId}
                       onChange={(e) => setSelectedSupplierId(e.target.value)}
                       className="w-full bg-[#0B132B] text-xs text-slate-100 px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none"
                     >
-                      <option value="">{isAr ? '-- مندوب عام أو غير مسجل كشركة --' : '-- General Vendor / Unlinked --'}</option>
+                      <option value="">{t('-- مندوب عام أو غير مسجل كشركة --', '-- مەندوبی گشتی یان تۆمارنەکراو --', '-- General Vendor / Unlinked --')}</option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>
-                          {s.nameAr || s.name} {s.balanceDue ? `(رصيد متبقي: ${s.balanceDue.toLocaleString()} ${settings.currencySymbol})` : ''}
+                          {s.nameAr || s.name} {s.balanceDue ? `(${t('رصيد متبقي:', 'باڵانسی ماوە:', 'Due:')} ${s.balanceDue.toLocaleString()} ${settings.currencySymbol})` : ''}
                         </option>
                       ))}
                     </select>
@@ -564,14 +564,14 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
               <div className="p-4 rounded-2xl bg-[#070D1C] border border-amber-500/30 space-y-3">
                 <label className="text-xs font-bold text-amber-300 flex items-center gap-2">
                   <Layers className="w-4 h-4" />
-                  <span>{isAr ? '3. تفاصيل الكميات المرتجعة واحتساب قيمة الاسترداد:' : isKu ? '٣. وردەکاری بڕی گەڕاوە و بەهای وەرگرتنەوە:' : '3. Return Quantity & Refund Value Calculations:'}</span>
+                  <span>{t('3. تفاصيل الكميات المرتجعة واحتساب قيمة الاسترداد:', '٣. وردەکاری بڕی گەڕاوە و بەهای وەرگرتنەوە:', '3. Return Quantity & Refund Value Calculations:')}</span>
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Unit Type (Units vs Cartons) */}
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? 'نوع وحدة الإرجاع:' : isKu ? 'جۆری یەکە:' : 'Return Unit Type:'}
+                      {t('نوع وحدة الإرجاع:', 'جۆری یەکەی گەڕاندنەوە:', 'Return Unit Type:')}
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -583,7 +583,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                             : 'bg-[#0B132B] text-slate-400 border-slate-700 hover:text-white'
                         }`}
                       >
-                        {isAr ? 'بالقطعة المفردة' : isKu ? 'بە تاک / دانە' : 'Per Unit'}
+                        {t('بالقطعة المفردة', 'بە تاک / دانە', 'Per Unit')}
                       </button>
                       <button
                         type="button"
@@ -594,7 +594,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                             : 'bg-[#0B132B] text-slate-400 border-slate-700 hover:text-white'
                         }`}
                       >
-                        {isAr ? 'بالكرتون الكامل' : isKu ? 'بە کارتۆن' : 'Per Carton'}
+                        {t('بالكرتون الكامل', 'بە کارتۆنی تەواو', 'Per Carton')}
                       </button>
                     </div>
                   </div>
@@ -602,7 +602,9 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                   {/* Return Quantity */}
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? (returnUnitType === 'carton' ? 'عدد الكراتين المرجعة:' : 'عدد القطع المرجعة:') : 'Return Quantity:'} <span className="text-rose-400">*</span>
+                      {returnUnitType === 'carton' 
+                        ? t('عدد الكراتين المرجعة:', 'ژمارەی کارتۆنی گەڕاوە:', 'Cartons Quantity:')
+                        : t('عدد القطع المرجعة:', 'ژمارەی دانەی گەڕاوە:', 'Units Quantity:')} <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="number"
@@ -616,7 +618,9 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                   {/* Unit Purchase / Cost Price */}
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? (returnUnitType === 'carton' ? 'سعر شراء الكرتون (دينار):' : 'سعر تكلفة القطعة (دينار):') : 'Cost per Return Unit:'}
+                      {returnUnitType === 'carton' 
+                        ? t('سعر شراء الكرتون:', 'نرخی کڕینی کارتۆن:', 'Carton Cost:')
+                        : t('سعر تكلفة القطعة:', 'نرخی تێچوونی دانە:', 'Unit Cost:')}
                     </label>
                     <input
                       type="number"
@@ -633,12 +637,12 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-400" />
                     <span>
-                      {isAr ? 'مجموع القطع المسترجعة:' : 'Total Units:'} <strong className="text-amber-300 font-mono">{totalUnitsCalculated}</strong> {isAr ? 'قطعة' : 'units'}
+                      {t('مجموع القطع المسترجعة:', 'کۆی گشتی دانەی گەڕاوە:', 'Total Units:')} <strong className="text-amber-300 font-mono">{totalUnitsCalculated}</strong> {t('قطعة', 'دانە', 'units')}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span>{isAr ? 'إجمالي المبلغ المستحق من المندوب:' : 'Total Refund Amount:'}</span>
+                    <span>{t('إجمالي المبلغ المستحق من المندوب:', 'کۆی بڕی پارەی وەرگیراوە لە مەندوب:', 'Total Refund Amount:')}</span>
                     <strong className="text-sm sm:text-base font-black font-mono text-emerald-400">
                       {settings.currencySymbol}{totalRefundAmount.toLocaleString()}
                     </strong>
@@ -650,55 +654,55 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
               <div className="p-4 rounded-2xl bg-[#070D1C] border border-amber-500/30 space-y-3">
                 <label className="text-xs font-bold text-amber-300 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  <span>{isAr ? '4. سبب الإرجاع وطريقة التسوية المالية مع المندوب:' : isKu ? '٤. هۆکاری گەڕاندنەوە و شێوازی پاکتاوکردنی دارایی:' : '4. Return Reason & Settlement Method:'}</span>
+                  <span>{t('4. سبب الإرجاع وطريقة التسوية المالية مع المندوب:', '٤. هۆکاری گەڕاندنەوە و شێوازی پاکتاوکردنی دارایی لەگەڵ مەندوب:', '4. Return Reason & Settlement Method:')}</span>
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Reason Type */}
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? 'سبب الإرجاع للمندوب:' : isKu ? 'هۆکاری گەڕاندنەوە:' : 'Return Reason:'}
+                      {t('سبب الإرجاع للمندوب:', 'هۆکاری گەڕاندنەوە بۆ مەندوب:', 'Return Reason:')}
                     </label>
                     <select
                       value={reasonType}
                       onChange={(e) => setReasonType(e.target.value as any)}
                       className="w-full bg-[#0B132B] text-xs text-slate-100 px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none"
                     >
-                      <option value="EXPIRED">⏳ {isAr ? 'منتهي الصلاحية أو قرب الانتهاء' : 'Expired / Near Expiry'}</option>
-                      <option value="DEFECTIVE">💥 {isAr ? 'عيب مصنعي أو متلف أو مكسور' : 'Manufacturer Defect / Damaged'}</option>
-                      <option value="OVERSTOCK">📦 {isAr ? 'راكد أو فائض بالمخزون' : 'Overstock / Slow Moving'}</option>
-                      <option value="EXCHANGE">🔁 {isAr ? 'استبدال بضاعة أو أصناف جديدة' : 'Item Exchange'}</option>
-                      <option value="WRONG_DELIVERY">❌ {isAr ? 'خطأ في التوريد أو الشحنة' : 'Wrong Delivery / Item'}</option>
-                      <option value="OTHER">📝 {isAr ? 'سبب آخر موثق' : 'Other Reason'}</option>
+                      <option value="EXPIRED">⏳ {t('منتهي الصلاحية أو قرب الانتهاء', 'بەسەرچوو یان نزیک بەسەرچوون', 'Expired / Near Expiry')}</option>
+                      <option value="DEFECTIVE">💥 {t('عيب مصنعي أو متلف أو مكسور', 'عەیبی دروستکردن یان شکاو', 'Manufacturer Defect / Damaged')}</option>
+                      <option value="OVERSTOCK">📦 {t('راكد أو فائض بالمخزون', 'کاڵای ڕاکاو یان زیادە لە کۆگا', 'Overstock / Slow Moving')}</option>
+                      <option value="EXCHANGE">🔁 {t('استبدال بضاعة أو أصناف جديدة', 'گۆڕینەوەی کاڵا بە کاڵای نوێ', 'Item Exchange')}</option>
+                      <option value="WRONG_DELIVERY">❌ {t('خطأ في التوريد أو الشحنة', 'هەڵە لە ناردنی کاڵا', 'Wrong Delivery / Item')}</option>
+                      <option value="OTHER">📝 {t('سبب آخر موثق', 'هۆکاری تر', 'Other Reason')}</option>
                     </select>
                   </div>
 
                   {/* Settlement Method */}
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? 'طريقة التسوية المالية:' : isKu ? 'شێوازی پاکتاوکردن:' : 'Settlement Method:'}
+                      {t('طريقة التسوية المالية:', 'شێوازی پاکتاوکردنی دارایی:', 'Settlement Method:')}
                     </label>
                     <select
                       value={settlementMethod}
                       onChange={(e) => setSettlementMethod(e.target.value as any)}
                       className="w-full bg-[#0B132B] text-xs text-slate-100 px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none"
                     >
-                      <option value="cash_refund">💵 {isAr ? 'استرداد نقدي فوري من المندوب' : 'Instant Cash Refund'}</option>
-                      <option value="deduct_supplier_balance">📉 {isAr ? 'خصم من حساب ورصيد الشركة/المورد' : 'Deduct from Supplier Balance'}</option>
-                      <option value="credit_exchange">🔄 {isAr ? 'استبدال بنفس القيمة لاحقاً (ذمة معلقة)' : 'Credit for Future Exchange'}</option>
+                      <option value="cash_refund">💵 {t('استرداد نقدي فوري من المندوب', 'وەرگرتنەوەی نەختینەی دەستبەجێ لە مەندوب', 'Instant Cash Refund')}</option>
+                      <option value="deduct_supplier_balance">📉 {t('خصم من حساب ورصيد الشركة/المورد', 'داشکاندن لە باڵانس و قەرزی کۆمپانیا', 'Deduct from Supplier Balance')}</option>
+                      <option value="credit_exchange">🔄 {t('استبدال بنفس القيمة لاحقاً (ذمة معلقة)', 'گۆڕینەوە بە هەمان بەها لە داهاتوودا', 'Credit for Future Exchange')}</option>
                     </select>
                   </div>
 
                   {/* Additional Note */}
                   <div className="sm:col-span-2 space-y-1">
                     <label className="text-[11px] text-slate-300 font-semibold">
-                      {isAr ? 'ملاحظات إضافية على سند الإرجاع (اختياري):' : isKu ? 'تێبینی زیاتر:' : 'Additional Notes (Optional):'}
+                      {t('ملاحظات إضافية على سند الإرجاع (اختياري):', 'تێبینی زیاتر لەسەر وەسڵی گەڕاندنەوە (ئارەزوومەندانە):', 'Additional Notes (Optional):')}
                     </label>
                     <input
                       type="text"
                       value={reasonNote}
                       onChange={(e) => setReasonNote(e.target.value)}
-                      placeholder={isAr ? 'مثال: تم تسليم الكرتونة لمندوب الشركة مع وعد باستبدالها خلال أسبوع' : 'e.g. Items returned to delegate with note for next delivery replacement'}
+                      placeholder={t('مثال: تم تسليم الكرتونة لمندوب الشركة مع وعد باستبدالها خلال أسبوع', 'نموونە: کارتۆنەکە ڕادەستی مەندوبی کۆمپانیا کرا بە بەڵێنی گۆڕینەوە لە ماوەی هەفتەیەکدا', 'e.g. Items returned to delegate with note for next delivery replacement')}
                       className="w-full bg-[#0B132B] text-xs text-slate-100 px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none font-sans"
                     />
                   </div>
@@ -713,7 +717,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                       onChange={(e) => setAutoDeductStock(e.target.checked)}
                       className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
                     />
-                    <span>{isAr ? 'خصم الكمية المرتجعة تلقائياً من مخزن المواد' : 'Auto-deduct returned quantity from inventory'}</span>
+                    <span>{t('خصم الكمية المرتجعة تلقائياً من مخزن المواد', 'داشکاندنی بڕی گەڕاوە بە شێوەی ئۆتۆماتیکی لە کۆگای کاڵاکان', 'Auto-deduct returned quantity from inventory')}</span>
                   </label>
 
                   {settlementMethod === 'deduct_supplier_balance' && selectedSupplierId && (
@@ -724,7 +728,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                         onChange={(e) => setAutoUpdateSupplierBalance(e.target.checked)}
                         className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
                       />
-                      <span>{isAr ? 'تسجيل سند تسديد / خصم في حساب الشركة تلقائياً' : 'Auto-update supplier ledger balance'}</span>
+                      <span>{t('تسجيل سند تسديد / خصم في حساب الشركة تلقائياً', 'تۆمارکردنی وەسڵی پاکتاوکردن لە باڵانسی کۆمپانیا بە شێوەی ئۆتۆماتیکی', 'Auto-update supplier ledger balance')}</span>
                     </label>
                   )}
                 </div>
@@ -737,7 +741,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                   onClick={onClose}
                   className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-all"
                 >
-                  {isAr ? 'إلغاء' : 'Cancel'}
+                  {t('إلغاء', 'پاشگەزبوونەوە', 'Cancel')}
                 </button>
 
                 <button
@@ -746,7 +750,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.4)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all active:scale-95"
                 >
                   <Undo2 className="w-4 h-4" />
-                  <span>{isAr ? 'اعتماد وحفظ سند إرجاع المواد للمندوب' : isKu ? 'تۆمارکردن و پەسەندکردنی وەسڵی گەڕاندنەوە' : 'Submit & Save Return Voucher'}</span>
+                  <span>{t('اعتماد وحفظ سند إرجاع المواد للمندوب', 'پەسەندکردن و پاشەکەوتکردنی وەسڵی گەڕاندنەوە بۆ مەندوب', 'Submit & Save Return Voucher')}</span>
                 </button>
               </div>
 
@@ -759,7 +763,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-2xl bg-[#070D1C] border border-amber-500/30 space-y-1">
                   <div className="flex items-center justify-between text-slate-400 text-xs">
-                    <span>{isAr ? 'إجمالي المبالغ المسترجعة' : 'Total Returned Value'}</span>
+                    <span>{t('إجمالي المبالغ المسترجعة', 'کۆی گشتی پارەی وەرگیراوە', 'Total Returned Value')}</span>
                     <DollarSign className="w-4 h-4 text-amber-400" />
                   </div>
                   <div className="text-base sm:text-lg font-black font-mono text-amber-300">
@@ -769,21 +773,21 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
 
                 <div className="p-3 rounded-2xl bg-[#070D1C] border border-emerald-500/30 space-y-1">
                   <div className="flex items-center justify-between text-slate-400 text-xs">
-                    <span>{isAr ? 'مجموع القطع المرجعة' : 'Total Returned Units'}</span>
+                    <span>{t('مجموع القطع المرجعة', 'کۆی گشتی دانەی گەڕاوە', 'Total Returned Units')}</span>
                     <Package className="w-4 h-4 text-emerald-400" />
                   </div>
                   <div className="text-base sm:text-lg font-black font-mono text-emerald-300">
-                    {totalUnitsReturnedAllTime.toLocaleString()} {isAr ? 'قطعة' : 'units'}
+                    {totalUnitsReturnedAllTime.toLocaleString()} {t('قطعة', 'دانە', 'units')}
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-[#070D1C] border border-cyan-500/30 space-y-1">
                   <div className="flex items-center justify-between text-slate-400 text-xs">
-                    <span>{isAr ? 'عدد سندات الإرجاع' : 'Total Return Slips'}</span>
+                    <span>{t('عدد سندات الإرجاع', 'ژمارەی وەسڵەکانی گەڕاندنەوە', 'Total Return Slips')}</span>
                     <FileText className="w-4 h-4 text-cyan-400" />
                   </div>
                   <div className="text-base sm:text-lg font-black font-mono text-cyan-300">
-                    {delegateLogs.length} {isAr ? 'سند' : 'slips'}
+                    {delegateLogs.length} {t('سند', 'وەسڵ', 'slips')}
                   </div>
                 </div>
               </div>
@@ -796,7 +800,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                     type="text"
                     value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
-                    placeholder={isAr ? 'بحث بالسند، المادة، المندوب...' : 'Search returns...'}
+                    placeholder={t('بحث بالسند، المادة، المندوب...', 'گەڕان بەپێی وەسڵ، کاڵا، مەندوب...', 'Search returns...')}
                     className="w-full bg-[#0B132B] text-xs text-slate-200 placeholder-slate-500 pl-9 rtl:pl-3 rtl:pr-9 pr-3 py-1.5 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none font-sans"
                   />
                 </div>
@@ -807,11 +811,11 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                     onChange={(e) => setHistoryReasonFilter(e.target.value)}
                     className="bg-[#0B132B] text-xs text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700 focus:border-amber-400 focus:outline-none"
                   >
-                    <option value="ALL">{isAr ? 'جميع أسباب الإرجاع' : 'All Reasons'}</option>
-                    <option value="EXPIRED">⏳ {isAr ? 'منتهي الصلاحية' : 'Expired'}</option>
-                    <option value="DEFECTIVE">💥 {isAr ? 'عيب مصنعي' : 'Defective'}</option>
-                    <option value="OVERSTOCK">📦 {isAr ? 'راكد وفائض' : 'Overstock'}</option>
-                    <option value="EXCHANGE">🔁 {isAr ? 'استبدال' : 'Exchange'}</option>
+                    <option value="ALL">{t('جميع أسباب الإرجاع', 'هەموو هۆکارەکانی گەڕاندنەوە', 'All Reasons')}</option>
+                    <option value="EXPIRED">⏳ {t('منتهي الصلاحية', 'ماوە بەسەرچوو', 'Expired')}</option>
+                    <option value="DEFECTIVE">💥 {t('عيب مصنعي', 'عەیبی دروستکردن', 'Defective')}</option>
+                    <option value="OVERSTOCK">📦 {t('راكد وفائض', 'کاڵای ڕاکاو و زیادە', 'Overstock')}</option>
+                    <option value="EXCHANGE">🔁 {t('استبدال', 'گۆڕینەوە', 'Exchange')}</option>
                   </select>
                 </div>
               </div>
@@ -820,21 +824,21 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
               {filteredHistoryLogs.length === 0 ? (
                 <div className="p-8 text-center bg-[#070D1C] rounded-2xl border border-slate-800 space-y-2">
                   <Undo2 className="w-10 h-10 text-slate-600 mx-auto" />
-                  <h4 className="text-sm font-bold text-slate-300">{isAr ? 'لا توجد سجلات لمرتجعات المندوبين حالياً' : 'No delegate returns recorded yet'}</h4>
-                  <p className="text-xs text-slate-500">{isAr ? 'يمكنك تسجيل إرجاع بضاعة جديدة من التبويب أعلاه' : 'You can log returns from the New Return tab'}</p>
+                  <h4 className="text-sm font-bold text-slate-300">{t('لا توجد سجلات لمرتجعات المندوبين حالياً', 'هیچ تۆمارێکی گەڕاندنەوە بۆ مەندوبان نییە', 'No delegate returns recorded yet')}</h4>
+                  <p className="text-xs text-slate-500">{t('يمكنك تسجيل إرجاع بضاعة جديدة من التبويب أعلاه', 'دەتوانیت گەڕاندنەوەی نوێ لە تابی سەرەوە تۆمار بکەیت', 'You can log returns from the New Return tab')}</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-[#070D1C]">
-                  <table className="w-full text-right text-xs">
+                  <table className="w-full text-right rtl:text-right ltr:text-left text-xs">
                     <thead className="bg-[#0B132B] text-slate-400 border-b border-slate-800 font-bold">
                       <tr>
-                        <th className="p-3">{isAr ? 'رقم السند والتاريخ' : 'Voucher & Date'}</th>
-                        <th className="p-3">{isAr ? 'المادة والباركود' : 'Product & Barcode'}</th>
-                        <th className="p-3">{isAr ? 'المندوب / الشركة' : 'Delegate / Vendor'}</th>
-                        <th className="p-3">{isAr ? 'الكمية والوحدة' : 'Quantity'}</th>
-                        <th className="p-3">{isAr ? 'قيمة الاسترداد' : 'Refund Value'}</th>
-                        <th className="p-3">{isAr ? 'السبب وطريقة التسوية' : 'Reason & Settlement'}</th>
-                        <th className="p-3 text-center">{isAr ? 'إجراءات' : 'Actions'}</th>
+                        <th className="p-3">{t('رقم السند والتاريخ', 'ژمارەی وەسڵ و بەروار', 'Voucher & Date')}</th>
+                        <th className="p-3">{t('المادة والباركود', 'کاڵا و بارکۆد', 'Product & Barcode')}</th>
+                        <th className="p-3">{t('المندوب / الشركة', 'مەندوب / کۆمپانیا', 'Delegate / Vendor')}</th>
+                        <th className="p-3">{t('الكمية والوحدة', 'بڕ و یەکە', 'Quantity')}</th>
+                        <th className="p-3">{t('قيمة الاسترداد', 'بڕی وەرگیراوە', 'Refund Value')}</th>
+                        <th className="p-3">{t('السبب وطريقة التسوية', 'هۆکار و شێوازی پاکتاوکردن', 'Reason & Settlement')}</th>
+                        <th className="p-3 text-center">{t('إجراءات', 'کردارەکان', 'Actions')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-medium text-slate-200">
@@ -867,11 +871,11 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                             <td className="p-3 font-mono">
                               <span className="font-bold text-white">{log.quantity}</span>{' '}
                               <span className="text-[10px] text-slate-400">
-                                {log.returnUnitType === 'carton' ? (isAr ? 'كرتون' : 'cartons') : (isAr ? 'قطعة' : 'units')}
+                                {log.returnUnitType === 'carton' ? t('كرتون', 'کارتۆن', 'cartons') : t('قطعة', 'دانە', 'units')}
                               </span>
                               {log.returnUnitType === 'carton' && (
                                 <div className="text-[9px] text-slate-500">
-                                  ({log.totalUnitsCalculated} {isAr ? 'قطعة إجمالي' : 'total units'})
+                                  ({log.totalUnitsCalculated} {t('قطعة إجمالي', 'دانە بە کۆی گشتی', 'total units')})
                                 </div>
                               )}
                             </td>
@@ -895,7 +899,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                                   type="button"
                                   onClick={() => setPrintingRecord(log)}
                                   className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 cursor-pointer"
-                                  title={isAr ? 'طباعة سند الإرجاع' : 'Print Return Slip'}
+                                  title={t('طباعة سند الإرجاع', 'چاپکردنی وەسڵی گەڕاندنەوە', 'Print Return Slip')}
                                 >
                                   <Printer className="w-3.5 h-3.5" />
                                 </button>
@@ -903,7 +907,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                                   type="button"
                                   onClick={() => handleDeleteLog(log.id)}
                                   className="p-1.5 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 cursor-pointer"
-                                  title={isAr ? 'حذف السجل' : 'Delete Record'}
+                                  title={t('حذف السجل', 'سڕینەوەی تۆمار', 'Delete Record')}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -925,7 +929,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
         {/* Modal Footer */}
         <div className="p-3.5 border-t border-slate-800 bg-[#070D1C] flex items-center justify-between text-xs">
           <span className="text-[11px] text-slate-400 font-mono">
-            {isAr ? 'نظام المرتجعات الذكي متصل وموثق بالسجلات' : 'Vendor returns engine active'}
+            {t('نظام المرتجعات الذكي متصل وموثق بالسجلات', 'سیستەمی گەڕاندنەوە چالاکە و بەڵگەنامە کراوە', 'Vendor returns engine active')}
           </span>
 
           <button
@@ -933,7 +937,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
           >
-            {isAr ? 'إغلاق' : 'Close'}
+            {t('إغلاق', 'داخستن', 'Close')}
           </button>
         </div>
 
@@ -944,44 +948,44 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
         <div className="fixed inset-0 z-60 bg-black/90 flex items-center justify-center p-3">
           <div className="bg-white text-slate-950 p-6 rounded-3xl w-full max-w-md space-y-4 shadow-2xl dir-rtl">
             <div className="text-center border-b pb-3 space-y-1">
-              <h3 className="text-base font-black">{settings.storeNameAr || settings.storeName || 'نظام إدارة المبيعات'}</h3>
-              <p className="text-xs font-bold text-slate-700">سند إرجاع واسترداد بضاعة إلى مندوب</p>
-              <p className="text-[10px] font-mono text-slate-500">رقم السند: {printingRecord.voucherNumber}</p>
+              <h3 className="text-base font-black">{settings.storeNameAr || settings.storeName || (isKu ? 'سیستەمی بەڕێوەبردنی فرۆش' : 'نظام إدارة المبيعات')}</h3>
+              <p className="text-xs font-bold text-slate-700">{t('سند إرجاع واسترداد بضاعة إلى مندوب', 'وەسڵی گەڕاندنەوە و وەرگرتنەوەی کاڵا بۆ مەندوب', 'Vendor Return Voucher')}</p>
+              <p className="text-[10px] font-mono text-slate-500">{t('رقم السند:', 'ژمارەی وەسڵ:', 'Voucher No:')} {printingRecord.voucherNumber}</p>
             </div>
 
             <div className="text-xs space-y-2 font-sans">
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">التاريخ والوقت:</span>
+                <span className="text-slate-500">{t('التاريخ والوقت:', 'بەروار و کات:', 'Date & Time:')}</span>
                 <span className="font-mono font-bold">{printingRecord.recordedAt}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">اسم المندوب المستلم:</span>
+                <span className="text-slate-500">{t('اسم المندوب المستلم:', 'ناوی مەندوبی وەرگر:', 'Delegate Name:')}</span>
                 <span className="font-bold">{printingRecord.delegateName}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">المادة المرجعة:</span>
+                <span className="text-slate-500">{t('المادة المرجعة:', 'کاڵای گەڕاوە:', 'Returned Item:')}</span>
                 <span className="font-bold">{printingRecord.productName}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">الباركود:</span>
+                <span className="text-slate-500">{t('الباركود:', 'بارکۆد:', 'Barcode:')}</span>
                 <span className="font-mono">{printingRecord.barcode}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">الكمية المرجعة:</span>
+                <span className="text-slate-500">{t('الكمية المرجعة:', 'بڕی گەڕاوە:', 'Quantity:')}</span>
                 <span className="font-mono font-bold">
-                  {printingRecord.quantity} {printingRecord.returnUnitType === 'carton' ? 'كرتون' : 'قطعة'} ({printingRecord.totalUnitsCalculated} قطعة إجمالي)
+                  {printingRecord.quantity} {printingRecord.returnUnitType === 'carton' ? t('كرتون', 'کارتۆن', 'carton') : t('قطعة', 'دانە', 'unit')} ({printingRecord.totalUnitsCalculated} {t('قطعة إجمالي', 'دانە بە گشتی', 'units total')})
                 </span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">سعر الوحدة المرجعة:</span>
+                <span className="text-slate-500">{t('سعر الوحدة المرجعة:', 'نرخی یەکەی گەڕاوە:', 'Unit Cost:')}</span>
                 <span className="font-mono font-bold">{printingRecord.unitCost.toLocaleString()} {settings.currencySymbol}</span>
               </div>
               <div className="flex justify-between border-b pb-1 bg-slate-100 p-2 rounded-lg">
-                <span className="font-bold">إجمالي المبلغ المستحق:</span>
+                <span className="font-bold">{t('إجمالي المبلغ المستحق:', 'کۆی گشتی پارەی شایستە:', 'Total Refund:')}</span>
                 <span className="font-mono font-black text-sm">{printingRecord.totalRefundAmount.toLocaleString()} {settings.currencySymbol}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-slate-500">سبب الإرجاع:</span>
+                <span className="text-slate-500">{t('سبب الإرجاع:', 'هۆکاری گەڕاندنەوە:', 'Return Reason:')}</span>
                 <span className="font-bold">{printingRecord.reasonNote}</span>
               </div>
             </div>
@@ -989,11 +993,11 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
             {/* Signatures */}
             <div className="grid grid-cols-2 gap-4 pt-4 border-t text-center text-xs">
               <div className="space-y-6">
-                <span className="text-slate-500">توقيع مسؤول المخزن / الكاشير</span>
+                <span className="text-slate-500">{t('توقيع مسؤول المخزن / الكاشير', 'واژۆی بەڕێوەبەری کۆگا / کاشێر', 'Keeper / Cashier Signature')}</span>
                 <div className="border-b border-dashed border-slate-400 h-6"></div>
               </div>
               <div className="space-y-6">
-                <span className="text-slate-500">توقيع واستلام المندوب</span>
+                <span className="text-slate-500">{t('توقيع واستلام المندوب', 'واژۆ و وەرگرتنی مەندوب', 'Delegate Signature')}</span>
                 <div className="border-b border-dashed border-slate-400 h-6"></div>
               </div>
             </div>
@@ -1004,7 +1008,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                 onClick={() => setPrintingRecord(null)}
                 className="px-4 py-2 rounded-xl bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'داخستن', 'Close')}
               </button>
               <button
                 type="button"
@@ -1014,7 +1018,7 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
                 className="px-5 py-2 rounded-xl bg-slate-950 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>طباعة السند</span>
+                <span>{t('طباعة السند', 'چاپکردنی وەسڵ', 'Print Voucher')}</span>
               </button>
             </div>
           </div>

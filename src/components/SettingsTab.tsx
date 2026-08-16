@@ -21,6 +21,7 @@ interface SettingsTabProps {
   notifications?: MarketNotification[];
   purchaseInvoices?: PurchaseInvoice[];
   onImportBackup?: (backupData: any) => number | void;
+  onlyPermissionsAndAccounts?: boolean;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({ 
@@ -35,7 +36,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   orders,
   notifications,
   purchaseInvoices,
-  onImportBackup
+  onImportBackup,
+  onlyPermissionsAndAccounts = false
 }) => {
   const isAr = settings.language === 'ar';
   const isKu = settings.language === 'ku';
@@ -368,23 +370,35 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       <div className="bg-[#10192D] p-5 rounded-3xl border border-blue-500/20 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <SettingsIcon className="w-5 h-5 text-cyan-400" />
-            {isKu ? 'ڕێکخستنەکانی فرۆشگە و دروستکردن و دەستکاریکردنی هەژمارەکان' : isAr ? 'إعدادات المتجر وإنشاء وتعديل الحسابات' : 'Store Settings & User Management'}
+            {onlyPermissionsAndAccounts ? (
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            ) : (
+              <SettingsIcon className="w-5 h-5 text-cyan-400" />
+            )}
+            {onlyPermissionsAndAccounts
+              ? (isKu ? 'هەژمارەکانی کاشێر و پێدانی دەسەڵاتەکان' : isAr ? 'حسابات الكاشير وإعطاء الصلاحيات' : 'Cashier Accounts & Permissions')
+              : (isKu ? 'ڕێکخستنەکانی فرۆشگە و دروستکردن و دەستکاریکردنی هەژمارەکان' : isAr ? 'إعدادات المتجر وإنشاء وتعديل الحسابات' : 'Store Settings & User Management')
+            }
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            {isKu ? 'ڕێکخستنی زانیارییەکانی باجی پسوولە، دراو، دروستکردن و دەستکاریکردنی پرۆفایلی کاشێر و سەرپەرشتیاران لەگەڵ دیاریکردنی دەسەڵاتەکان' : isAr ? 'تخصيص بيانات الفواتير الضريبية، العملة، وإنشاء وتعديل ملفات الكاشير والمشرفين مع تحديد الصلاحيات' : 'Configure VAT tax rates, store metadata, create user profiles, and assign permissions'}
+            {onlyPermissionsAndAccounts
+              ? (isKu ? 'دروستکردن و دەستکاریکردنی پەڕگەی کاشێر و سەرپەرشتیاران لەگەڵ دیاریکردنی وردی دەسەڵاتەکانی چوونەژوورەوە' : isAr ? 'إنشاء وتعديل ملفات الكاشير والمشرفين مع تحديد الصلاحيات والمفاتيح التشغيلية بدقة' : 'Create and edit cashier & staff profiles, assign roles, and grant granular permissions')
+              : (isKu ? 'ڕێکخستنی زانیارییەکانی باجی پسوولە، دراو، دروستکردن و دەستکاریکردنی پرۆفایلی کاشێر و سەرپەرشتیاران لەگەڵ دیاریکردنی دەسەڵاتەکان' : isAr ? 'تخصيص بيانات الفواتير الضريبية، العملة، وإنشاء وتعديل ملفات الكاشير والمشرفين مع تحديد الصلاحيات' : 'Configure VAT tax rates, store metadata, create user profiles, and assign permissions')
+            }
           </p>
         </div>
 
         {/* ACTION BUTTONS: KEYBOARD SHORTCUTS & CREATE ACCOUNT */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setIsShortcutsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-cyan-400/30"
-          >
-            <Keyboard className="w-4 h-4 text-cyan-300" />
-            <span>{isKu ? '⌨️ کورتەبڕەکانی تەختەکلیل (Hotkeys)' : isAr ? '⌨️ اختصارات لوحة المفاتيح' : '⌨️ POS Keyboard Shortcuts'}</span>
-          </button>
+          {!onlyPermissionsAndAccounts && (
+            <button
+              onClick={() => setIsShortcutsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-cyan-400/30"
+            >
+              <Keyboard className="w-4 h-4 text-cyan-300" />
+              <span>{isKu ? '⌨️ کورتەبڕەکانی تەختەکلیل (Hotkeys)' : isAr ? '⌨️ اختصارات لوحة المفاتيح' : '⌨️ POS Keyboard Shortcuts'}</span>
+            </button>
+          )}
 
           <button
             onClick={handleOpenNewAccountModal}
@@ -688,7 +702,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       />
 
       {/* STORE SETTINGS CONFIGURATION */}
-      <div className="cyber-card p-6 rounded-3xl border border-blue-500/20 space-y-6 max-w-3xl">
+      {!onlyPermissionsAndAccounts && (
+        <div className="cyber-card p-6 rounded-3xl border border-blue-500/20 space-y-6 max-w-3xl">
 
         {/* POS Keyboard Shortcuts Quick Control Banner */}
         <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950/60 via-blue-950/50 to-indigo-950/60 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-3 shadow-lg">
@@ -1559,9 +1574,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
       </div>
+      )}
 
       {/* Hidden Printable Test Overlay for Hardware Verification */}
-      {testPrintType && (
+      {!onlyPermissionsAndAccounts && testPrintType && (
         <div className="hidden print:block fixed inset-0 bg-white text-black p-4 z-[9999]">
           {testPrintType === 'receipt' && (
             <div className="w-[80mm] mx-auto text-center font-mono text-xs space-y-2 dir-rtl">

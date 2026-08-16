@@ -16,6 +16,8 @@ interface ShortcutItem {
   titleEn: string;
   titleKu: string;
   descriptionAr: string;
+  descriptionKu: string;
+  descriptionEn: string;
   icon: string;
 }
 
@@ -26,6 +28,8 @@ const SHORTCUT_ITEMS: ShortcutItem[] = [
     titleEn: 'Open New Sales Window',
     titleKu: 'کردنەوەی پەنجەرەی نوێی فرۆشتن',
     descriptionAr: 'فتح شاشة بيع جديدة متعددة في نفس الوقت',
+    descriptionKu: 'کردنەوەی پەنجەرەیەکی نوێی فرۆشتن لە هەمان کاتدا',
+    descriptionEn: 'Open a new simultaneous multi-sales window',
     icon: '➕',
   },
   {
@@ -34,6 +38,8 @@ const SHORTCUT_ITEMS: ShortcutItem[] = [
     titleEn: 'Complete Sale / Checkout',
     titleKu: 'تەواوکردنی فرۆشتن و دانانی پارە',
     descriptionAr: 'تأكيد عملية الدفع وطباعة الوصل فوراً',
+    descriptionKu: 'پەسەندکردنی پارەدان و چاپکردنی یەکسەری پسوڵە',
+    descriptionEn: 'Confirm checkout payment and print receipt immediately',
     icon: '💳',
   },
   {
@@ -42,6 +48,8 @@ const SHORTCUT_ITEMS: ShortcutItem[] = [
     titleEn: 'Focus Barcode Scanner',
     titleKu: 'تەرکیز لەسەر بارکۆد',
     descriptionAr: 'توجيه المؤشر تلقائياً لإدخال الباركود أو البحث',
+    descriptionKu: 'بردنە سەرەوەی نیشاندەر بۆ لێدانی بارکۆد یان گەڕان',
+    descriptionEn: 'Auto-focus cursor to barcode input or search field',
     icon: '🔍',
   },
   {
@@ -50,6 +58,8 @@ const SHORTCUT_ITEMS: ShortcutItem[] = [
     titleEn: 'Show Store Inventory',
     titleKu: 'پیشاندانی کاڵاکانی کۆگا',
     descriptionAr: 'فتح قائمة المواد والتصفح المباشر للاختيار',
+    descriptionKu: 'کردنەوەی لیستی کاڵاکان بۆ هەڵبژاردنی خێرا',
+    descriptionEn: 'Open inventory item catalog for quick selection',
     icon: '📦',
   },
   {
@@ -58,6 +68,8 @@ const SHORTCUT_ITEMS: ShortcutItem[] = [
     titleEn: 'Switch to Next Window',
     titleKu: 'چوون بۆ پەنجەرەی دواتر',
     descriptionAr: 'التنقل السريع بين نوافذ البيع المفتوحة للأمام',
+    descriptionKu: 'گواستنەوەی خێرا بۆ پەنجەرەی دواتری فرۆشتن',
+    descriptionEn: 'Quick switch forward between open sales windows',
     icon: '➡️',
   },
   {
@@ -66,22 +78,28 @@ const SHORTCUT_ITEMS: ShortcutItem[] = [
     titleEn: 'Switch to Previous Window',
     titleKu: 'چوون بۆ پەنجەرەی پێشوو',
     descriptionAr: 'التنقل السريع بين نوافذ البيع للفي الخلف',
+    descriptionKu: 'گواستنەوەی خێرا بۆ پەنجەرەی پێشووی فرۆشتن',
+    descriptionEn: 'Quick switch backward between open sales windows',
     icon: '⬅️',
   },
   {
     keyName: 'clearCart',
     titleAr: 'تفريغ سلة المبيعات الحالية',
     titleEn: 'Clear Current Cart',
-    titleKu: 'بەتاڵکردنەوەی سەبەتە',
+    titleKu: 'بەتاڵکردنەوەی سەبەتەی فرۆشتن',
     descriptionAr: 'مسح جميع المواد المضافة في النافذة النشطة',
+    descriptionKu: 'سڕینەوەی هەموو کاڵا زیادکراوەکانی پەنجەرەی چالاک',
+    descriptionEn: 'Clear all added items in the active window cart',
     icon: '🗑️',
   },
   {
     keyName: 'closeActiveWindow',
     titleAr: 'إغلاق نافذة البيع الحالية',
     titleEn: 'Close Active Window',
-    titleKu: 'داخستنی پەنجەرەی چالاک',
+    titleKu: 'داخستنی پەنجەرەی فرۆشتنی چالاک',
     descriptionAr: 'إغلاق النافذة الحالية وإعادة التسلسل تلقائياً',
+    descriptionKu: 'داخستنی پەنجەرەی ئێستا و ڕێکخستنەوەی زنجیرەیی',
+    descriptionEn: 'Close active sales window and re-index open tabs',
     icon: '❌',
   },
 ];
@@ -166,13 +184,15 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black text-white flex items-center gap-2">
-                <span>{isAr ? 'التحكم باختصارات لوحة المفاتيح' : isKu ? 'کۆنترۆڵی کورتکراوەکانی کیبۆرد' : 'Customize POS Keyboard Shortcuts'}</span>
+                <span>{isKu ? 'ڕێکخستنی کورتەبڕەکانی کیبۆرد بۆ کاشێر' : isAr ? 'التحكم باختصارات لوحة المفاتيح' : 'Customize POS Keyboard Shortcuts'}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                  {isAr ? 'واجهة البيع السريعة' : 'POS System'}
+                  {isKu ? 'ڕووکاری فرۆشتنی خێرا' : isAr ? 'واجهة البيع السريعة' : 'POS System'}
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {isAr 
+                {isKu
+                  ? 'دیاریکردنی دوگمەکانی کیبۆرد بۆ کۆنترۆڵکردنی خێرای پەنجەرەکانی فرۆشتن، پارەدان و گەڕان'
+                  : isAr 
                   ? 'خصص أزرار الكيبورد للتحكم السريع في نوافذ البيع والدفع والبحث بدون الحاجة للمسطرة أو الماوس'
                   : 'Assign keyboard hotkeys for instant checkout, window switching, and barcode scanner focus'}
               </p>
@@ -192,7 +212,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           {saveSuccess && (
             <div className="p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-400/60 text-emerald-300 text-xs text-center font-bold flex items-center justify-center gap-2 animate-bounce">
               <Check className="w-4 h-4 text-emerald-400" />
-              <span>{isAr ? 'تم حفظ إعدادات اختصارات الكيبورد بنجاح!' : 'Keyboard shortcuts saved successfully!'}</span>
+              <span>{isKu ? 'ڕێکخستنەکانی کورتەبڕی کیبۆرد بە سەرکەوتوویی پاشەکەوت کران!' : isAr ? 'تم حفظ إعدادات اختصارات الكيبورد بنجاح!' : 'Keyboard shortcuts saved successfully!'}</span>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
 import { OverviewTab } from './components/OverviewTab';
@@ -675,6 +675,7 @@ export function App() {
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
             settings={settings}
+            setSettings={setSettings}
             currentUser={currentUser}
             onOpenPOS={() => setActiveTab('pos')}
             onSaleCompleted={handleSaleCompleted}
@@ -736,6 +737,7 @@ export function App() {
             setProducts={setProducts}
             customers={customers}
             settings={settings}
+            setSettings={setSettings}
             onSaleCompleted={handleSaleCompleted}
             showInventory={showPOSInventory}
             setShowInventory={setShowPOSInventory}
@@ -834,8 +836,9 @@ export function App() {
       case 'permissions':
         return (
           <AccountsHubTab
-            initialSubTab={activeTab === 'permissions' ? 'permissions' : 'hub'}
+            initialSubTab={activeTab === 'permissions' ? 'settings' : 'hub'}
             settings={settings}
+            setSettings={setSettings}
             currentUser={currentUser}
             userAccounts={userAccounts}
             setUserAccounts={setUserAccounts}
@@ -849,6 +852,8 @@ export function App() {
             salesHistory={salesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
+            notifications={notifications}
+            onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
@@ -861,6 +866,7 @@ export function App() {
           <AccountsHubTab
             initialSubTab="suppliers"
             settings={settings}
+            setSettings={setSettings}
             currentUser={currentUser}
             userAccounts={userAccounts}
             setUserAccounts={setUserAccounts}
@@ -874,6 +880,8 @@ export function App() {
             salesHistory={salesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
+            notifications={notifications}
+            onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
@@ -886,6 +894,7 @@ export function App() {
           <AccountsHubTab
             initialSubTab="customers"
             settings={settings}
+            setSettings={setSettings}
             currentUser={currentUser}
             userAccounts={userAccounts}
             setUserAccounts={setUserAccounts}
@@ -899,6 +908,8 @@ export function App() {
             salesHistory={salesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
+            notifications={notifications}
+            onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
@@ -911,6 +922,7 @@ export function App() {
           <AccountsHubTab
             initialSubTab="orders"
             settings={settings}
+            setSettings={setSettings}
             currentUser={currentUser}
             userAccounts={userAccounts}
             setUserAccounts={setUserAccounts}
@@ -924,6 +936,8 @@ export function App() {
             salesHistory={salesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
+            notifications={notifications}
+            onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
@@ -967,6 +981,7 @@ export function App() {
           <AccountsHubTab
             initialSubTab="cashierAccounts"
             settings={settings}
+            setSettings={setSettings}
             currentUser={currentUser}
             userAccounts={userAccounts}
             setUserAccounts={setUserAccounts}
@@ -980,6 +995,8 @@ export function App() {
             salesHistory={salesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
+            notifications={notifications}
+            onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
@@ -1085,7 +1102,7 @@ export function App() {
       <div className="flex-1 flex overflow-hidden min-h-0 relative">
         
         {/* Desktop Sidebar (Fixed side navigation on lg+ screens) */}
-        {isSidebarOpen && activeTab !== 'pos' && activeTab !== 'products' && activeTab !== 'purchases' && activeTab !== 'invoices' && !isReportsFullscreen && (
+        {isSidebarOpen && activeTab !== 'pos' && activeTab !== 'products' && activeTab !== 'purchases' && activeTab !== 'invoices' && activeTab !== 'accountsHub' && activeTab !== 'cashierAccounts' && !isReportsFullscreen && (
           <div className="hidden lg:block w-64 shrink-0 h-full">
             <Sidebar
               activeTab={activeTab}
@@ -1135,9 +1152,9 @@ export function App() {
         <main className={`flex-1 w-full min-h-0 ${
           activeTab === 'pos' 
             ? 'max-w-full overflow-hidden h-full p-1.5 sm:p-2.5 lg:p-3' 
-            : activeTab === 'products' || activeTab === 'purchases' || activeTab === 'invoices' || isReportsFullscreen 
-            ? 'max-w-full overflow-y-auto p-2.5 sm:p-4 lg:p-6 pb-20 lg:pb-6' 
-            : 'max-w-7xl mx-auto overflow-y-auto p-2.5 sm:p-4 lg:p-6 pb-20 lg:pb-6'
+            : activeTab === 'products' || activeTab === 'purchases' || activeTab === 'invoices' || activeTab === 'accountsHub' || activeTab === 'cashierAccounts' || isReportsFullscreen 
+            ? 'max-w-full overflow-y-auto p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6' 
+            : 'max-w-7xl mx-auto overflow-y-auto p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6'
         }`}>
           {renderMainContent()}
         </main>
@@ -1146,15 +1163,16 @@ export function App() {
 
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop & in POS Mode) */}
       {activeTab !== 'pos' && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B1120]/95 backdrop-blur-xl border-t border-cyan-500/20 px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-          <div className="flex items-center justify-around">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B1120]/95 backdrop-blur-xl border-t border-cyan-500/20 px-2 py-1.5 safe-bottom-nav shadow-[0_-4px_25px_rgba(0,0,0,0.6)] select-none">
+          <div className="flex items-center justify-around max-w-md mx-auto">
             {/* Dashboard */}
             <button
+              type="button"
               onClick={() => {
                 setActiveTopTab('overview');
                 setActiveTab('dashboard');
               }}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center py-1 px-2.5 rounded-xl transition-all cursor-pointer active:scale-95 ${
                 activeTab === 'dashboard'
                   ? 'text-cyan-400 font-black'
                   : 'text-slate-400 hover:text-slate-200'
@@ -1166,27 +1184,14 @@ export function App() {
               </span>
             </button>
 
-            {/* POS Fast Sales */}
-            <button
-              onClick={() => {
-                setActiveTopTab('overview');
-                setActiveTab('pos');
-              }}
-              className={`flex flex-col items-center py-1 px-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 transition-all cursor-pointer -mt-3 border-2 border-[#0B1120]`}
-            >
-              <ShoppingCart className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px] font-black leading-tight">
-                {settings.language === 'ku' ? 'کاشێر' : settings.language === 'ar' ? 'الكاشير' : 'POS'}
-              </span>
-            </button>
-
             {/* Products */}
             <button
+              type="button"
               onClick={() => {
                 setActiveTopTab('overview');
                 setActiveTab('products');
               }}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all relative cursor-pointer ${
+              className={`flex flex-col items-center py-1 px-2.5 rounded-xl transition-all relative cursor-pointer active:scale-95 ${
                 activeTab === 'products'
                   ? 'text-cyan-400 font-black'
                   : 'text-slate-400 hover:text-slate-200'
@@ -1194,7 +1199,7 @@ export function App() {
             >
               <Package className={`w-5 h-5 mb-0.5 ${activeTab === 'products' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
               <span className="text-[10px] leading-tight font-bold">
-                {settings.language === 'ku' ? 'کۆگا' : settings.language === 'ar' ? 'المخزن' : 'Warehouse'}
+                {settings.language === 'ku' ? 'کۆگا' : settings.language === 'ar' ? 'المخزن' : 'Stock'}
               </span>
               {lowStockCount > 0 && (
                 <span className="absolute -top-1 end-1 w-4 h-4 bg-amber-500 text-slate-950 font-black text-[9px] rounded-full flex items-center justify-center border border-[#0B1120] animate-pulse">
@@ -1203,33 +1208,57 @@ export function App() {
               )}
             </button>
 
-            {/* Reports */}
+            {/* POS Fast Sales (Center Elevated Button) */}
             <button
+              type="button"
               onClick={() => {
                 setActiveTopTab('overview');
-                setActiveTab('reports');
+                setActiveTab('pos');
               }}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'reports'
+              className="flex flex-col items-center py-1 px-3.5 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.5)] active:scale-90 transition-all cursor-pointer -mt-3.5 border-2 border-[#0B1120]"
+            >
+              <ShoppingCart className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] font-black leading-tight">
+                {settings.language === 'ku' ? 'کاشێر' : settings.language === 'ar' ? 'الكاشير' : 'POS'}
+              </span>
+            </button>
+
+            {/* Cashier Accounts */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTopTab('overview');
+                setActiveTab('cashierAccounts');
+              }}
+              className={`flex flex-col items-center py-1 px-2.5 rounded-xl transition-all cursor-pointer active:scale-95 ${
+                activeTab === 'cashierAccounts'
                   ? 'text-cyan-400 font-black'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <FileText className={`w-5 h-5 mb-0.5 ${activeTab === 'reports' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
+              <UserCheck className={`w-5 h-5 mb-0.5 ${activeTab === 'cashierAccounts' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]' : ''}`} />
               <span className="text-[10px] leading-tight font-bold">
-                {settings.language === 'ku' ? 'ڕاپۆرت' : settings.language === 'ar' ? 'التقارير' : 'Reports'}
+                {settings.language === 'ku' ? 'حیساب' : settings.language === 'ar' ? 'كشف الحساب' : 'Accounts'}
               </span>
             </button>
 
             {/* More Menu Drawer Toggle */}
             <button
+              type="button"
               onClick={() => setIsSidebarOpen(true)}
-              className="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400 hover:text-slate-200 active:scale-95 transition-all cursor-pointer"
+              className={`flex flex-col items-center py-1 px-2.5 rounded-xl active:scale-95 transition-all cursor-pointer relative ${
+                ['vouchers', 'accountsHub', 'reports', 'settings', 'suppliers', 'customers', 'orders', 'permissions', 'analytics', 'notifications'].includes(activeTab)
+                  ? 'text-cyan-400 font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
             >
               <Menu className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] leading-tight font-bold">
                 {settings.language === 'ku' ? 'بەشەکان' : settings.language === 'ar' ? 'المزيد' : 'Menu'}
               </span>
+              {['vouchers', 'accountsHub', 'reports', 'settings', 'suppliers', 'customers', 'orders', 'permissions', 'analytics', 'notifications'].includes(activeTab) && (
+                <span className="absolute top-1 end-2 w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(6,182,212,0.8)]" />
+              )}
             </button>
           </div>
         </nav>

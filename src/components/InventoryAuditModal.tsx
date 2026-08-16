@@ -34,6 +34,8 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
+  const t = (ar: string, ku: string, en: string = ar) => isKu ? ku : isAr ? ar : en;
+
   const [search, setSearch] = useState('');
   const [filterDiscrepancy, setFilterDiscrepancy] = useState<'ALL' | 'DIFF_ONLY' | 'MATCH_ONLY'>('ALL');
   
@@ -115,7 +117,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
       }
       return p;
     }));
-    alert(isAr ? 'تم تحديث المخزون برقم الجرد الفعلي بالكرتون والعدد بنجاح!' : 'Stock updated with actual audit count by cartons and unit numbers successfully!');
+    alert(t('تم تحديث المخزون برقم الجرد الفعلي بالكرتون والعدد بنجاح!', 'کۆگا بە ژماردنی ڕاستەقینەی کارتۆن و دانەکان نوێکرایەوە!', 'Stock updated with actual audit count by cartons and unit numbers successfully!'));
     onClose();
   };
 
@@ -135,10 +137,10 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                {isKu ? 'واژەی پشکنین و جردی ڕاستەقینەی کۆگا' : isAr ? 'واجهة جرد المخزون والتدقيق الفعلي' : 'Physical Inventory Audit Interface'}
+                {t('واجهة جرد المخزون والتدقيق الفعلي', 'واژەی پشکنین و جردی ڕاستەقینەی کۆگا', 'Physical Inventory Audit Interface')}
               </h2>
               <p className="text-xs text-slate-400">
-                {isKu ? 'بەراوردکردنی بڕی تۆمارکراوی سیستم لەگەڵ بڕی ڕاستەقینە و نوێکردنەوەی جیاوازییەکان' : isAr ? 'مقارنة الكميات المسجلة بالنظام مع الكمية الفعلية وتحديث الفروقات بضغطة واحدة' : 'Compare system quantity vs actual physical count and resolve inventory discrepancies'}
+                {t('مقارنة الكميات المسجلة بالنظام مع الكمية الفعلية وتحديث الفروقات بضغطة واحدة', 'بەراوردکردنی بڕی تۆمارکراوی سیستم لەگەڵ بڕی ڕاستەقینە و نوێکردنەوەی جیاوازییەکان', 'Compare system quantity vs actual physical count and resolve inventory discrepancies')}
               </p>
             </div>
           </div>
@@ -155,19 +157,19 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-3">
           <div className="bg-[#10192D] p-3 rounded-xl border border-blue-500/20 text-center">
             <span className="text-[11px] text-slate-400 block font-semibold">
-              {isAr ? 'كمية النظام المسجلة' : 'System Recorded Quantity'}
+              {t('كمية النظام المسجلة', 'بڕی تۆمارکراوی سیستم', 'System Recorded Quantity')}
             </span>
             <span className="text-base font-black text-cyan-400 font-mono mt-0.5 block">
-              {totalRecordedCartons} {isAr ? 'كرتونة' : 'cartons'} ({totalRecordedUnits} {isAr ? 'قطعة' : 'pcs'})
+              {totalRecordedCartons} {t('كرتونة', 'کارتۆن', 'cartons')} ({totalRecordedUnits} {t('قطعة', 'دانە', 'pcs')})
             </span>
           </div>
 
           <div className="bg-[#10192D] p-3 rounded-xl border border-amber-500/20 text-center">
             <span className="text-[11px] text-slate-400 block font-semibold">
-              {isAr ? 'كمية الجرد الفعلي المحسوبة' : 'Actual Counted Quantity'}
+              {t('كمية الجرد الفعلي المحسوبة', 'بڕی ژمێردراوی ڕاستەقینە', 'Actual Counted Quantity')}
             </span>
             <span className="text-base font-black text-amber-400 font-mono mt-0.5 block">
-              {totalCountedCartons} {isAr ? 'كرتونة' : 'cartons'} ({totalCountedUnits} {isAr ? 'قطعة' : 'pcs'})
+              {totalCountedCartons} {t('كرتونة', 'کارتۆن', 'cartons')} ({totalCountedUnits} {t('قطعة', 'دانە', 'pcs')})
             </span>
           </div>
 
@@ -177,10 +179,10 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
             'bg-rose-950/30 border-rose-500/30 text-rose-400'
           }`}>
             <span className="text-[11px] text-slate-400 block font-semibold">
-              {isAr ? 'إجمالي الفارق (بالعدد والكرتون)' : 'Total Discrepancy'}
+              {t('إجمالي الفارق (بالعدد والكرتون)', 'کۆی جیاوازی (دانە و کارتۆن)', 'Total Discrepancy')}
             </span>
             <span className="text-base font-black font-mono mt-0.5 block">
-              {totalDiffUnits > 0 ? `+${totalDiffUnits}` : totalDiffUnits} {isAr ? 'قطعة' : 'pcs'} ({totalDiffCartons > 0 ? `+${totalDiffCartons}` : totalDiffCartons} {isAr ? 'كرتون' : 'cartons'})
+              {totalDiffUnits > 0 ? `+${totalDiffUnits}` : totalDiffUnits} {t('قطعة', 'دانە', 'pcs')} ({totalDiffCartons > 0 ? `+${totalDiffCartons}` : totalDiffCartons} {t('كرتون', 'کارتۆن', 'cartons')})
             </span>
           </div>
         </div>
@@ -193,7 +195,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={isAr ? 'بحث بالاسم أو الباركود للجرد...' : 'Search item or barcode...'}
+              placeholder={t('بحث بالاسم أو الباركود للجرد...', 'گەڕان بەپێی ناو یان بارکۆد...', 'Search item or barcode...')}
               className="w-full bg-[#10192D] text-xs text-slate-200 pl-9 rtl:pl-3 rtl:pr-9 pr-3 py-2 rounded-xl border border-blue-500/20 focus:outline-none focus:border-cyan-500"
             />
           </div>
@@ -207,7 +209,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                   : 'bg-slate-800 border-slate-700 text-slate-400'
               }`}
             >
-              {isAr ? 'الكل' : 'All'}
+              {t('الكل', 'هەموو', 'All')}
             </button>
             <button
               onClick={() => setFilterDiscrepancy('DIFF_ONLY')}
@@ -217,7 +219,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                   : 'bg-slate-800 border-slate-700 text-slate-400'
               }`}
             >
-              {isAr ? 'الفروقات فقط' : 'Discrepancies Only'}
+              {t('الفروقات فقط', 'تەنها جیاوازییەکان', 'Discrepancies Only')}
             </button>
             <button
               onClick={() => setFilterDiscrepancy('MATCH_ONLY')}
@@ -227,7 +229,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                   : 'bg-slate-800 border-slate-700 text-slate-400'
               }`}
             >
-              {isAr ? 'المتطابق فقط' : 'Matches Only'}
+              {t('المتطابق فقط', 'تەنها هاوتاکان', 'Matches Only')}
             </button>
           </div>
         </div>
@@ -237,13 +239,13 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
           <table className="w-full text-left rtl:text-right text-xs">
             <thead className="bg-[#10192D] text-slate-400 text-[11px] font-bold sticky top-0 z-10 border-b border-slate-800">
               <tr>
-                <th className="py-2.5 px-3">{isAr ? 'الباركود' : 'Barcode'}</th>
-                <th className="py-2.5 px-3">{isAr ? 'اسم المادة' : 'Product Name'}</th>
-                <th className="py-2.5 px-3 text-center">{isAr ? 'النظام (كرتون / قطع)' : 'System Recorded'}</th>
-                <th className="py-2.5 px-3 text-center text-amber-400">{isAr ? 'جرد الكراتين' : 'Carton Count'}</th>
-                <th className="py-2.5 px-3 text-center text-cyan-400">{isAr ? 'جرد بالعدد (القطع)' : 'Unit Count (Pieces)'}</th>
-                <th className="py-2.5 px-3 text-center">{isAr ? 'الفارق (قطع / كرتون)' : 'Difference'}</th>
-                <th className="py-2.5 px-3 text-center">{isAr ? 'الحالة' : 'Status'}</th>
+                <th className="py-2.5 px-3">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
+                <th className="py-2.5 px-3">{t('اسم المادة', 'ناوی کاڵا', 'Product Name')}</th>
+                <th className="py-2.5 px-3 text-center">{t('النظام (كرتون / قطع)', 'سیستم (کارتۆن / دانە)', 'System Recorded')}</th>
+                <th className="py-2.5 px-3 text-center text-amber-400">{t('جرد الكراتين', 'ژماردنی کارتۆن', 'Carton Count')}</th>
+                <th className="py-2.5 px-3 text-center text-cyan-400">{t('جرد بالعدد (القطع)', 'ژماردنی دانەکان', 'Unit Count (Pieces)')}</th>
+                <th className="py-2.5 px-3 text-center">{t('الفارق (قطع / كرتون)', 'جیاوازی (دانە / کارتۆن)', 'Difference')}</th>
+                <th className="py-2.5 px-3 text-center">{t('الحالة', 'دۆخ', 'Status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -263,13 +265,13 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                     <td className="py-2 px-3 font-mono text-cyan-400 font-bold">{p.barcode}</td>
                     <td className="py-2 px-3">
                       <p className="font-bold text-slate-100">{p.nameAr || p.name}</p>
-                      <p className="text-[10px] text-slate-500 font-mono">({unitsPerCarton} قطعة/كرتون)</p>
+                      <p className="text-[10px] text-slate-500 font-mono">({unitsPerCarton} {t('قطعة/كرتون', 'دانە/کارتۆن', 'pcs/ctn')})</p>
                     </td>
                     
                     {/* System Recorded */}
                     <td className="py-2 px-3 text-center font-bold font-mono text-slate-300">
-                      <div>{recordedCartons} <span className="text-[10px] text-slate-500">كرتون</span></div>
-                      <div className="text-[10px] text-cyan-400 font-normal">{recordedTotalUnits} قطعة</div>
+                      <div>{recordedCartons} <span className="text-[10px] text-slate-500">{t('كرتون', 'کارتۆن', 'ctn')}</span></div>
+                      <div className="text-[10px] text-cyan-400 font-normal">{recordedTotalUnits} {t('قطعة', 'دانە', 'pcs')}</div>
                     </td>
 
                     {/* Input 1: Cartons Count */}
@@ -282,7 +284,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                           onChange={(e) => handleCartonsChange(p, Number(e.target.value))}
                           className="w-20 bg-[#10192D] text-amber-300 font-bold font-mono text-center py-1 px-2 rounded-lg border border-amber-500/40 focus:outline-none focus:border-amber-400 text-xs"
                         />
-                        <span className="text-[10px] text-slate-400">ك</span>
+                        <span className="text-[10px] text-slate-400">{t('ك', 'ک', 'c')}</span>
                       </div>
                     </td>
 
@@ -296,18 +298,18 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                           onChange={(e) => handleUnitsChange(p, Number(e.target.value))}
                           className="w-24 bg-[#10192D] text-cyan-300 font-bold font-mono text-center py-1 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs"
                         />
-                        <span className="text-[10px] text-slate-400">قطعة</span>
+                        <span className="text-[10px] text-slate-400">{t('قطعة', 'دانە', 'pcs')}</span>
                       </div>
                     </td>
 
                     {/* Discrepancy */}
                     <td className="py-2 px-3 text-center font-mono font-bold">
                       {diffUnits === 0 ? (
-                        <span className="text-emerald-400 text-[11px]">0 (متطابق)</span>
+                        <span className="text-emerald-400 text-[11px]">0 ({t('متطابق', 'هاوتا', 'Match')})</span>
                       ) : diffUnits > 0 ? (
-                        <span className="text-blue-400 text-[11px]">+{diffUnits} قطعة (+{diffCartons} كرتون)</span>
+                        <span className="text-blue-400 text-[11px]">+{diffUnits} {t('قطعة', 'دانە', 'pcs')} (+{diffCartons} {t('كرتون', 'کارتۆن', 'ctn')})</span>
                       ) : (
-                        <span className="text-rose-400 text-[11px]">{diffUnits} قطعة ({diffCartons} كرتون)</span>
+                        <span className="text-rose-400 text-[11px]">{diffUnits} {t('قطعة', 'دانە', 'pcs')} ({diffCartons} {t('كرتون', 'کارتۆن', 'ctn')})</span>
                       )}
                     </td>
 
@@ -316,12 +318,12 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
                       {diffUnits === 0 ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
                           <CheckCircle2 className="w-3 h-3" />
-                          {isAr ? 'سليم' : 'Match'}
+                          {t('سليم', 'دروست', 'Match')}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-bold">
                           <AlertCircle className="w-3 h-3" />
-                          {isAr ? 'فارق' : 'Discrepancy'}
+                          {t('فارق', 'جیاوازی', 'Discrepancy')}
                         </span>
                       )}
                     </td>
@@ -339,7 +341,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
             className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Printer className="w-4 h-4 text-cyan-400" />
-            <span>{isAr ? 'طباعة كشف الجرد' : 'Print Audit Sheet'}</span>
+            <span>{t('طباعة كشف الجرد', 'چاپکردنی ڕاپۆرتی جرد', 'Print Audit Sheet')}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -347,14 +349,14 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-700 transition-colors cursor-pointer"
             >
-              {isAr ? 'إلغاء' : 'Cancel'}
+              {t('إلغاء', 'پاشگەزبوونەوە', 'Cancel')}
             </button>
             <button
               onClick={handleApplyAllAdjustments}
               className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 text-white font-bold text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               <ClipboardCheck className="w-4 h-4" />
-              <span>{isAr ? 'اعتماد نتائج الجرد وتحديث المخزون' : 'Apply Audit & Update Stock'}</span>
+              <span>{t('اعتماد نتائج الجرد وتحديث المخزون', 'پەسەندکردنی ئەنجام و نوێکردنەوەی کۆگا', 'Apply Audit & Update Stock')}</span>
             </button>
           </div>
         </div>

@@ -82,6 +82,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
+  const t = (ar: string, ku: string, en: string) => isKu ? ku : isAr ? ar : en;
 
   // Return Mode: 'direct' = إرجاع مباشر, 'invoice' = إرجاع من فاتورة, 'analytics' = رسوم بيانية للنسب والمؤشرات
   const [returnMode, setReturnMode] = useState<'direct' | 'invoice' | 'analytics'>('direct');
@@ -257,9 +258,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
         setInvoiceSearchInput(directSearchInput.trim());
         const uniqueInvoices = Array.from(new Set(matchingSoldInvoices.map(i => i.invoiceNumber)));
         setReturnAlert({
-          msg: isAr 
-            ? `تم جلب جميع الوصلات والفواتير (${uniqueInvoices.length}) التي تحتوي على الباركود الممسوح 📄` 
-            : `Fetched all receipts (${uniqueInvoices.length}) containing scanned barcode 📄`,
+          msg: t(
+            `تم جلب جميع الوصلات والفواتير (${uniqueInvoices.length}) التي تحتوي على الباركود الممسوح 📄`,
+            `سەرجەمی پسوڵەکان (${uniqueInvoices.length}) هێنران کە ئەم بارکۆدە لەخۆدەگرن 📄`,
+            `Fetched all receipts (${uniqueInvoices.length}) containing scanned barcode 📄`
+          ),
           type: 'info'
         });
         return;
@@ -279,9 +282,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
       // 3. If no match found
       setReturnAlert({
-        msg: isAr 
-          ? `لم يتم العثور على وصل مبيعات أو مادة تطابق الباركود: (${directSearchInput})` 
-          : `No receipt or product found matching barcode: (${directSearchInput})`,
+        msg: t(
+          `لم يتم العثور على وصل مبيعات أو مادة تطابق الباركود: (${directSearchInput})`,
+          `هیچ پسوڵەی فرۆشتن یان کاڵایەک نەدۆزرایەوە کە لەگەڵ ئەم بارکۆدە بگونجێت: (${directSearchInput})`,
+          `No receipt or product found matching barcode: (${directSearchInput})`
+        ),
         type: 'error'
       });
     }
@@ -317,7 +322,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   const handleConfirmDirectReturn = () => {
     if (directItems.length === 0) {
       setReturnAlert({
-        msg: isAr ? 'يرجى اختيار مادة واحدة على الأقل للإرجاع المباشر!' : 'Please add at least one item for direct return!',
+        msg: t('يرجى اختيار مادة واحدة على الأقل للإرجاع المباشر!', 'تکایە لانیکەم یەک کاڵا دیاریبکە بۆ گەڕاندنەوەی ڕاستەوخۆ!', 'Please add at least one item for direct return!'),
         type: 'error'
       });
       return;
@@ -362,8 +367,8 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       tax: 0,
       total: -directTotalAmount,
       paymentMethod: refundMethod,
-      customerName: customerName || (isAr ? 'عميل عام / زبون خارجي' : 'General Customer'),
-      cashierName: isAr ? 'الكاشير الرئيسية' : 'Main Cashier',
+      customerName: customerName || t('عميل عام / زبون خارجي', 'کڕیاری گشتی', 'General Customer'),
+      cashierName: t('الكاشير الرئيسية', 'کاشێری سەرەکی', 'Main Cashier'),
       status: 'refunded',
       returnedItems: directItems.map(i => ({
         productId: i.productId,
@@ -416,9 +421,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     }
 
     setReturnAlert({
-      msg: isAr 
-        ? 'يرجى اختيار مادة واحدة على الأقل لإرجاعها ثم طباعة وصل المرتجعات!' 
-        : 'Please select at least one item to return and print receipt!',
+      msg: t(
+        'يرجى اختيار مادة واحدة على الأقل لإرجاعها ثم طباعة وصل المرتجعات!',
+        'تکایە لانیکەم یەک کاڵا دیاریبکە بۆ گەڕاندنەوە پاشان چاپکردنی پسوڵە!',
+        'Please select at least one item to return and print receipt!'
+      ),
       type: 'error'
     });
   };
@@ -463,7 +470,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     const qtyToReturn = returnQuantities[item.key] || 1;
     if (qtyToReturn <= 0) {
       setReturnAlert({
-        msg: isAr ? 'يرجى تحديد كمية للمرتجع أكبر من صفر!' : 'Please specify a return quantity greater than 0!',
+        msg: t('يرجى تحديد كمية للمرتجع أكبر من صفر!', 'تکایە بڕێکی گەڕاندنەوەی زیاتر لە سفر دیاریبکە!', 'Please specify a return quantity greater than 0!'),
         type: 'error'
       });
       return;
@@ -544,9 +551,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
     const prodDisplayName = isAr || isKu ? (item.productNameAr || item.productName) : item.productName;
     setReturnAlert({
-      msg: isAr 
-        ? `تم استرجاع (${qtyToReturn}) قطعة من "${prodDisplayName}" بقيمة ${settings.currencySymbol}${formatNumber(totalRefundAmount)} وتعديل كمية المخزن تلقائياً بنجاح! 📦`
-        : `Successfully returned ${qtyToReturn} units of "${prodDisplayName}" and updated stock in inventory! 📦`,
+      msg: t(
+        `تم استرجاع (${qtyToReturn}) قطعة من "${prodDisplayName}" بقيمة ${settings.currencySymbol}${formatNumber(totalRefundAmount)} وتعديل كمية المخزن تلقائياً بنجاح! 📦`,
+        `(${qtyToReturn}) دانە لە "${prodDisplayName}" بە بڕی ${settings.currencySymbol}${formatNumber(totalRefundAmount)} بە سەرکەوتوویی گەڕێندرایەوە و کۆگا نوێکرایەوە! 📦`,
+        `Successfully returned ${qtyToReturn} units of "${prodDisplayName}" and updated stock in inventory! 📦`
+      ),
       type: 'success'
     });
 
@@ -565,16 +574,20 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       if (filteredSoldItems.length > 0) {
         const uniqueInvoices = Array.from(new Set(filteredSoldItems.map(i => i.invoiceNumber)));
         setReturnAlert({
-          msg: isAr 
-            ? `تم جلب جميع الوصلات والفواتير (${uniqueInvoices.length}) التي تحتوي على هذا الباركود / البحث 📄` 
-            : `Fetched all receipts (${uniqueInvoices.length}) matching search 📄`,
+          msg: t(
+            `تم جلب جميع الوصلات والفواتير (${uniqueInvoices.length}) التي تحتوي على هذا الباركود / البحث 📄`,
+            `سەرجەمی پسوڵەکان (${uniqueInvoices.length}) هێنران کە ئەم بارکۆدە / گەڕانە لەخۆدەگرن 📄`,
+            `Fetched all receipts (${uniqueInvoices.length}) matching search 📄`
+          ),
           type: 'info'
         });
       } else {
         setReturnAlert({
-          msg: isAr 
-            ? `لم يتم العثور على أي وصل مبيعات سابق يحتوي على الباركود: (${invoiceSearchInput})` 
-            : `No matching receipt found for barcode: (${invoiceSearchInput})`,
+          msg: t(
+            `لم يتم العثور على أي وصل مبيعات سابق يحتوي على الباركود: (${invoiceSearchInput})`,
+            `هیچ پسوڵەیەکی پێشووی فرۆشتن نەدۆزرایەوە کە بارکۆدی (${invoiceSearchInput}) لەخۆبگرێت`,
+            `No matching receipt found for barcode: (${invoiceSearchInput})`
+          ),
           type: 'error'
         });
       }
@@ -599,10 +612,10 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
           <div className="flex items-center gap-3 text-right">
             <div>
               <h2 className="text-base sm:text-xl font-black text-white flex items-center justify-end gap-2">
-                {isAr ? 'إرجاع المواد المباعة وإعادة استعادة المخزون' : 'Sales Return & Inventory Restock'}
+                {t('إرجاع المواد المباعة وإعادة استعادة المخزون', 'گەڕاندنەوەی کاڵا و نوێکردنەوەی کۆگا', 'Sales Return & Inventory Restock')}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {isAr ? 'يمكنك الإرجاع إما باختيار الفاتورة، أو بالبحث المباشر عن طريق اسم المادة والباركود' : 'Return items either by selecting an invoice, or by direct search via item name & barcode.'}
+                {t('يمكنك الإرجاع إما باختيار الفاتورة، أو بالبحث المباشر عن طريق اسم المادة والباركود', 'دەتوانیت کاڵاکان بگەڕێنیتەوە لە ڕێگەی دیاریکردنی پسوڵە یان گەڕانی ڕاستەوخۆ بە ناوی کاڵا و بارکۆد', 'Return items either by selecting an invoice, or by direct search via item name & barcode.')}
               </p>
             </div>
             <div className="w-11 h-11 rounded-2xl bg-[#9f2d3b] flex items-center justify-center text-white shadow-md shrink-0">
@@ -690,7 +703,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                   <span className="block leading-relaxed">{returnAlert.msg}</span>
                   {returnAlert.type === 'success' && (
                     <span className="text-[11px] font-semibold text-emerald-400 block mt-0.5">
-                      {isAr ? '✓ تم تحديث كميات المخزن تلقائياً وتسجيل العملية بنجاح' : '✓ Inventory stock levels automatically updated & transaction saved'}
+                      {t('✓ تم تحديث كميات المخزن تلقائياً وتسجيل العملية بنجاح', '✓ بڕی کاڵاکانی کۆگا بە خۆکاری نوێکرانەوە و کردارەکە تۆمارکرا', '✓ Inventory stock levels automatically updated & transaction saved')}
                     </span>
                   )}
                 </div>
@@ -709,10 +722,10 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    {isAr ? 'ماسح الباركود نشط ⚡ (امسح الباركود واضغط Enter)' : 'Barcode Scanner Ready (Scan & Press Enter)'}
+                    {t('ماسح الباركود نشط ⚡ (امسح الباركود واضغط Enter)', 'خوێنەری بارکۆد ئامادەیە ⚡ (بارکۆد لێبدە و Enter دابگرە)', 'Barcode Scanner Ready (Scan & Press Enter)')}
                   </span>
                   <label className="font-bold text-slate-200 block text-right">
-                    {isAr ? 'ابحث أو اكتب اسم المادة / الباركود المراد إرجاعها:' : 'Search or type item name / barcode to return:'}
+                    {t('ابحث أو اكتب اسم المادة / الباركود المراد إرجاعها:', 'بگەڕێ یان ناوی کاڵا / بارکۆد بنووسە بۆ گەڕاندنەوە:', 'Search or type item name / barcode to return:')}
                   </label>
                 </div>
                 <div className="relative">
@@ -727,9 +740,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                     onFocus={() => setShowDirectSearchResults(true)}
                     onKeyDown={handleDirectSearchKeyDown}
                     placeholder={
-                      isAr 
-                        ? 'امسح الباركود هنا بالمجهزة مباشرة، أو اكتب اسم المادة واضغط Enter...' 
-                        : 'Scan barcode here directly or type item name & press Enter...'
+                      t(
+                        'امسح الباركود هنا بالمجهزة مباشرة، أو اكتب اسم المادة واضغط Enter...',
+                        'بارکۆدەکە لێرە بخوێنەرەوە یان ناوی کاڵا بنووسە و Enter دابگرە...',
+                        'Scan barcode here directly or type item name & press Enter...'
+                      )
                     }
                     className="w-full bg-[#0e1626] text-xs sm:text-sm text-slate-100 placeholder-slate-500 px-10 py-3 rounded-xl border border-slate-700 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20 transition-all text-right font-medium"
                   />
@@ -750,7 +765,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                   <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#101827] border border-slate-700 rounded-xl max-h-56 overflow-y-auto shadow-2xl">
                     {matchingProducts.length === 0 ? (
                       <div className="p-3 text-center text-xs text-slate-400">
-                        {isAr ? 'لا توجد مادة تطابق هذا البحث' : 'No matching product found'}
+                        {t('لا توجد مادة تطابق هذا البحث', 'هیچ کاڵایەک لەگەڵ ئەم گەڕانە نەدۆزرایەوە', 'No matching product found')}
                       </div>
                     ) : (
                       matchingProducts.map(prod => (
@@ -764,7 +779,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                           <div className="space-x-2 rtl:space-x-reverse">
                             <span className="font-bold text-white">{isAr || isKu ? (prod.nameAr || prod.name) : prod.name}</span>
                             {prod.barcode && <span className="text-slate-400 text-[11px]">({prod.barcode})</span>}
-                            <span className="text-amber-300 text-[11px]">| {isAr ? 'المخزون الحالي:' : 'Current Stock:'} {prod.stock}</span>
+                            <span className="text-amber-300 text-[11px]">| {t('المخزون الحالي:', 'کۆگای ئێستا:', 'Current Stock:')} {prod.stock}</span>
                           </div>
                         </button>
                       ))
@@ -777,17 +792,21 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-300 px-1">
                   <span className="text-emerald-400 font-bold bg-emerald-950/40 border border-emerald-500/20 px-2 py-0.5 rounded">
-                    {isAr ? '✓ إعادة المرجوعات للمخزون مفعّل تلقائياً' : '✓ Auto Stock Restock Enabled'}
+                    {t('✓ إعادة المرجوعات للمخزون مفعّل تلقائياً', '✓ گەڕاندنەوە بۆ کۆگا بە شێوەی خۆکار چالاککراوە', '✓ Auto Stock Restock Enabled')}
                   </span>
                   <span className="font-bold text-white">
-                    {isAr ? `المواد المحددة للإرجاع المباشر (${directItems.length}):` : `Selected items for direct return (${directItems.length}):`}
+                    {t(
+                      `المواد المحددة للإرجاع المباشر (${directItems.length}):`,
+                      `کاڵا دیاریکراوەکان بۆ گەڕاندنەوەی ڕاستەوخۆ (${directItems.length}):`,
+                      `Selected items for direct return (${directItems.length}):`
+                    )}
                   </span>
                 </div>
 
                 {directItems.length === 0 ? (
                   <div className="py-10 text-center rounded-2xl bg-[#0e1626] border border-dashed border-slate-700/80 text-slate-400 text-xs space-y-2">
                     <Package className="w-8 h-8 mx-auto text-slate-500 animate-pulse" />
-                    <p>{isAr ? 'قم بمسح الباركود بالعدسة أو ابحث واختر المادة لإضافتها لقائمة المرتجعات' : 'Scan barcode or search above to add items to return list'}</p>
+                    <p>{t('قم بمسح الباركود بالعدسة أو ابحث واختر المادة لإضافتها لقائمة المرتجعات', 'بارکۆد لێبدە یان لە سەرەوە بگەڕێ بۆ زیادکردنی کاڵا بۆ لیستی گەڕاندنەوە', 'Scan barcode or search above to add items to return list')}</p>
                   </div>
                 ) : (
                   <div className="bg-[#0e1626] rounded-2xl border border-slate-700/80 overflow-hidden shadow-xl">
@@ -796,12 +815,12 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                         <thead>
                           <tr className="bg-[#131d30] text-slate-300 font-bold border-b border-slate-700/80">
                             <th className="py-3 px-3 text-center w-10">#</th>
-                            <th className="py-3 px-3">{isAr ? 'اسم المادة / الباركود' : 'Item / Barcode'}</th>
-                            <th className="py-3 px-3 text-center">{isAr ? 'المخزون بالمحل' : 'Store Stock'}</th>
-                            <th className="py-3 px-3 text-center">{isAr ? 'سعر المفرد' : 'Unit Price'}</th>
-                            <th className="py-3 px-3 text-center">{isAr ? 'الكمية المرجعة' : 'Return Qty'}</th>
-                            <th className="py-3 px-3 text-center">{isAr ? 'المجموع' : 'Total'}</th>
-                            <th className="py-3 px-3 text-center w-12">{isAr ? 'إجراء' : 'Action'}</th>
+                            <th className="py-3 px-3">{t('اسم المادة / الباركود', 'ناوی کاڵا / بارکۆد', 'Item / Barcode')}</th>
+                            <th className="py-3 px-3 text-center">{t('المخزون بالمحل', 'کۆگای بەردەست', 'Store Stock')}</th>
+                            <th className="py-3 px-3 text-center">{t('سعر المفرد', 'نرخی تاک', 'Unit Price')}</th>
+                            <th className="py-3 px-3 text-center">{t('الكمية المرجعة', 'بڕی گەڕێنراوە', 'Return Qty')}</th>
+                            <th className="py-3 px-3 text-center">{t('المجموع', 'سەرجەم', 'Total')}</th>
+                            <th className="py-3 px-3 text-center w-12">{t('إجراء', 'کردار', 'Action')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800 text-slate-200">
@@ -829,7 +848,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                                 {/* Current Stock */}
                                 <td className="py-3 px-3 text-center font-mono">
                                   <span className="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/30 text-[11px] font-bold">
-                                    {item.currentStock} {isAr ? 'قطعة' : 'pcs'}
+                                    {item.currentStock} {t('قطعة', 'دانە', 'pcs')}
                                   </span>
                                 </td>
 
@@ -879,7 +898,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                                     type="button"
                                     onClick={() => handleRemoveDirectItem(item.id)}
                                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-all cursor-pointer"
-                                    title={isAr ? 'إزالة المادة' : 'Remove item'}
+                                    title={t('إزالة المادة', 'سڕینەوەی کاڵا', 'Remove item')}
                                   >
                                     <X className="w-4 h-4" />
                                   </button>
@@ -892,9 +911,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                           <tr>
                             <td colSpan={4} className="py-3 px-3 text-right">
                               <span className="text-emerald-400">
-                                {isAr 
-                                  ? `إجمالي المواد المحددة للإرجاع: (${directItems.length} صنف / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} قطعة)` 
-                                  : `Total items for return: (${directItems.length} items / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} pcs)`}
+                                {t(
+                                  `إجمالي المواد المحددة للإرجاع: (${directItems.length} صنف / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} قطعة)`,
+                                  `سەرجەمی کاڵا دیاریکراوەکان: (${directItems.length} جۆر / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} دانە)`,
+                                  `Total items for return: (${directItems.length} items / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} pcs)`
+                                )}
                               </span>
                             </td>
                             <td colSpan={3} className="py-3 px-3 text-center text-rose-400 font-mono text-sm sm:text-base font-black">
@@ -917,10 +938,10 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    {isAr ? 'ماسح الباركود مفعّل ⚡ (امسح باركود الوصل/المادة واضغط Enter)' : 'Barcode Active (Scan Invoice/Item & Press Enter)'}
+                    {t('ماسح الباركود مفعّل ⚡ (امسح باركود الوصل/المادة واضغط Enter)', 'بارکۆد چالاکە ⚡ (بارکۆدی پسوڵە یان کاڵا لێبدە و Enter دابگرە)', 'Barcode Active (Scan Invoice/Item & Press Enter)')}
                   </span>
                   <label className="font-bold text-slate-200 block text-right">
-                    {isAr ? 'ابحث عن الوصل أو الفاتورة المراد ترجيعها:' : 'Search invoice or sold receipt to return:'}
+                    {t('ابحث عن الوصل أو الفاتورة المراد ترجيعها:', 'بگەڕێ بۆ پسوڵەی فرۆشراو بۆ گەڕاندنەوە:', 'Search invoice or sold receipt to return:')}
                   </label>
                 </div>
                 <div className="relative">
@@ -929,7 +950,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                     value={invoiceSearchInput}
                     onChange={(e) => setInvoiceSearchInput(e.target.value)}
                     onKeyDown={handleInvoiceSearchKeyDown}
-                    placeholder={isAr ? 'امسح الباركود، أدخل رقم الوصل (INV-...)، أو اسم المادة واضغط Enter...' : 'Scan barcode or invoice # and press Enter...'}
+                    placeholder={t('امسح الباركود، أدخل رقم الوصل (INV-...)، أو اسم المادة واضغط Enter...', 'بارکۆد لێبدە، ژمارەی پسوڵە (INV-...)، یان ناوی کاڵا بنووسە و Enter دابگرە...', 'Scan barcode or invoice # and press Enter...')}
                     className="w-full bg-[#0e1626] text-xs sm:text-sm text-slate-100 placeholder-slate-500 px-10 py-2.5 rounded-xl border border-slate-700 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20 text-right font-medium"
                   />
                   <BarcodeIcon className="w-5 h-5 absolute right-3.5 top-1/2 -translate-y-1/2 text-rose-400" />
@@ -940,7 +961,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                 {filteredSoldItems.length === 0 ? (
                   <div className="py-12 text-center text-xs text-slate-400 space-y-2">
                     <FileText className="w-8 h-8 mx-auto text-slate-500" />
-                    <p>{isAr ? 'لم يتم العثور على فواتير أو مواد مباعة متطابقة' : 'No matching invoice items found.'}</p>
+                    <p>{t('لم يتم العثور على فواتير أو مواد مباعة متطابقة', 'هیچ پسوڵە یان کاڵایەکی فرۆشراو نەدۆزرایەوە', 'No matching invoice items found.')}</p>
                   </div>
                 ) : (
                   filteredSoldItems.map((item) => {
@@ -956,7 +977,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                           className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all cursor-pointer flex items-center gap-1 shrink-0"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
-                          <span>{isAr ? 'تأكيد الإرجاع' : 'Confirm Return'}</span>
+                          <span>{t('تأكيد الإرجاع', 'پشتڕاستکردنەوەی گەڕاندنەوە', 'Confirm Return')}</span>
                         </button>
 
                         <div className="text-rose-400 font-bold font-mono">
@@ -964,7 +985,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2 bg-[#0e1626] px-2 py-1 rounded-xl border border-slate-700">
-                          <span className="text-[11px] text-slate-400">{isAr ? 'كمية المرتجع:' : 'Return Qty:'}</span>
+                          <span className="text-[11px] text-slate-400">{t('كمية المرتجع:', 'بڕی گەڕاندنەوە:', 'Return Qty:')}</span>
                           <button
                             type="button"
                             onClick={() => setReturnQuantities(prev => ({ ...prev, [item.key]: Math.max(1, qtyToReturn - 1) }))}
@@ -988,9 +1009,9 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                             <span>{isAr || isKu ? (item.productNameAr || item.productName) : item.productName}</span>
                           </div>
                           <div className="text-[11px] text-slate-400 mt-1 space-x-2 rtl:space-x-reverse">
-                            <span>{isAr ? 'المباع:' : 'Sold:'} {item.quantitySold}</span>
-                            <span>| {isAr ? 'السعر:' : 'Price:'} {settings.currencySymbol}{item.price}</span>
-                            <span>| {isAr ? 'التاريخ:' : 'Date:'} {item.timestamp}</span>
+                            <span>{t('المباع:', 'فرۆشراو:', 'Sold:')} {item.quantitySold}</span>
+                            <span>| {t('السعر:', 'نرخ:', 'Price:')} {settings.currencySymbol}{item.price}</span>
+                            <span>| {t('التاريخ:', 'بەروار:', 'Date:')} {item.timestamp}</span>
                           </div>
                         </div>
                       </div>

@@ -72,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       case 'dashboard': return perms.canAccessDashboard !== false;
       case 'vouchers': return perms.canAccessPOS || (perms.canManagePurchases ?? perms.canManageProducts) || perms.canManageProducts;
       case 'pos': return perms.canAccessPOS;
-      case 'products': return perms.canManageProducts;
+      case 'products': return Boolean(perms.canManageProducts || perms.canViewWarehouse);
       case 'inventoryAudit': return perms.canManageInventoryAudit ?? perms.canManageProducts;
       case 'damagedItems': return perms.canManageProducts;
       case 'delegateReturns': return perms.canManageProducts || perms.canManageSuppliers;
@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const isVouchersActive = ['vouchers', 'pos', 'purchases', 'delegateReturns', 'invoices'].includes(activeTab);
-  const isAccountsHubActive = ['accountsHub', 'suppliers', 'customers', 'orders', 'cashierAccounts', 'permissions'].includes(activeTab);
+  const isAccountsHubActive = ['accountsHub', 'suppliers', 'customers', 'orders', 'permissions'].includes(activeTab);
 
   const navItems = [
     {
@@ -106,6 +106,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       labelKey: 'reports',
       icon: FileText,
       color: 'from-cyan-600 to-blue-600',
+    },
+    {
+      id: 'cashierAccounts' as MainNavTab,
+      labelKey: 'cashierAccounts',
+      icon: UserCheck,
+      color: 'from-cyan-500 via-blue-600 to-indigo-600',
+      badge: isKu ? 'کاشێر' : isAr ? 'كاشير' : 'Cashier',
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.25)]',
     },
     {
       id: 'vouchers' as MainNavTab,

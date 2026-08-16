@@ -42,6 +42,7 @@ interface VouchersHubTabProps {
   purchaseInvoices: PurchaseInvoice[];
   setPurchaseInvoices: React.Dispatch<React.SetStateAction<PurchaseInvoice[]>>;
   settings: StoreSettings;
+  setSettings?: React.Dispatch<React.SetStateAction<StoreSettings>>;
   currentUser?: UserAccount | null;
   onOpenPOS?: () => void;
   onSaleCompleted: (sale: SaleTransaction) => void;
@@ -76,6 +77,7 @@ export const VouchersHubTab: React.FC<VouchersHubTabProps> = ({
   purchaseInvoices,
   setPurchaseInvoices,
   settings,
+  setSettings,
   currentUser,
   onOpenPOS,
   onSaleCompleted,
@@ -169,6 +171,19 @@ export const VouchersHubTab: React.FC<VouchersHubTabProps> = ({
     },
   ];
 
+  const isAdmin = !currentUser || currentUser.role === 'Admin';
+  const perms = currentUser?.permissions;
+
+  const availableVoucherCards = voucherCards.filter((card) => {
+    if (isAdmin) return true;
+    if (!perms) return true;
+    if (card.id === 'pos') return Boolean(perms.canAccessPOS);
+    if (card.id === 'delegateReturns') return Boolean(perms.canManageProducts || perms.canManageSuppliers);
+    if (card.id === 'purchases') return Boolean(perms.canManagePurchases ?? perms.canManageProducts);
+    if (card.id === 'invoices') return Boolean(perms.canViewInvoices ?? perms.canManageOrders);
+    return true;
+  });
+
   // If we are in the main Hub page (واجهة وصلات الرئيسية)
   if (activeSubTab === 'hub') {
     return (
@@ -213,7 +228,7 @@ export const VouchersHubTab: React.FC<VouchersHubTabProps> = ({
 
         {/* Compact Action Buttons Grid: ONLY Icon & Button Name */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {voucherCards.map((card) => {
+          {availableVoucherCards.map((card) => {
             const Icon = card.icon;
 
             const handleCardClick = () => {
@@ -347,6 +362,7 @@ export const VouchersHubTab: React.FC<VouchersHubTabProps> = ({
               setProducts={setProducts}
               customers={customers}
               settings={settings}
+              setSettings={setSettings}
               onSaleCompleted={onSaleCompleted}
               showInventory={showPOSInventory}
               setShowInventory={setShowPOSInventory}
