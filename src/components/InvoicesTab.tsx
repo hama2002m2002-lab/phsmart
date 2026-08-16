@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   FileText, 
   Search, 
@@ -13,7 +13,8 @@ import {
   Home,
   ShoppingBag,
   PackageX,
-  Wallet
+  Wallet,
+  Barcode
 } from 'lucide-react';
 import { Product, SaleTransaction, StoreSettings, UserAccount } from '../types';
 import { parseDate, isToday, formatDisplayDateTime } from '../lib/dateUtils';
@@ -35,7 +36,8 @@ interface InvoicesTabProps {
 }
 
 export const InvoicesTab: React.FC<InvoicesTabProps> = ({
-  salesHistory,
+  products = [],
+  salesHistory = [],
   setSalesHistory,
   settings,
   onUpdateSaleDate,
@@ -52,44 +54,112 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<'all' | string>('all');
   const [cashierFilter, setCashierFilter] = useState<'all' | string>('all');
-  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
-  const [customCalendarDate, setCustomCalendarDate] = useState<string>('');
+  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'three_months' | 'this_year' | 'range'>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Filter sales history
-  const filteredSales = salesHistory.filter(sale => {
-    if (!sale) return false;
+  // Filter sales history with comprehensive barcode, product, customer & date search
+  const filteredSales = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
 
-    // Search filter
-    const matchesSearch = !searchTerm.trim() ||
-      sale.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (sale.customerName && sale.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (sale.cashierName && sale.cashierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (Array.isArray(sale.items) ? sale.items : (typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : [])).some((i: any) => i?.productName?.toLowerCase().includes(searchTerm.toLowerCase()) || (i?.productNameAr && i?.productNameAr?.includes(searchTerm)));
-
-    // Payment method filter
-    const matchesPayment = paymentFilter === 'all' || sale.paymentMethod === paymentFilter;
-
-    // Cashier filter
-    const matchesCashier = cashierFilter === 'all' || sale.cashierName === cashierFilter;
-
-    // Date filter
-    let matchesDate = true;
-    if (dateFilterMode === 'today') {
-      matchesDate = isToday(sale.timestamp);
-    } else if (dateFilterMode === 'yesterday') {
-      const yest = new Date();
-      yest.setDate(yest.getDate() - 1);
-      const parsed = parseDate(sale.timestamp);
-      matchesDate = parsed.toDateString() === yest.toDateString();
-    } else if (dateFilterMode === 'custom' && customCalendarDate) {
-      const saleDate = parseDate(sale.timestamp);
-      const formattedSaleDate = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}-${String(saleDate.getDate()).padStart(2, '0')}`;
-      matchesDate = sale.timestamp.includes(customCalendarDate) || formattedSaleDate === customCalendarDate;
+    // Map query to matching product IDs by barcode or name for deep lookup
+    const matchingProductIds = new Set<string>();
+    if (query && products && products.length > 0) {
+      products.forEach(p => {
+        if (!p) return;
+        const b = (p.barcode || '').toLowerCase();
+        const n1 = (p.name || '').toLowerCase();
+        const n2 = (p.nameAr || '').toLowerCase();
+        const n3 = (p.nameKu || '').toLowerCase();
+        if (b.includes(query) || n1.includes(query) || n2.includes(query) || n3.includes(query)) {
+          matchingProductIds.add(p.id);
+        }
+      });
     }
 
-    return matchesSearch && matchesPayment && matchesCashier && matchesDate;
-  });
+    return salesHistory.filter(sale => {
+      if (!sale) return false;
+
+      // 1. Search filter: Invoice #, Customer, Cashier, Item Barcode, Product Barcode, Item Name
+      let matchesSearch = true;
+      if (query) {
+        const invNo = (sale.invoiceNumber || '').toLowerCase();
+        const cust = (sale.customerName || '').toLowerCase();
+        const cashier = (sale.cashierName || '').toLowerCase();
+
+        const saleItems = Array.isArray(sale.items)
+          ? sale.items
+          : (typeof sale.items === 'string' ? (JSON.parse(sale.items || '[]') || []) : []);
+
+        const matchesItems = saleItems.some((i: any) => {
+          if (!i) return false;
+          const iName = (i.productName || '').toLowerCase();
+          const iNameAr = (i.productNameAr || '').toLowerCase();
+          const iNameKu = (i.productNameKu || '').toLowerCase();
+          const iBarcode = (i.barcode || '').toLowerCase();
+          const iProdId = i.productId || '';
+
+          if (iBarcode.includes(query) || iName.includes(query) || iNameAr.includes(query) || iNameKu.includes(query)) {
+            return true;
+          }
+          if (iProdId && matchingProductIds.has(iProdId)) {
+            return true;
+          }
+          const prodObj = products.find(p => p.id === iProdId);
+          if (prodObj && (prodObj.barcode || '').toLowerCase().includes(query)) {
+            return true;
+          }
+          return false;
+        });
+
+        matchesSearch = invNo.includes(query) || cust.includes(query) || cashier.includes(query) || matchesItems;
+      }
+
+      // 2. Payment method filter
+      const matchesPayment = paymentFilter === 'all' || sale.paymentMethod === paymentFilter;
+
+      // 3. Cashier filter
+      const matchesCashier = cashierFilter === 'all' || sale.cashierName === cashierFilter;
+
+      // 4. Date filter (From-To Date Range support)
+      let matchesDate = true;
+      const saleDate = parseDate(sale.timestamp);
+      const saleDateStr = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}-${String(saleDate.getDate()).padStart(2, '0')}`;
+
+      if (dateFilterMode === 'today') {
+        matchesDate = isToday(sale.timestamp);
+      } else if (dateFilterMode === 'yesterday') {
+        const yest = new Date();
+        yest.setDate(yest.getDate() - 1);
+        const yestStr = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+        matchesDate = saleDateStr === yestStr;
+      } else if (dateFilterMode === 'this_month') {
+        const now = new Date();
+        matchesDate = saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+      } else if (dateFilterMode === 'three_months') {
+        const now = new Date();
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        matchesDate = saleDate >= ninetyDaysAgo;
+      } else if (dateFilterMode === 'this_year') {
+        const now = new Date();
+        matchesDate = saleDate.getFullYear() === now.getFullYear();
+      } else if (dateFilterMode === 'range' || startDate || endDate) {
+        const effectiveStart = (startDate && endDate && startDate > endDate) ? endDate : startDate;
+        const effectiveEnd = (startDate && endDate && startDate > endDate) ? startDate : endDate;
+
+        if (effectiveStart && effectiveEnd) {
+          matchesDate = saleDateStr >= effectiveStart && saleDateStr <= effectiveEnd;
+        } else if (effectiveStart) {
+          matchesDate = saleDateStr >= effectiveStart;
+        } else if (effectiveEnd) {
+          matchesDate = saleDateStr <= effectiveEnd;
+        }
+      }
+
+      return matchesSearch && matchesPayment && matchesCashier && matchesDate;
+    });
+  }, [salesHistory, searchTerm, products, paymentFilter, cashierFilter, dateFilterMode, startDate, endDate]);
 
   // Extract unique cashier names from sales history
   const uniqueCashiersFromSales = Array.from(new Set(salesHistory.map(s => s.cashierName).filter(Boolean)));
@@ -150,14 +220,15 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {(searchTerm || paymentFilter !== 'all' || cashierFilter !== 'all' || dateFilterMode !== 'all' || customCalendarDate) && (
+            {(searchTerm || paymentFilter !== 'all' || cashierFilter !== 'all' || dateFilterMode !== 'all' || startDate || endDate) && (
               <button
                 onClick={() => {
                   setSearchTerm('');
                   setPaymentFilter('all');
                   setCashierFilter('all');
                   setDateFilterMode('all');
-                  setCustomCalendarDate('');
+                  setStartDate('');
+                  setEndDate('');
                 }}
                 className="text-rose-400 hover:text-rose-300 font-bold text-[11px] underline flex items-center gap-1 cursor-pointer mr-2"
               >
@@ -246,77 +317,172 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
         </div>
 
         {/* ALL FILTERS AT THE TOP ROW */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+        <div className="flex flex-col gap-2">
           
-          {/* Search Input */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 rtl:left-auto rtl:right-2.5 top-1/2 -translate-y-1/2 text-cyan-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={isAr ? 'بحث برقم الفاتورة، العميل...' : isKu ? 'گەڕان بە پسوڵە، کڕیار...' : 'Search invoice #, customer...'}
-              className="w-full bg-[#080D1A] text-xs text-slate-100 placeholder-slate-500 pl-8 rtl:pl-2 rtl:pr-8 pr-2 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {/* Search Input with Barcode & Invoice lookup */}
+            <div className="relative">
+              <div className="absolute inset-y-0 start-0 ps-2.5 flex items-center pointer-events-none text-cyan-400">
+                <Search className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={isAr ? 'بحث بالباركود، رقم الفاتورة، العميل...' : isKu ? 'گەڕان بە بارکۆد، ژمارەی پسوڵە، کڕیار...' : 'Search barcode, invoice #, customer...'}
+                className="w-full bg-[#080D1A] text-xs text-slate-100 placeholder-slate-400 ps-8 pe-7 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30 focus:outline-none transition-all"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute inset-y-0 end-0 pe-2 flex items-center text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                  title={isAr ? 'مسح البحث' : isKu ? 'سڕینەوە' : 'Clear'}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Payment Method Filter */}
+            <div className="relative">
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                className="w-full bg-[#080D1A] text-xs text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
+              >
+                <option value="all">💳 {isAr ? 'جميع طرق الدفع' : isKu ? 'هەموو شێوازەکانی دان' : 'All Payment Methods'}</option>
+                <option value="cash">💵 {isAr ? 'نقداً (Cash)' : 'Cash'}</option>
+                <option value="card">💳 {isAr ? 'بطاقة (Card)' : 'Card'}</option>
+                <option value="nfc">📱 {isAr ? 'NFC / دفع إلكتروني' : 'NFC'}</option>
+                <option value="debt">📝 {isAr ? 'آجل / ديون (Debt)' : 'Debt'}</option>
+              </select>
+            </div>
+
+            {/* Cashier Filter */}
+            <div className="relative">
+              <select
+                value={cashierFilter}
+                onChange={(e) => setCashierFilter(e.target.value)}
+                className="w-full bg-[#080D1A] text-xs text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
+              >
+                <option value="all">👤 {isAr ? 'جميع الكاشيرية' : isKu ? 'هەموو کاشێرەکان' : 'All Cashiers'}</option>
+                {uniqueCashiersFromSales.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date Mode Filter */}
+            <div className="relative">
+              <select
+                value={dateFilterMode}
+                onChange={(e) => {
+                  const val = e.target.value as any;
+                  setDateFilterMode(val);
+                  if (val === 'all') {
+                    setStartDate('');
+                    setEndDate('');
+                  } else if (val === 'today') {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    setStartDate(todayStr);
+                    setEndDate(todayStr);
+                  } else if (val === 'yesterday') {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    const yStr = y.toISOString().split('T')[0];
+                    setStartDate(yStr);
+                    setEndDate(yStr);
+                  } else if (val === 'this_month') {
+                    const now = new Date();
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                    const todayStr = now.toISOString().split('T')[0];
+                    setStartDate(startOfMonth);
+                    setEndDate(todayStr);
+                  } else if (val === 'three_months') {
+                    const now = new Date();
+                    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const todayStr = now.toISOString().split('T')[0];
+                    setStartDate(ninetyDaysAgo);
+                    setEndDate(todayStr);
+                  } else if (val === 'this_year') {
+                    const now = new Date();
+                    const startOfYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+                    const todayStr = now.toISOString().split('T')[0];
+                    setStartDate(startOfYear);
+                    setEndDate(todayStr);
+                  }
+                }}
+                className="w-full bg-[#080D1A] text-xs text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
+              >
+                <option value="all">📅 {isAr ? 'كل التواريخ' : isKu ? 'هەموو بەروارەکان' : 'All Dates'}</option>
+                <option value="today">☀️ {isAr ? 'مبيعات اليوم' : isKu ? 'فرۆشی ئەمڕۆ' : 'Today'}</option>
+                <option value="yesterday">🌙 {isAr ? 'مبيعات الأمس' : isKu ? 'فرۆشی دوێنێ' : 'Yesterday'}</option>
+                <option value="this_month">📊 {isAr ? 'مبيعات هذا الشهر' : isKu ? 'فرۆشی ئەم مانگە' : 'This Month'}</option>
+                <option value="three_months">🗓️ {isAr ? 'مبيعات آخر 3 أشهر' : isKu ? 'فرۆشی ٣ مانگی ڕابردوو' : 'Last 3 Months'}</option>
+                <option value="this_year">📆 {isAr ? 'مبيعات هذا العام / سنة' : isKu ? 'فرۆشی ئەمساڵ / ساڵێک' : 'This Year / 1 Year'}</option>
+                <option value="range">📆 {isAr ? 'تحديد نطاق (من - إلى)' : isKu ? 'دیاریکردنی ماوە (لە - بۆ)' : 'Date Range (From - To)'}</option>
+              </select>
+            </div>
           </div>
 
-          {/* Payment Method Filter */}
-          <div className="relative">
-            <select
-              value={paymentFilter}
-              onChange={(e) => setPaymentFilter(e.target.value)}
-              className="w-full bg-[#080D1A] text-xs text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
-            >
-              <option value="all">💳 {isAr ? 'جميع طرق الدفع' : isKu ? 'هەموو شێوازەکانی دان' : 'All Payment Methods'}</option>
-              <option value="cash">💵 {isAr ? 'نقداً (Cash)' : 'Cash'}</option>
-              <option value="card">💳 {isAr ? 'بطاقة (Card)' : 'Card'}</option>
-              <option value="nfc">📱 {isAr ? 'NFC / دفع إلكتروني' : 'NFC'}</option>
-              <option value="debt">📝 {isAr ? 'آجل / ديون (Debt)' : 'Debt'}</option>
-            </select>
-          </div>
+          {/* DUAL DATE RANGE PICKERS: FROM (من) -> TO (إلى) */}
+          <div className="flex flex-wrap items-center gap-2 bg-[#080D1A] p-2 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-1.5 text-xs text-cyan-400 font-bold shrink-0">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{isKu ? 'دیاریکردنی بەروار:' : isAr ? 'نطاق التاريخ:' : 'Date Range:'}</span>
+            </div>
 
-          {/* Cashier Filter */}
-          <div className="relative">
-            <select
-              value={cashierFilter}
-              onChange={(e) => setCashierFilter(e.target.value)}
-              className="w-full bg-[#080D1A] text-xs text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
-            >
-              <option value="all">👤 {isAr ? 'جميع الكاشيرية' : isKu ? 'هەموو کاشێرەکان' : 'All Cashiers'}</option>
-              {uniqueCashiersFromSales.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
+            {/* FROM DATE */}
+            <div className="flex items-center gap-1.5 flex-1 min-w-[170px]">
+              <span className="text-[11px] font-bold text-slate-300 shrink-0">
+                {isKu ? 'لە (ڕۆژ/مانگ/ساڵ):' : isAr ? 'من تاريخ:' : 'From:'}
+              </span>
+              <div className="flex-1">
+                <DatePickerDDMMYYYY
+                  value={startDate}
+                  onChange={(dateStr) => {
+                    setStartDate(dateStr);
+                    setDateFilterMode('range');
+                  }}
+                  lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
+                />
+              </div>
+            </div>
 
-          {/* Date Mode Filter */}
-          <div className="relative">
-            <select
-              value={dateFilterMode}
-              onChange={(e) => {
-                const val = e.target.value as any;
-                setDateFilterMode(val);
-                if (val !== 'custom') setCustomCalendarDate('');
-              }}
-              className="w-full bg-[#080D1A] text-xs text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none"
-            >
-              <option value="all">📅 {isAr ? 'كل التواريخ' : isKu ? 'هەموو بەروارەکان' : 'All Dates'}</option>
-              <option value="today">☀️ {isAr ? 'مبيعات اليوم' : 'Today'}</option>
-              <option value="yesterday">🌙 {isAr ? 'مبيعات الأمس' : 'Yesterday'}</option>
-              <option value="custom">📆 {isAr ? 'تاريخ محدد من التقويم' : 'Calendar Pick'}</option>
-            </select>
-          </div>
+            {/* TO DATE */}
+            <div className="flex items-center gap-1.5 flex-1 min-w-[170px]">
+              <span className="text-[11px] font-bold text-slate-300 shrink-0">
+                {isKu ? 'بۆ (ڕۆژ/مانگ/ساڵ):' : isAr ? 'إلى تاريخ:' : 'To:'}
+              </span>
+              <div className="flex-1">
+                <DatePickerDDMMYYYY
+                  value={endDate}
+                  onChange={(dateStr) => {
+                    setEndDate(dateStr);
+                    setDateFilterMode('range');
+                  }}
+                  lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
+                />
+              </div>
+            </div>
 
-          {/* INTERACTIVE CALENDAR DATE PICKER (DD/MM/YYYY) */}
-          <div className="relative flex items-center gap-1.5 min-w-[170px]">
-            <DatePickerDDMMYYYY
-              value={customCalendarDate}
-              onChange={(dateStr) => {
-                setCustomCalendarDate(dateStr);
-                if (dateStr) setDateFilterMode('custom');
-              }}
-              lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
-            />
+            {/* QUICK CLEAR DATES IF SET */}
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStartDate('');
+                  setEndDate('');
+                  setDateFilterMode('all');
+                }}
+                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-[11px] font-semibold border border-rose-500/20 transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                title={isAr ? 'مسح التاريخ' : isKu ? 'سڕینەوەی بەروار' : 'Clear Dates'}
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>{isAr ? 'مسح التاريخ' : isKu ? 'سڕینەوە' : 'Clear'}</span>
+              </button>
+            )}
           </div>
 
         </div>

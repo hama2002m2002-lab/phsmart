@@ -159,7 +159,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   }, [initialCategory, initialSubTab, isCashierAccountsOnly]);
   
   // Date range filter
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month' | 'three_months' | 'year'>('all');
   const [selectedCashier, setSelectedCashier] = useState<string>('all');
 
   // Custom Date & Time Filter state
@@ -341,6 +341,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
         }
         if (dateFilter === 'month') {
           return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+        }
+        if (dateFilter === 'three_months') {
+          const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          return saleDate >= ninetyDaysAgo;
+        }
+        if (dateFilter === 'year') {
+          return saleDate.getFullYear() === now.getFullYear();
         }
         return true;
       });
@@ -1595,6 +1602,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     <span className="text-cyan-300 font-bold">{t('مبيعات الأسبوع الحالي 🗓️', 'فرۆشتنی ئەم حەفتەیە 🗓️', 'This Week 🗓️')}</span>
                   ) : dateFilter === 'month' ? (
                     <span className="text-purple-300 font-bold">{t('مبيعات الشهر الحالي 🗓️', 'فرۆشتنی ئەم مانگە 🗓️', 'This Month 🗓️')}</span>
+                  ) : dateFilter === 'three_months' ? (
+                    <span className="text-amber-300 font-bold">{t('مبيعات آخر 3 أشهر 🗓️', 'فرۆشتنی ٣ مانگی ڕابردوو 🗓️', 'Last 3 Months 🗓️')}</span>
+                  ) : dateFilter === 'year' ? (
+                    <span className="text-blue-300 font-bold">{t('مبيعات هذا العام / سنة 🗓️', 'فرۆشتنی ئەمساڵ / ساڵێک 🗓️', 'This Year / 1 Year 🗓️')}</span>
                   ) : (
                     <span className="text-slate-300 font-bold">{t('جميع التواريخ والأوقات 🌐', 'هەموو بەروارەکان 🌐', 'All Dates 🌐')}</span>
                   )}
@@ -1624,6 +1635,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   <option value="today" className="bg-slate-900 text-slate-200">{t('اليوم 📅', 'ئەمڕۆ 📅', 'Today 📅')}</option>
                   <option value="week" className="bg-slate-900 text-slate-200">{t('هذا الأسبوع 🗓️', 'ئەم حەفتەیە 🗓️', 'This Week 🗓️')}</option>
                   <option value="month" className="bg-slate-900 text-slate-200">{t('هذا الشهر 🗓️', 'ئەم مانگە 🗓️', 'This Month 🗓️')}</option>
+                  <option value="three_months" className="bg-slate-900 text-slate-200">{t('ثلاثة أشهر 🗓️', 'سێ مانگ (٣ مانگ) 🗓️', '3 Months 🗓️')}</option>
+                  <option value="year" className="bg-slate-900 text-slate-200">{t('سنة كاملة / هذا العام 🗓️', 'ساڵێک / ئەمساڵ 🗓️', '1 Year / This Year 🗓️')}</option>
                   <option value="custom" className="bg-slate-900 text-cyan-300 font-bold">{t('تحديد بالتقويم 🗓️', 'دیاریکردن بە ڕۆژژمێر 🗓️', 'Custom Calendar 🗓️')}</option>
                 </select>
               </div>
@@ -2520,6 +2533,26 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 }`}
               >
                 {t('هذا الشهر', 'ئەم مانگە', 'This Month')}
+              </button>
+              <button
+                onClick={() => setDateFilter('three_months')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  dateFilter === 'three_months' 
+                    ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
+                    : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
+                }`}
+              >
+                {t('3 أشهر', '٣ مانگ', '3 Months')}
+              </button>
+              <button
+                onClick={() => setDateFilter('year')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  dateFilter === 'year' 
+                    ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
+                    : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
+                }`}
+              >
+                {t('سنة', 'ساڵێک', '1 Year')}
               </button>
             </div>
 
@@ -3530,7 +3563,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         {t('من', 'لە', 'From')}: <strong className="text-white">{startDate} {startTime}</strong> {t('إلى', 'بۆ', 'To')}: <strong className="text-white">{endDate} {endTime}</strong>
                       </span>
                     ) : (
-                      <span>{t('فلتر التاريخ الحالي', 'فلتەری بەرواری ئێستا', 'Active Filter')}: <strong className="text-white">{dateFilter.toUpperCase()}</strong></span>
+                      <span>{t('فلتر التاريخ الحالي', 'فلتەری بەرواری ئێستا', 'Active Filter')}: <strong className="text-white">{dateFilter === 'three_months' ? t('آخر 3 أشهر', '٣ مانگی ڕابردوو', 'Last 3 Months') : dateFilter === 'year' ? t('سنة كاملة', 'ساڵێک', 'Full Year') : dateFilter === 'today' ? t('اليوم', 'ئەمڕۆ', 'Today') : dateFilter === 'week' ? t('الأسبوع', 'هەفتە', 'Week') : dateFilter === 'month' ? t('الشهر', 'مانگ', 'Month') : t('الكل', 'هەمووی', 'All')}</strong></span>
                     )}
                   </div>
                 </div>
@@ -5058,7 +5091,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
               {/* Time Range Info */}
               <div className="text-xs font-mono bg-slate-100 p-3 rounded-xl border border-slate-300 space-y-1">
                 <p><strong>{t('تاريخ التقرير:', 'بەرواری ڕاپۆرت:', 'Printed On:')}</strong> {formatDisplayDateTime(new Date(), lang)}</p>
-                <p><strong>{t('فترة الحساب:', 'ماوەی حیساب:', 'Period:')}</strong> {useCustomDateTime ? `${startDate} ${startTime} - ${endDate} ${endTime}` : dateFilter.toUpperCase()}</p>
+                <p><strong>{t('فترة الحساب:', 'ماوەی حیساب:', 'Period:')}</strong> {useCustomDateTime ? `${startDate} ${startTime} - ${endDate} ${endTime}` : dateFilter === 'three_months' ? t('آخر 3 أشهر', '٣ مانگی ڕابردوو', 'Last 3 Months') : dateFilter === 'year' ? t('سنة كاملة / هذا العام', 'ساڵێک / ئەمساڵ', 'Full Year') : dateFilter === 'today' ? t('اليوم', 'ئەمڕۆ', 'Today') : dateFilter === 'week' ? t('هذا الأسبوع', 'ئەم هەفتەیە', 'This Week') : dateFilter === 'month' ? t('هذا الشهر', 'ئەم مانگە', 'This Month') : t('الكل (كافة الفترات)', 'هەمووی', 'All Time')}</p>
                 <p><strong>{t('إجمالي الفواتير:', 'کۆی پسوڵەکان:', 'Total Invoices:')}</strong> {cashierPrintModalData.invoiceCount}</p>
               </div>
 

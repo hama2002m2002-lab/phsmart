@@ -15,12 +15,9 @@ export function getItemUnitCost(
   const saleType = item.saleType || 'retail';
 
   if (saleType === 'carton') {
-    // Cost of 1 carton
-    if (prod.cartonPurchasePrice && prod.cartonPurchasePrice > 0) {
-      return prod.cartonPurchasePrice;
-    }
+    // Cost of 1 carton for profit & reports: uses weighted average unit cost * units per carton
     const unitsPerCarton = prod.unitsPerCarton && prod.unitsPerCarton > 0 ? prod.unitsPerCarton : 1;
-    const baseCost = prod.costPerUnit || prod.cost || 0;
+    const baseCost = prod.costPerUnit || prod.cost || (prod.cartonPurchasePrice ? prod.cartonPurchasePrice / unitsPerCarton : 0);
     return baseCost * unitsPerCarton;
   }
 

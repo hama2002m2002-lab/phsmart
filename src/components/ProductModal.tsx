@@ -151,9 +151,19 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [wholesalePrice, setWholesalePrice] = useState<number | ''>('');
   const [cartonSellingPrice, setCartonSellingPrice] = useState<number | ''>('');
 
+  // Blurred / Touched states for price validation on exit
+  const [singleRetailBlurred, setSingleRetailBlurred] = useState(false);
+  const [wholesaleBlurred, setWholesaleBlurred] = useState(false);
+  const [cartonSellBlurred, setCartonSellBlurred] = useState(false);
+  const [customBlisterBlurred, setCustomBlisterBlurred] = useState(false);
+
   useEffect(() => {
     const currentCategories = getSavedCategories();
     setBarcodeError(null);
+    setSingleRetailBlurred(false);
+    setWholesaleBlurred(false);
+    setCartonSellBlurred(false);
+    setCustomBlisterBlurred(false);
 
     if (productToEdit) {
       const prodCategory = productToEdit.categoryAr || productToEdit.category || 'أدوية ومسكنات (OTC / Rx)';
@@ -240,12 +250,18 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const cartonSell = Number(cartonSellingPrice) || 0;
   const cartonProfit = cartonSell - cartonCost;
 
+  // Validation flags: Selling price must not be lower than cost
+  const isSingleRetailBelowCost = costPerUnit > 0 && singleRetailPrice !== '' && singleRetail < costPerUnit;
+  const isWholesaleBelowCost = costPerUnit > 0 && wholesalePrice !== '' && wholesale > 0 && wholesale < costPerUnit;
+  const isCartonSellBelowCost = cartonCost > 0 && cartonSellingPrice !== '' && cartonSell > 0 && cartonSell < cartonCost;
+
   // 🏥 Sub-unit / Blister calculations (تجزئة العلبة بالأشرطة)
   const numBlisters = Number(blistersPerBox) || 1;
   const calculatedBlisterPrice = numBlisters > 0 ? singleRetail / numBlisters : 0;
   const finalBlisterPrice = customBlisterPrice !== '' ? Number(customBlisterPrice) : calculatedBlisterPrice;
   const blisterCost = numBlisters > 0 ? costPerUnit / numBlisters : costPerUnit;
   const blisterProfit = finalBlisterPrice - blisterCost;
+  const isBlisterBelowCost = blisterCost > 0 && customBlisterPrice !== '' && Number(customBlisterPrice) < blisterCost;
 
   // 🏥 Expiry Date Warning Calculation (تنبيه 6 أشهر)
   const getExpiryStatus = () => {
@@ -370,6 +386,55 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       return;
     }
 
+    // 🛡️ Strict Validation: Selling Price must not be lower than Purchase Cost
+    if (costPerUnit > 0 && singleRetail < costPerUnit) {
+      setSingleRetailBlurred(true);
+      alert(
+        isKu
+          ? `❌ پاشەکەوت ناکرێت!\n\nنرخی فرۆشتنی تاک (${formatNumber(singleRetail)} ${settings.currencySymbol}) کەمترە لە نرخی تێچووی کڕین (${formatNumber(costPerUnit)} ${settings.currencySymbol})!\n\nتکایە نرخی فرۆشتن بکە بە زیاتر لە نرخی تێچوو بۆ ڕێگریکردن لە تۆمارکردنی زیانی دارایی.`
+          : isAr
+          ? `❌ لا يمكن حفظ المادة!\n\nسعر بيع المفرد (${formatNumber(singleRetail)} ${settings.currencySymbol}) أقل من سعر التكلفة والشراء (${formatNumber(costPerUnit)} ${settings.currencySymbol})!\n\nيرجى تعديل سعر البيع ليكون مساوياً أو أعلى من سعر التكلفة لمنع تسجيل خسائر في الحسابات والأرباح.`
+          : `❌ Cannot save product!\n\nRetail selling price (${formatNumber(singleRetail)}) is lower than cost (${formatNumber(costPerUnit)}).\n\nPlease increase the selling price to be equal to or higher than the purchase cost.`
+      );
+      return;
+    }
+
+    if (cartonCost > 0 && cartonSell > 0 && cartonSell < cartonCost) {
+      setCartonSellBlurred(true);
+      alert(
+        isKu
+          ? `❌ پاشەکەوت ناکرێت!\n\nنرخی فرۆشتنی کارتۆن (${formatNumber(cartonSell)} ${settings.currencySymbol}) کەمترە لە نرخی کڕینی کارتۆن (${formatNumber(cartonCost)} ${settings.currencySymbol})!`
+          : isAr
+          ? `❌ لا يمكن حفظ المادة!\n\nسعر بيع الكرتون الكامل (${formatNumber(cartonSell)} ${settings.currencySymbol}) أقل من سعر شراء الكرتون (${formatNumber(cartonCost)} ${settings.currencySymbol})!`
+          : `❌ Cannot save product! Carton selling price is lower than carton purchase cost.`
+      );
+      return;
+    }
+
+    if (costPerUnit > 0 && wholesale > 0 && wholesale < costPerUnit) {
+      setWholesaleBlurred(true);
+      alert(
+        isKu
+          ? `❌ پاشەکەوت ناکرێت!\n\nنرخی فرۆشتنی کۆ (${formatNumber(wholesale)} ${settings.currencySymbol}) کەمترە لە نرخی تێچووی کڕین (${formatNumber(costPerUnit)} ${settings.currencySymbol})!`
+          : isAr
+          ? `❌ لا يمكن حفظ المادة!\n\nسعر بيع الجملة (${formatNumber(wholesale)} ${settings.currencySymbol}) أقل من سعر التكلفة (${formatNumber(costPerUnit)} ${settings.currencySymbol})!`
+          : `❌ Cannot save product! Wholesale price is lower than unit cost.`
+      );
+      return;
+    }
+
+    if (blisterCost > 0 && customBlisterPrice !== '' && Number(customBlisterPrice) < blisterCost) {
+      setCustomBlisterBlurred(true);
+      alert(
+        isKu
+          ? `❌ پاشەکەوت ناکرێت!\n\nنرخی فرۆشتنی شریت کەمترە لە تێچووی کڕینی شریت!`
+          : isAr
+          ? `❌ لا يمكن حفظ المادة!\n\nسعر بيع الشريط (${Number(customBlisterPrice)}) أقل من تكلفة الشريط (${formatNumber(blisterCost)})!`
+          : `❌ Cannot save product! Blister price is lower than blister cost.`
+      );
+      return;
+    }
+
     let finalCategory = categoryAr;
     if (customCategory.trim()) {
       finalCategory = customCategory.trim();
@@ -433,6 +498,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       unitsPerCarton: numUnitsPerCarton,
       totalUnits: totalUnits,
       cartonPurchasePrice: cartonCost,
+      lastPurchasePrice: productToEdit?.lastPurchasePrice || Number(costPerUnit.toFixed(2)),
+      lastCartonPurchasePrice: productToEdit?.lastCartonPurchasePrice || cartonCost,
       costPerUnit: Number(costPerUnit.toFixed(2)),
       singleRetailPrice: singleRetail,
       wholesalePrice: wholesale,
@@ -950,9 +1017,26 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 style={{ fontSize: '16px' }}
                 value={singleRetailPrice}
                 onFocus={(e) => e.target.select()}
+                onBlur={() => setSingleRetailBlurred(true)}
                 onChange={(e) => setSingleRetailPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full bg-[#10192d] text-emerald-400 font-bold py-1 px-2 text-center rounded-xl border border-emerald-500/40 text-xs focus:outline-none focus:border-emerald-400"
+                className={`w-full font-bold py-1 px-2 text-center rounded-xl text-xs transition-all focus:outline-none ${
+                  isSingleRetailBelowCost && singleRetailBlurred
+                    ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-2 ring-rose-500/40'
+                    : 'bg-[#10192d] text-emerald-400 border border-emerald-500/40 focus:border-emerald-400'
+                }`}
               />
+              {isSingleRetailBelowCost && singleRetailBlurred && (
+                <div className="mt-1 p-1 px-1.5 rounded-lg bg-rose-500/20 border border-rose-500/50 text-[10px] font-bold text-rose-300 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>
+                    {isKu
+                      ? `سعر کەمترە لە تێچوو (${formatNumber(costPerUnit)})!`
+                      : isAr
+                      ? `أقل من سعر التكلفة (${formatNumber(costPerUnit)})!`
+                      : `Below cost (${formatNumber(costPerUnit)})!`}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -965,9 +1049,26 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 min="0"
                 value={wholesalePrice}
                 onFocus={(e) => e.target.select()}
+                onBlur={() => setWholesaleBlurred(true)}
                 onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full bg-[#10192d] text-cyan-300 font-bold py-1 px-2 text-center rounded-xl border border-cyan-500/30 text-xs focus:outline-none focus:border-cyan-400"
+                className={`w-full font-bold py-1 px-2 text-center rounded-xl text-xs transition-all focus:outline-none ${
+                  isWholesaleBelowCost && wholesaleBlurred
+                    ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-2 ring-rose-500/40'
+                    : 'bg-[#10192d] text-cyan-300 border border-cyan-500/30 focus:border-cyan-400'
+                }`}
               />
+              {isWholesaleBelowCost && wholesaleBlurred && (
+                <div className="mt-1 p-1 px-1.5 rounded-lg bg-rose-500/20 border border-rose-500/50 text-[10px] font-bold text-rose-300 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>
+                    {isKu
+                      ? `سعر کەمترە لە تێچوو (${formatNumber(costPerUnit)})!`
+                      : isAr
+                      ? `أقل من التكلفة (${formatNumber(costPerUnit)})!`
+                      : `Below cost (${formatNumber(costPerUnit)})!`}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -980,9 +1081,26 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 min="0"
                 value={cartonSellingPrice}
                 onFocus={(e) => e.target.select()}
+                onBlur={() => setCartonSellBlurred(true)}
                 onChange={(e) => setCartonSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full bg-[#10192d] text-purple-300 font-bold py-1 px-2 text-center rounded-xl border border-purple-500/30 text-xs focus:outline-none focus:border-purple-400"
+                className={`w-full font-bold py-1 px-2 text-center rounded-xl text-xs transition-all focus:outline-none ${
+                  isCartonSellBelowCost && cartonSellBlurred
+                    ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-2 ring-rose-500/40'
+                    : 'bg-[#10192d] text-purple-300 border border-purple-500/30 focus:border-purple-400'
+                }`}
               />
+              {isCartonSellBelowCost && cartonSellBlurred && (
+                <div className="mt-1 p-1 px-1.5 rounded-lg bg-rose-500/20 border border-rose-500/50 text-[10px] font-bold text-rose-300 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>
+                    {isKu
+                      ? `سعر کەمترە لە تێچووی کڕین (${formatNumber(cartonCost)})!`
+                      : isAr
+                      ? `أقل من كلفة الشراء (${formatNumber(cartonCost)})!`
+                      : `Below cost (${formatNumber(cartonCost)})!`}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

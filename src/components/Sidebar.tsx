@@ -99,12 +99,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: 'from-blue-500 to-cyan-500',
     },
     {
-      id: 'analytics' as MainNavTab,
-      labelKey: 'analytics',
-      icon: BarChart3,
-      color: 'from-blue-600 to-cyan-500',
-    },
-    {
       id: 'reports' as MainNavTab,
       labelKey: 'reports',
       icon: FileText,
@@ -133,26 +127,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30 animate-pulse',
     },
     {
-      id: 'inventoryAudit' as MainNavTab,
-      labelKey: 'stockAudit',
-      icon: ClipboardCheck,
-      color: 'from-amber-500 to-orange-600',
-    },
-    {
-      id: 'damagedItems' as MainNavTab,
-      labelKey: 'damagedItems',
-      icon: Trash2,
-      color: 'from-rose-500 to-red-600',
-      badge: isAr ? 'إتلاف' : isKu ? 'تێکچوو' : 'Damaged',
-      badgeColor: 'bg-rose-500/20 text-rose-400 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.3)]',
-    },
-    {
       id: 'delegateReturns' as MainNavTab,
       labelKey: 'delegateReturns',
       icon: Undo2,
       color: 'from-amber-500 to-orange-600',
       badge: isAr ? 'مندوب' : isKu ? 'مەندوب' : 'Delegate',
-      badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.3)]',
+      badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.35)]',
     },
     {
       id: 'purchases' as MainNavTab,
@@ -179,12 +159,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       labelKey: 'orders',
       icon: Store,
       color: 'from-amber-500 to-orange-500',
-    },
-    {
-      id: 'invoices' as MainNavTab,
-      labelKey: 'invoices',
-      icon: Receipt,
-      color: 'from-blue-600 to-indigo-600',
     },
     {
       id: 'settings' as MainNavTab,

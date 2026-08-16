@@ -20,7 +20,8 @@ import {
   FileSpreadsheet,
   Printer,
   Upload,
-  CheckCircle2
+  CheckCircle2,
+  Receipt
 } from 'lucide-react';
 import { Product, Category, StoreSettings } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -38,6 +39,9 @@ interface ProductsTabProps {
   onEditProduct: (product: Product) => void;
   onBackToDashboard?: () => void;
   onOpenPrintBarcode?: (product?: Product) => void;
+  onOpenInventoryAudit?: () => void;
+  onOpenDamagedItems?: () => void;
+  onOpenInvoices?: () => void;
 }
 
 const CATEGORIES = [
@@ -60,6 +64,9 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   onEditProduct,
   onBackToDashboard,
   onOpenPrintBarcode,
+  onOpenInventoryAudit,
+  onOpenDamagedItems,
+  onOpenInvoices,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -194,8 +201,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           </div>
         </div>
 
-        {/* The THREE Main Dedicated Buttons / Cards (All equal size & theme reactive) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
+        {/* Dedicated Navigation Buttons / Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-2">
           
           {/* Button 1: إدخال مادة جديدة (زیادکردنی کاڵای نوێ) */}
           <button
@@ -377,6 +384,180 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 <span className={isLight ? 'text-amber-700' : 'text-amber-400'}>⚠️ {lowStockProducts.length} {t('منخفض', 'کەم', 'Low')}</span>
                 <span className={isLight ? 'text-rose-700' : 'text-rose-400'}>🚫 {outOfStockProducts.length} {t('نفد', 'نەما', 'Out')}</span>
               </div>
+            </div>
+          </button>
+
+          {/* Button 4: جرد وتدقيق المخزون (پشکنین و جردی کۆگا) */}
+          <button
+            type="button"
+            onClick={onOpenInventoryAudit ? onOpenInventoryAudit : () => setIsAuditOpen(true)}
+            className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              isLight
+                ? 'bg-white border-indigo-200 hover:border-indigo-500 shadow-md hover:shadow-xl'
+                : 'bg-gradient-to-br from-[#0E1328] via-[#141C38] to-[#0A0E20] border-indigo-500/40 hover:border-indigo-400 hover:shadow-[0_0_35px_rgba(99,102,241,0.35)]'
+            }`}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] group-hover:scale-110 transition-transform">
+                  <ClipboardCheck className="w-7 h-7 text-white stroke-[2.2]" />
+                </div>
+                <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
+                  isLight
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                    : 'bg-indigo-950/80 border-indigo-500/40 text-indigo-300'
+                }`}>
+                  {t('جرد وتدقيق', 'پشکنینی کۆگا', 'Audit & Count')}
+                </span>
+              </div>
+
+              <div>
+                <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
+                  isLight
+                    ? 'text-slate-900 group-hover:text-indigo-700'
+                    : 'text-white group-hover:text-indigo-300'
+                }`}>
+                  <span>{t('جرد وتدقيق المخزون', 'پشکنین و جردی کۆگا', 'Inventory Audit & Physical Count')}</span>
+                </h3>
+                <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
+                  {t(
+                    'جرد فعلي ومطابقة الأرصدة الحقيقية مع بيانات النظام بالباركود أو الاسم، وحساب الفروقات والأرباح/الخسائر بدقة متناهية.',
+                    'جردکردنی فیعلی کۆگا و یەکسانکردنی بڕی ڕاستەقینە لەگەڵ سیستەم بە بارکۆد، دۆزینەوەی جیاوازی و قازانج/زیانەکان.',
+                    'Physical stock count, reconciliation with system records via barcode, and exact discrepancy calculations.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+              isLight
+                ? 'border-slate-100 text-indigo-700'
+                : 'border-slate-800/80 text-indigo-400'
+            }`}>
+              <span>{t('فتح نافذة جرد وتدقيق المخزون ←', 'کردنەوەی پشکنین و جردی کۆگا ←', 'Open Stock Audit →')}</span>
+              <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
+                isLight ? 'bg-indigo-100 text-indigo-800' : 'bg-indigo-500/10 text-indigo-300'
+              }`}>
+                {t('تدقيق شامل', 'پشکنینی گشتی', 'Full Audit')}
+              </span>
+            </div>
+          </button>
+
+          {/* Button 5: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
+          <button
+            type="button"
+            onClick={onOpenDamagedItems}
+            className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              isLight
+                ? 'bg-white border-rose-200 hover:border-rose-500 shadow-md hover:shadow-xl'
+                : 'bg-gradient-to-br from-[#200A10] via-[#2D0F18] to-[#16060B] border-rose-500/40 hover:border-rose-400 hover:shadow-[0_0_35px_rgba(244,63,94,0.35)]'
+            }`}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-rose-500 to-red-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(244,63,94,0.4)] group-hover:scale-110 transition-transform">
+                  <Trash2 className="w-7 h-7 text-white stroke-[2.2]" />
+                </div>
+                <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
+                  isLight
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : 'bg-rose-950/80 border-rose-500/40 text-rose-300'
+                }`}>
+                  {t('إتلاف وهدر', 'تێکچوو و بەسەرچوو', 'Damaged & Waste')}
+                </span>
+              </div>
+
+              <div>
+                <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
+                  isLight
+                    ? 'text-slate-900 group-hover:text-rose-700'
+                    : 'text-white group-hover:text-rose-300'
+                }`}>
+                  <span>{t('مواد متلفة / مكسورة / منتهية', 'کاڵای تێکچوو / شکاو / بەسەرچوو', 'Damaged & Expired Items')}</span>
+                </h3>
+                <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
+                  {t(
+                    'تسجيل وتوثيق المواد المتلفة، البضائع المكسورة، والمنتجات المنتهية الصلاحية مع خصمها من المخزون وتوثيق تكاليفها.',
+                    'تۆمارکردنی کاڵا تێکچووەکان، شکاوەکان و بەسەرچووەکان و دەرکردنیان لە کۆگا لەگەڵ خەمڵاندنی تێچووی زیانەکان.',
+                    'Log damaged, broken, and expired items, deduct them from stock, and track loss values.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+              isLight
+                ? 'border-slate-100 text-rose-700'
+                : 'border-slate-800/80 text-rose-400'
+            }`}>
+              <span>{t('فتح سجل المواد المتلفة ←', 'کردنەوەی کاڵا تێکچووەکان ←', 'Open Damaged Items Log →')}</span>
+              <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
+                isLight ? 'bg-rose-100 text-rose-800' : 'bg-rose-500/10 text-rose-300'
+              }`}>
+                {t('سجل الإتلاف', 'تۆماری تێکچوو', 'Loss Records')}
+              </span>
+            </div>
+          </button>
+
+          {/* Button 6: فواتير ومبيعات (پسوولە و فرۆشتنەکان) */}
+          <button
+            type="button"
+            onClick={onOpenInvoices}
+            className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              isLight
+                ? 'bg-white border-teal-200 hover:border-teal-500 shadow-md hover:shadow-xl'
+                : 'bg-gradient-to-br from-[#06181B] via-[#0A272B] to-[#041215] border-teal-500/40 hover:border-teal-400 hover:shadow-[0_0_35px_rgba(20,184,166,0.35)]'
+            }`}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-teal-500 to-cyan-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(20,184,166,0.4)] group-hover:scale-110 transition-transform">
+                  <Receipt className="w-7 h-7 text-white stroke-[2.2]" />
+                </div>
+                <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
+                  isLight
+                    ? 'bg-teal-50 border-teal-200 text-teal-800'
+                    : 'bg-teal-950/80 border-teal-500/40 text-teal-300'
+                }`}>
+                  {t('فواتير ومبيعات', 'پسوولەی فرۆشتن', 'Sales & Invoices')}
+                </span>
+              </div>
+
+              <div>
+                <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
+                  isLight
+                    ? 'text-slate-900 group-hover:text-teal-700'
+                    : 'text-white group-hover:text-teal-300'
+                }`}>
+                  <span>{t('فواتير ومبيعات (سجل المبيعات)', 'فواتیر و مبيعات (پسوولەکان)', 'Invoices & Sales Registry')}</span>
+                </h3>
+                <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
+                  {t(
+                    'استعراض وإدارة جميع فواتير البيع الصادرة، البحث السريع برقم الفاتورة أو العميل، إعادة طباعة الإيصالات، وتتبع المبيعات.',
+                    'بینین و بەڕێوەبردنی تەواوی پسوولەکانی فرۆشتن، گەڕان بە ژمارەی پسوولە، چاپکردنەوەی پسوولە و بەدواداچوونی فرۆش.',
+                    'View and manage all sales invoices, search by invoice number or customer, reprint receipts, and track sales.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+              isLight
+                ? 'border-slate-100 text-teal-700'
+                : 'border-slate-800/80 text-teal-400'
+            }`}>
+              <span>{t('فتح سجل الفواتير والمبيعات ←', 'کردنەوەی پسوولەکانی فرۆشتن ←', 'Open Sales Invoices →')}</span>
+              <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
+                isLight ? 'bg-teal-100 text-teal-800' : 'bg-teal-500/10 text-teal-300'
+              }`}>
+                {t('سجل الفواتير', 'پسوولەکان', 'Invoices Hub')}
+              </span>
             </div>
           </button>
 

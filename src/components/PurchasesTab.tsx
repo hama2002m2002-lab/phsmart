@@ -153,9 +153,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
   const isPriceIncreased = priceDifference > 0;
   const isPriceDecreased = priceDifference < 0;
 
-  // Weighted Average Cost calculation
-  const combinedQty = oldStockQty + currentTotalPieces;
-  const combinedCostValue = (oldStockQty * oldPurchasePrice) + (currentTotalPieces * currentNewPieceCost);
+  // Weighted Average Cost calculation for accurate profit margins and reporting:
+  // Inventory valuation combines existing inventory cost basis (prod.cost / prod.costPerUnit) with new purchase batch
+  const existingStockCostPerUnit = selectedProduct?.cost || selectedProduct?.costPerUnit || oldPurchasePrice;
+  const validOldQty = Math.max(0, oldStockQty);
+  const combinedQty = validOldQty + currentTotalPieces;
+  const combinedCostValue = (validOldQty * existingStockCostPerUnit) + (currentTotalPieces * currentNewPieceCost);
   const calculatedWeightedCost = combinedQty > 0
     ? Math.round(combinedCostValue / combinedQty)
     : currentNewPieceCost;
@@ -181,12 +184,21 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     const upc = prod.unitsPerCarton && prod.unitsPerCarton > 0 ? prod.unitsPerCarton : 24;
     setPiecesPerCarton(upc);
 
-    const oldCost = prod.cost || (prod.cartonPurchasePrice ? Math.round(prod.cartonPurchasePrice / upc) : 500);
-    setOldPurchasePrice(oldCost);
+    // Get the actual real last purchase price (not diluted weighted cost)
+    const actualLastPurchasePrice = prod.lastPurchasePrice 
+      || (prod.cartonPurchasePrice && prod.cartonPurchasePrice > 0 ? Math.round(prod.cartonPurchasePrice / upc) : 0)
+      || prod.costPerUnit 
+      || prod.cost 
+      || 500;
+
+    const actualLastCartonPrice = prod.lastCartonPurchasePrice
+      || (prod.cartonPurchasePrice && prod.cartonPurchasePrice > 0 ? prod.cartonPurchasePrice : actualLastPurchasePrice * upc);
+
+    setOldPurchasePrice(actualLastPurchasePrice);
     setOldStockQty(prod.stock || 0);
 
-    setSinglePiecePurchasePrice(oldCost > 0 ? oldCost : 500);
-    setCartonPurchasePrice(oldCost > 0 ? oldCost * upc : 12000);
+    setSinglePiecePurchasePrice(actualLastPurchasePrice > 0 ? actualLastPurchasePrice : 500);
+    setCartonPurchasePrice(actualLastCartonPrice > 0 ? actualLastCartonPrice : 12000);
 
     const retail = prod.singleRetailPrice || prod.price || 750;
     setRetailSellingPrice(retail);
@@ -225,6 +237,17 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
     if (currentTotalPieces <= 0) {
       alert(t('برجاء إدخال كمية مشتراة أكبر من صفر', 'تکایە بڕی کڕدراو زیاتر لە سفر بنووسە', 'Please enter purchased quantity > 0'));
+      return;
+    }
+
+    if (effectivePieceCost > 0 && retailSellingPrice < effectivePieceCost) {
+      alert(
+        t(
+          `❌ لا يمكن إضافة المادة للفاتورة!\n\nسعر البيع للمفرد (${retailSellingPrice.toLocaleString()} ${currency}) أقل من سعر التكلفة/الشراء للقطعة (${effectivePieceCost.toLocaleString()} ${currency}).\n\nيرجى تعديل سعر البيع من زر (سعر البيع والأرباح) ليكون أعلى من التكلفة لتجنب الخسارة.`,
+          `❌ پاشەکەوت ناکرێت!\n\nنرخی فرۆشتن (${retailSellingPrice.toLocaleString()} ${currency}) کەمترە لە نرخی کڕینی یەک دانە (${effectivePieceCost.toLocaleString()} ${currency})!\n\nتکایە نرخی فرۆشتن چاکبکە تاوەکوو تووشی زیانی دارایی نەبیت.`,
+          `❌ Cannot add item! Retail selling price (${retailSellingPrice}) is lower than cost per piece (${effectivePieceCost}).`
+        )
+      );
       return;
     }
 
@@ -327,14 +350,24 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
         const newTotalStock = oldStock + matchedItem.totalPieces;
         const upc = prod.unitsPerCarton || matchedItem.piecesPerCarton || 24;
 
+        // The real new purchase price entered for this item
+        const actualNewPurchasePiece = matchedItem.newPiecePurchaseCost;
+        const actualNewCartonPurchase = matchedItem.purchaseUnitMode === 'carton' && matchedItem.cartonPurchasePrice > 0
+          ? matchedItem.cartonPurchasePrice
+          : matchedItem.newPiecePurchaseCost * upc;
+
         return {
           ...prod,
           stock: newTotalStock,
           totalUnits: newTotalStock,
           cartonsCount: Math.floor(newTotalStock / upc),
+          // Cost is set to weighted cost (old + new) for reports, analytics, and sales profit calculations
           cost: matchedItem.finalPieceCost,
           costPerUnit: matchedItem.finalPieceCost,
-          cartonPurchasePrice: matchedItem.finalPieceCost * upc,
+          // Purchase price preserves the actual new purchase price that the user entered!
+          lastPurchasePrice: actualNewPurchasePiece,
+          lastCartonPurchasePrice: actualNewCartonPurchase,
+          cartonPurchasePrice: actualNewCartonPurchase,
           singleRetailPrice: matchedItem.retailSellingPrice,
           price: matchedItem.retailSellingPrice,
           lastEditDate: invoiceDate,
@@ -705,6 +738,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 <span>{t(`انخفض (${priceDifference.toLocaleString()})`, `داشکاوە (${priceDifference.toLocaleString()})`, `Decreased (${priceDifference.toLocaleString()})`)}</span>
               </span>
             ) : null}
+
+            {/* Calculated cost indicator for reports and profits */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/60 border border-purple-500/40 text-[11px]">
+              <span className="text-purple-300 font-bold">{t('التكلفة المحسوبة للأرباح والتقارير:', 'تێچووی حیسابکراو بۆ قازانج و ڕاپۆرت:', 'Calculated Cost (Profits/Reports):')}</span>
+              <span className="font-mono font-black text-purple-200">{effectivePieceCost.toLocaleString()} {currency}</span>
+            </div>
           </div>
 
           {/* ACTION BUTTONS FOR EXTRA OPTIONS (الباركود، الأرباح، طريقة احتساب التكلفة) */}
@@ -1045,10 +1084,19 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                     min="0"
                     value={retailSellingPrice}
                     onChange={(e) => setRetailSellingPrice(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full bg-[#060b14] text-emerald-400 font-mono font-black py-2 px-3 rounded-xl border border-emerald-500/50 text-center"
+                    className={`w-full font-mono font-black py-2 px-3 rounded-xl border text-center transition-all ${
+                      effectivePieceCost > 0 && retailSellingPrice < effectivePieceCost
+                        ? 'bg-rose-950/60 text-rose-300 border-rose-500 ring-2 ring-rose-500/40'
+                        : 'bg-[#060b14] text-emerald-400 border-emerald-500/50'
+                    }`}
                   />
                   <span className="text-slate-400 font-bold">{currency}</span>
                 </div>
+                {effectivePieceCost > 0 && retailSellingPrice < effectivePieceCost && (
+                  <div className="mt-1.5 p-1.5 rounded-lg bg-rose-500/20 border border-rose-500/50 text-[10.5px] font-bold text-rose-300 flex items-center gap-1.5">
+                    <span>⚠️ {t(`تنبيه: سعر البيع أقل من سعر التكلفة (${effectivePieceCost.toLocaleString()} ${currency})!`, `ئاگاداری: نرخی فرۆشتن کەمترە لە تێچوو (${effectivePieceCost.toLocaleString()} ${currency})!`, `Warning: Sale price is lower than cost!`)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="p-3 rounded-xl bg-[#060b14] border border-slate-800 space-y-1.5">

@@ -702,6 +702,9 @@ export function App() {
               setProductForBarcodePrint(prod || null);
               setIsBarcodePrintOpen(true);
             }}
+            onOpenInventoryAudit={() => setActiveTab('inventoryAudit')}
+            onOpenDamagedItems={() => setActiveTab('damagedItems')}
+            onOpenInvoices={() => setActiveTab('invoices')}
           />
         );
 

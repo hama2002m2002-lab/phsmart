@@ -24,8 +24,10 @@ export interface Product {
   cartonsCount: number; // عدد الكراتين
   unitsPerCarton: number; // عدد المواد داخل الكرتونة
   totalUnits: number; // مجموع المواد كلها (عدد الكراتين * عدد المواد داخل الكرتونة)
-  cartonPurchasePrice: number; // سعر شراء كرتون واحد
-  costPerUnit: number; // سعر تكلفة المادة الواحدة (سعر شراء الكرتون / عدد المواد داخل الكرتون)
+  cartonPurchasePrice: number; // سعر شراء كرتون واحد (آخر سعر شراء حقيقي)
+  lastPurchasePrice?: number; // آخر سعر شراء فعلي للمادة الواحدة
+  lastCartonPurchasePrice?: number; // آخر سعر شراء فعلي للكرتون
+  costPerUnit: number; // سعر تكلفة المادة الواحدة (المتوسط المرجح للتكلفة القديمة والجديدة للأرباح والتقارير)
   singleRetailPrice: number; // سعر البيع مفرد
   wholesalePrice: number; // سعر البيع بالجملة
   cartonSellingPrice: number; // سعر البيع بالكرتون
