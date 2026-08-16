@@ -17,7 +17,7 @@ import {
   Barcode
 } from 'lucide-react';
 import { Product, SaleTransaction, StoreSettings, UserAccount } from '../types';
-import { parseDate, isToday, formatDisplayDateTime } from '../lib/dateUtils';
+import { parseDate, isToday, isThisMonth, isThreeMonths, isThisYear, formatDisplayDateTime } from '../lib/dateUtils';
 import { formatNumber } from '../lib/formatUtils';
 import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
@@ -135,15 +135,11 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
         const yestStr = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
         matchesDate = saleDateStr === yestStr;
       } else if (dateFilterMode === 'this_month') {
-        const now = new Date();
-        matchesDate = saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+        matchesDate = isThisMonth(sale.timestamp);
       } else if (dateFilterMode === 'three_months') {
-        const now = new Date();
-        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        matchesDate = saleDate >= ninetyDaysAgo;
+        matchesDate = isThreeMonths(sale.timestamp);
       } else if (dateFilterMode === 'this_year') {
-        const now = new Date();
-        matchesDate = saleDate.getFullYear() === now.getFullYear();
+        matchesDate = isThisYear(sale.timestamp);
       } else if (dateFilterMode === 'range' || startDate || endDate) {
         const effectiveStart = (startDate && endDate && startDate > endDate) ? endDate : startDate;
         const effectiveEnd = (startDate && endDate && startDate > endDate) ? startDate : endDate;

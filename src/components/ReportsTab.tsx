@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings, OperatingExpenseItem } from '../types';
 import { formatNumber } from '../lib/formatUtils';
-import { parseDate, isToday, formatDisplayDate, formatDisplayTime, formatDisplayDateTime, formatDateDDMMYYYY } from '../lib/dateUtils';
+import { parseDate, isToday, isThisWeek, isThisMonth, isThreeMonths, isThisYear, formatDisplayDate, formatDisplayTime, formatDisplayDateTime, formatDateDDMMYYYY } from '../lib/dateUtils';
 import { getItemUnitCost, getItemTotalProfit } from '../lib/financialUtils';
 import { exportDataToExcel } from '../lib/excelExport';
 import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
@@ -316,38 +316,44 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
     // Filter by Custom Date & Time if enabled
     if (useCustomDateTime) {
-      const startTs = new Date(`${startDate}T${startTime}:00`).getTime();
-      const endTs = new Date(`${endDate}T${endTime}:59`).getTime();
+      let startTs = 0;
+      let endTs = Infinity;
+      if (startDate) {
+        const [sY, sM, sD] = startDate.split('-').map(Number);
+        const [sH, sMin] = (startTime || '00:00').split(':').map(Number);
+        startTs = new Date(sY, sM - 1, sD, sH || 0, sMin || 0, 0, 0).getTime();
+      }
+      if (endDate) {
+        const [eY, eM, eD] = endDate.split('-').map(Number);
+        const [eH, eMin] = (endTime || '23:59').split(':').map(Number);
+        endTs = new Date(eY, eM - 1, eD, eH !== undefined ? eH : 23, eMin !== undefined ? eMin : 59, 59, 999).getTime();
+      }
 
       list = list.filter(s => {
         if (!s || !s.timestamp) return false;
         const saleTs = parseDate(s.timestamp).getTime();
-        if (isNaN(saleTs)) return true;
-        if (!isNaN(startTs) && saleTs < startTs) return false;
-        if (!isNaN(endTs) && saleTs > endTs) return false;
+        if (isNaN(saleTs)) return false;
+        if (startTs && saleTs < startTs) return false;
+        if (endTs && saleTs > endTs) return false;
         return true;
       });
     } else if (dateFilter !== 'all') {
-      const now = new Date();
       list = list.filter(s => {
         if (!s || !s.timestamp) return false;
         if (dateFilter === 'today') {
           return isToday(s.timestamp);
         }
-        const saleDate = parseDate(s.timestamp);
         if (dateFilter === 'week') {
-          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return saleDate >= sevenDaysAgo;
+          return isThisWeek(s.timestamp);
         }
         if (dateFilter === 'month') {
-          return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+          return isThisMonth(s.timestamp);
         }
         if (dateFilter === 'three_months') {
-          const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-          return saleDate >= ninetyDaysAgo;
+          return isThreeMonths(s.timestamp);
         }
         if (dateFilter === 'year') {
-          return saleDate.getFullYear() === now.getFullYear();
+          return isThisYear(s.timestamp);
         }
         return true;
       });
@@ -1308,7 +1314,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             </div>
             <div class="meta-info">
               <div><strong>تاريخ التقرير:</strong> ${new Date().toLocaleString('ar-EG')}</div>
-              <div><strong>النطاق الزمني:</strong> ${useCustomDateTime ? `${startDate} ${startTime} - ${endDate} ${endTime}` : 'وردية اليوم النشطة'}</div>
+              <div><strong>النطاق الزمني:</strong> ${useCustomDateTime ? `${startDate} ${startTime} - ${endDate} ${endTime}` : dateFilter === 'three_months' ? 'آخر 3 أشهر' : dateFilter === 'year' ? 'سنة كاملة / هذا العام' : dateFilter === 'today' ? 'اليوم' : dateFilter === 'week' ? 'هذا الأسبوع' : dateFilter === 'month' ? 'هذا الشهر' : 'الكل (كافة الفترات)'}</div>
               <div><strong>عدد الفواتير الصادرة:</strong> ${shiftSales.length} فاتورة (${refundedCount} مرتجع)</div>
             </div>
           </div>
@@ -2495,9 +2501,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <div className={`flex items-center rounded-xl border p-1 ${isLight ? 'bg-white border-slate-300' : 'bg-[#070D1C] border-slate-700/80'}`}>
               <button
-                onClick={() => setDateFilter('all')}
+                onClick={() => {
+                  setUseCustomDateTime(false);
+                  setDateFilter('all');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  dateFilter === 'all' 
+                  !useCustomDateTime && dateFilter === 'all' 
                     ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
                     : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
                 }`}
@@ -2505,9 +2514,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 {t('الكل', 'هەمووي', 'All')}
               </button>
               <button
-                onClick={() => setDateFilter('today')}
+                onClick={() => {
+                  setUseCustomDateTime(false);
+                  setDateFilter('today');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  dateFilter === 'today' 
+                  !useCustomDateTime && dateFilter === 'today' 
                     ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
                     : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
                 }`}
@@ -2515,9 +2527,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 {t('اليوم', 'ئەمڕۆ', 'Today')}
               </button>
               <button
-                onClick={() => setDateFilter('week')}
+                onClick={() => {
+                  setUseCustomDateTime(false);
+                  setDateFilter('week');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  dateFilter === 'week' 
+                  !useCustomDateTime && dateFilter === 'week' 
                     ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
                     : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
                 }`}
@@ -2525,9 +2540,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 {t('هذا الأسبوع', 'ئەم هەفتەیە', 'This Week')}
               </button>
               <button
-                onClick={() => setDateFilter('month')}
+                onClick={() => {
+                  setUseCustomDateTime(false);
+                  setDateFilter('month');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  dateFilter === 'month' 
+                  !useCustomDateTime && dateFilter === 'month' 
                     ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
                     : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
                 }`}
@@ -2535,9 +2553,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 {t('هذا الشهر', 'ئەم مانگە', 'This Month')}
               </button>
               <button
-                onClick={() => setDateFilter('three_months')}
+                onClick={() => {
+                  setUseCustomDateTime(false);
+                  setDateFilter('three_months');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  dateFilter === 'three_months' 
+                  !useCustomDateTime && dateFilter === 'three_months' 
                     ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
                     : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
                 }`}
@@ -2545,9 +2566,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 {t('3 أشهر', '٣ مانگ', '3 Months')}
               </button>
               <button
-                onClick={() => setDateFilter('year')}
+                onClick={() => {
+                  setUseCustomDateTime(false);
+                  setDateFilter('year');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  dateFilter === 'year' 
+                  !useCustomDateTime && dateFilter === 'year' 
                     ? (isLight ? 'bg-cyan-600 text-white shadow' : 'bg-cyan-500 text-slate-950 shadow') 
                     : (isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white')
                 }`}

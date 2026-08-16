@@ -43,37 +43,77 @@ export function isToday(timestamp: any): boolean {
   if (!timestamp) return false;
 
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const endOfToday = startOfToday + 24 * 60 * 60 * 1000;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
 
   const d = parseDate(timestamp);
   if (!isNaN(d.getTime())) {
     const time = d.getTime();
-    if (time >= startOfToday && time < endOfToday) {
-      return true;
-    }
+    return time >= startOfToday && time <= endOfToday;
   }
 
-  // Fallback string matching if invalid date or locale mismatch
-  const str = String(timestamp);
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
-  const day = now.getDate();
-  const padM = String(m).padStart(2, '0');
-  const padD = String(day).padStart(2, '0');
+  return false;
+}
 
-  const todayISO = `${y}-${padM}-${padD}`;
-  const todayUS = `${m}/${day}/${y}`;
-  const todayEU = `${padD}/${padM}/${y}`;
+/**
+ * Checks if a timestamp belongs to the current week starting from Saturday (يوم السبت).
+ */
+export function isThisWeek(timestamp: any): boolean {
+  if (!timestamp) return false;
+  const now = new Date();
+  const daysSinceSaturday = (now.getDay() + 1) % 7; // Sat=0, Sun=1, Mon=2, Tue=3, Wed=4, Thu=5, Fri=6
+  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceSaturday, 0, 0, 0, 0).getTime();
+  const endOfWeek = new Date(startOfWeek + 7 * 24 * 60 * 60 * 1000 - 1).getTime();
 
-  if (str.includes(todayISO) || str.includes(todayUS) || str.includes(todayEU) || str.includes(`${y}`)) {
-    // If it contains today's year and month/day
-    if (str.includes(`${y}`) && (str.includes(`${padM}`) || str.includes(`${m}`)) && (str.includes(`${padD}`) || str.includes(`${day}`))) {
-      return true;
-    }
-  }
+  const d = parseDate(timestamp);
+  if (isNaN(d.getTime())) return false;
+  const time = d.getTime();
+  return time >= startOfWeek && time <= endOfWeek;
+}
 
-  return true; // Don't drop sales if timestamp is non-standard
+/**
+ * Checks if a timestamp belongs to the current month (from day 1 to last day of month).
+ */
+export function isThisMonth(timestamp: any): boolean {
+  if (!timestamp) return false;
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+
+  const d = parseDate(timestamp);
+  if (isNaN(d.getTime())) return false;
+  const time = d.getTime();
+  return time >= startOfMonth && time <= endOfMonth;
+}
+
+/**
+ * Checks if a timestamp belongs to the last 3 months (from 1st of month 2 months ago to end of current month).
+ */
+export function isThreeMonths(timestamp: any): boolean {
+  if (!timestamp) return false;
+  const now = new Date();
+  const startOfThreeMonths = new Date(now.getFullYear(), now.getMonth() - 2, 1, 0, 0, 0, 0).getTime();
+  const endOfThreeMonths = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+
+  const d = parseDate(timestamp);
+  if (isNaN(d.getTime())) return false;
+  const time = d.getTime();
+  return time >= startOfThreeMonths && time <= endOfThreeMonths;
+}
+
+/**
+ * Checks if a timestamp belongs to the current full year (Jan 1 to Dec 31).
+ */
+export function isThisYear(timestamp: any): boolean {
+  if (!timestamp) return false;
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0).getTime();
+  const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999).getTime();
+
+  const d = parseDate(timestamp);
+  if (isNaN(d.getTime())) return false;
+  const time = d.getTime();
+  return time >= startOfYear && time <= endOfYear;
 }
 
 /**

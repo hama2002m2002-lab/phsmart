@@ -7,6 +7,7 @@ import { InvoicesTab } from './components/InvoicesTab';
 import { ProductsTab } from './components/ProductsTab';
 import { PurchasesTab } from './components/PurchasesTab';
 import { POSTab } from './components/POSTab';
+import { VouchersHubTab } from './components/VouchersHubTab';
 import { SuppliersTab } from './components/SuppliersTab';
 import { CustomersTab } from './components/CustomersTab';
 import { OrdersTab } from './components/OrdersTab';
@@ -14,6 +15,7 @@ import { AnalyticsTab } from './components/AnalyticsTab';
 import { ReportsTab } from './components/ReportsTab';
 import { NotificationsTab } from './components/NotificationsTab';
 import { SettingsTab } from './components/SettingsTab';
+import { AccountsHubTab } from './components/AccountsHubTab';
 import { LoginScreen } from './components/LoginScreen';
 import { ReceiptModal } from './components/ReceiptModal';
 import { ProductModal } from './components/ProductModal';
@@ -277,6 +279,7 @@ export function App() {
 
     switch (tabId) {
       case 'dashboard': return perms.canAccessDashboard !== false;
+      case 'vouchers': return perms.canAccessPOS || (perms.canManagePurchases ?? perms.canManageProducts) || perms.canManageProducts;
       case 'pos': return perms.canAccessPOS;
       case 'products': return perms.canManageProducts;
       case 'inventoryAudit': return perms.canManageInventoryAudit ?? perms.canManageProducts;
@@ -300,6 +303,7 @@ export function App() {
     
     const candidateTabs: MainNavTab[] = [
       'dashboard',
+      'vouchers',
       'customers',
       'invoices',
       'orders',
@@ -313,7 +317,7 @@ export function App() {
     ];
     
     const allowed = candidateTabs.find(t => userHasPermissionForTab(t, user));
-    return allowed || 'pos';
+    return allowed || 'vouchers';
   };
 
   // Automatically switch activeTab if logged in user does not have permission for the current activeTab
@@ -324,6 +328,7 @@ export function App() {
     if (!userHasPermissionForTab(activeTab, currentUser)) {
       const fallbackOrder: MainNavTab[] = [
         'dashboard',
+        'vouchers',
         'customers',
         'invoices',
         'orders',
@@ -631,6 +636,71 @@ export function App() {
           />
         );
 
+      case 'vouchers': {
+        const isAnyModalOpen = Boolean(
+          isCompletedReceiptsOpen ||
+          isSalesReturnOpen ||
+          isCashDrawerOpen ||
+          selectedReceipt ||
+          isProductModalOpen ||
+          showPOSInventory ||
+          isShiftReportOpen ||
+          isMobileSyncOpen ||
+          isBarcodePrintOpen ||
+          isRegisterModalOpen ||
+          isDesktopAppModalOpen ||
+          isCSharpModalOpen ||
+          isAccountsModalOpen
+        );
+        const handleExitPOS = () => {
+          const nextTab = getExitTabForUser(currentUser);
+          if (nextTab === 'pos' || nextTab === 'vouchers') {
+            setActiveTab('dashboard');
+          } else {
+            setActiveTab(nextTab);
+          }
+        };
+
+        return (
+          <VouchersHubTab
+            initialSubTab="hub"
+            products={products}
+            setProducts={setProducts}
+            salesHistory={salesHistory}
+            setSalesHistory={setSalesHistory}
+            suppliers={suppliers}
+            setSuppliers={setSuppliers}
+            customers={customers}
+            setCustomers={setCustomers}
+            purchaseInvoices={purchaseInvoices}
+            setPurchaseInvoices={setPurchaseInvoices}
+            settings={settings}
+            currentUser={currentUser}
+            onOpenPOS={() => setActiveTab('pos')}
+            onSaleCompleted={handleSaleCompleted}
+            showPOSInventory={showPOSInventory}
+            setShowPOSInventory={setShowPOSInventory}
+            showYellowLineModal={isYellowLineModalOpen}
+            setShowYellowLineModal={setIsYellowLineModalOpen}
+            isAnyModalOpen={isAnyModalOpen}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onOpenMobileSync={() => setIsMobileSyncOpen(true)}
+            onExitPOS={handleExitPOS}
+            onBackToDashboard={handleExitPOS}
+            onOpenPrintBarcode={(prod) => {
+              setProductForBarcodePrint(prod || null);
+              setIsBarcodePrintOpen(true);
+            }}
+            onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
+            onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
+            handleOpenAddProduct={handleOpenAddProduct}
+            handleOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            setSalesReturnPreInvoiceNo={setSalesReturnPreInvoiceNo}
+            setIsSalesReturnOpen={setIsSalesReturnOpen}
+          />
+        );
+      }
+
       case 'pos': {
         const isAnyModalOpen = Boolean(
           isCompletedReceiptsOpen ||
@@ -760,32 +830,104 @@ export function App() {
           />
         );
 
-      case 'suppliers':
+      case 'accountsHub':
+      case 'permissions':
         return (
-          <SuppliersTab
+          <AccountsHubTab
+            initialSubTab={activeTab === 'permissions' ? 'permissions' : 'hub'}
+            settings={settings}
+            currentUser={currentUser}
+            userAccounts={userAccounts}
+            setUserAccounts={setUserAccounts}
             suppliers={suppliers}
             setSuppliers={setSuppliers}
+            customers={customers}
+            setCustomers={setCustomers}
+            orders={orders}
             products={products}
             setProducts={setProducts}
-            settings={settings}
+            salesHistory={salesHistory}
+            purchaseInvoices={purchaseInvoices}
+            setPurchaseInvoices={setPurchaseInvoices}
+            onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
+          />
+        );
+
+      case 'suppliers':
+        return (
+          <AccountsHubTab
+            initialSubTab="suppliers"
+            settings={settings}
+            currentUser={currentUser}
+            userAccounts={userAccounts}
+            setUserAccounts={setUserAccounts}
+            suppliers={suppliers}
+            setSuppliers={setSuppliers}
+            customers={customers}
+            setCustomers={setCustomers}
+            orders={orders}
+            products={products}
+            setProducts={setProducts}
+            salesHistory={salesHistory}
+            purchaseInvoices={purchaseInvoices}
+            setPurchaseInvoices={setPurchaseInvoices}
+            onOpenPOS={() => setActiveTab('pos')}
+            onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
         );
 
       case 'customers':
         return (
-          <CustomersTab
+          <AccountsHubTab
+            initialSubTab="customers"
+            settings={settings}
+            currentUser={currentUser}
+            userAccounts={userAccounts}
+            setUserAccounts={setUserAccounts}
+            suppliers={suppliers}
+            setSuppliers={setSuppliers}
             customers={customers}
             setCustomers={setCustomers}
-            settings={settings}
+            orders={orders}
+            products={products}
+            setProducts={setProducts}
+            salesHistory={salesHistory}
+            purchaseInvoices={purchaseInvoices}
+            setPurchaseInvoices={setPurchaseInvoices}
+            onOpenPOS={() => setActiveTab('pos')}
+            onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
         );
 
       case 'orders':
         return (
-          <OrdersTab
-            orders={orders}
+          <AccountsHubTab
+            initialSubTab="orders"
             settings={settings}
+            currentUser={currentUser}
+            userAccounts={userAccounts}
+            setUserAccounts={setUserAccounts}
+            suppliers={suppliers}
+            setSuppliers={setSuppliers}
+            customers={customers}
+            setCustomers={setCustomers}
+            orders={orders}
+            products={products}
+            setProducts={setProducts}
+            salesHistory={salesHistory}
+            purchaseInvoices={purchaseInvoices}
+            setPurchaseInvoices={setPurchaseInvoices}
+            onOpenPOS={() => setActiveTab('pos')}
+            onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
         );
 
@@ -822,25 +964,26 @@ export function App() {
 
       case 'cashierAccounts':
         return (
-          <ReportsTab
-            products={products}
-            salesHistory={salesHistory}
-            suppliers={suppliers}
-            customers={customers}
-            purchaseInvoices={purchaseInvoices}
-            userAccounts={userAccounts}
+          <AccountsHubTab
+            initialSubTab="cashierAccounts"
             settings={settings}
-            initialCategory="financial"
-            initialSubTab="cashier_accounts"
-            isCashierAccountsOnly={true}
-            onOpenShiftReport={() => setIsShiftReportOpen(true)}
-            onOpenAccountsModal={() => setIsAccountsModalOpen(true)}
+            currentUser={currentUser}
+            userAccounts={userAccounts}
+            setUserAccounts={setUserAccounts}
+            suppliers={suppliers}
+            setSuppliers={setSuppliers}
+            customers={customers}
+            setCustomers={setCustomers}
+            orders={orders}
+            products={products}
+            setProducts={setProducts}
+            salesHistory={salesHistory}
+            purchaseInvoices={purchaseInvoices}
+            setPurchaseInvoices={setPurchaseInvoices}
+            onOpenPOS={() => setActiveTab('pos')}
+            onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
-            onToggleFullscreen={(isFull) => setIsReportsFullscreen(isFull)}
-            onBackToDashboard={() => {
-              setActiveTopTab('overview');
-              setActiveTab('dashboard');
-            }}
+            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
         );
 
