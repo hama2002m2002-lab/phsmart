@@ -511,27 +511,15 @@ export const POSTab: React.FC<POSTabProps> = ({
           setBarcodeInput('');
 
           const itemName = isAr ? (targetItem.product.nameAr || targetItem.product.name) : isKu ? (targetItem.product.nameAr || targetItem.product.name) : targetItem.product.name;
-          const currentStock = targetItem.product.stock;
 
-          if (targetQty > currentStock || currentStock <= 0) {
-            setScanAlert({
-              msg: isKu 
-                ? `⚠️ [ ${targetQty} ] دانە بۆ (${itemName}) دیاریکرا (بە قەرزی کۆگا / بڕی زیاتر لە بەردەست: ${currentStock})` 
-                : isAr 
-                ? `⚠️ تم تحديد [ ${targetQty} ] قطعة لمادة (${itemName}) (سحب على المكشوف / قيد بالسالب، المتوفر: ${currentStock})` 
-                : `⚠️ Set [ ${targetQty} ] items for (${itemName}) (Overdraft loan, stock: ${currentStock})`,
-              type: 'error'
-            });
-          } else {
-            setScanAlert({
-              msg: isKu 
-                ? `⚡ بڕی (${itemName}) دیاریکرا بە [ ${targetQty} ] دانە (Shift+${digit})` 
-                : isAr 
-                ? `⚡ تم تعديل كمية (${itemName}) إلى [ ${targetQty} ] قطعة (Shift+${digit})` 
-                : `⚡ Updated (${itemName}) quantity to [ ${targetQty} ] items (Shift+${digit})`,
-              type: 'success'
-            });
-          }
+          setScanAlert({
+            msg: isKu 
+              ? `⚡ بڕی (${itemName}) دیاریکرا بە [ ${targetQty} ] دانە (Shift+${digit})` 
+              : isAr 
+              ? `⚡ تم تعديل كمية (${itemName}) إلى [ ${targetQty} ] قطعة (Shift+${digit})` 
+              : `⚡ Updated (${itemName}) quantity to [ ${targetQty} ] items (Shift+${digit})`,
+            type: 'success'
+          });
           return;
         }
       }
@@ -686,27 +674,15 @@ export const POSTab: React.FC<POSTabProps> = ({
             setDirectQuantity(targetItem.product.id, targetItem.saleType, targetQty);
             setBarcodeInput('');
             const itemName = isAr ? (targetItem.product.nameAr || targetItem.product.name) : isKu ? (targetItem.product.nameAr || targetItem.product.name) : targetItem.product.name;
-            const currentStock = targetItem.product.stock;
 
-            if (targetQty > currentStock || currentStock <= 0) {
-              setScanAlert({
-                msg: isKu 
-                  ? `⚠️ [ ${targetQty} ] دانە بۆ (${itemName}) دیاریکرا (بە قەرزی کۆگا / بڕی زیاتر لە بەردەست: ${currentStock})` 
-                  : isAr 
-                  ? `⚠️ تم تحديد [ ${targetQty} ] قطعة لمادة (${itemName}) (سحب على المكشوف / قيد بالسالب، المتوفر: ${currentStock})` 
-                  : `⚠️ Set [ ${targetQty} ] items for (${itemName}) (Overdraft loan, stock: ${currentStock})`,
-                type: 'error'
-              });
-            } else {
-              setScanAlert({
-                msg: isKu 
-                  ? `⚡ بڕی (${itemName}) دیاریکرا بە [ ${targetQty} ] دانە` 
-                  : isAr 
-                  ? `⚡ تم تعديل كمية (${itemName}) إلى [ ${targetQty} ] قطعة` 
-                  : `⚡ Updated (${itemName}) quantity to [ ${targetQty} ] items`,
-                type: 'success'
-              });
-            }
+            setScanAlert({
+              msg: isKu 
+                ? `⚡ بڕی (${itemName}) دیاریکرا بە [ ${targetQty} ] دانە` 
+                : isAr 
+                ? `⚡ تم تعديل كمية (${itemName}) إلى [ ${targetQty} ] قطعة` 
+                : `⚡ Updated (${itemName}) quantity to [ ${targetQty} ] items`,
+              type: 'success'
+            });
             return;
           }
         } else if (/^\d+$/.test(parts[0]) && parts[1] !== '') {
@@ -766,27 +742,15 @@ export const POSTab: React.FC<POSTabProps> = ({
     });
 
     const itemName = isAr ? (product.nameAr || product.name) : isKu ? (product.nameAr || product.name) : product.name;
-    const currentStock = product.stock;
 
-    if (quantityToAdd > currentStock || currentStock <= 0) {
-      setScanAlert({
-        msg: isKu 
-          ? `⚠️ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە (بە قەرزی کۆگا / بڕی کەم: ${currentStock})` 
-          : isAr 
-          ? `⚠️ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة (سحب على المكشوف / قيد بالسالب، المتوفر: ${currentStock})` 
-          : `⚠️ Added [ ${quantityToAdd} ] of (${itemName}) (Overdraft negative loan, stock: ${currentStock})`,
-        type: 'error'
-      });
-    } else {
-      setScanAlert({
-        msg: isKu 
-          ? `✅ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە` 
-          : isAr 
-          ? `✅ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة` 
-          : `✅ Added [ ${quantityToAdd} ] of (${itemName}) to cart`,
-        type: 'success'
-      });
-    }
+    setScanAlert({
+      msg: isKu 
+        ? `✅ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە` 
+        : isAr 
+        ? `✅ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة` 
+        : `✅ Added [ ${quantityToAdd} ] of (${itemName}) to cart`,
+      type: 'success'
+    });
   };
 
   const updateSaleType = (productId: string, oldSaleType: SaleUnitType, newSaleType: SaleUnitType) => {
@@ -1346,7 +1310,16 @@ export const POSTab: React.FC<POSTabProps> = ({
           <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2 custom-scrollbar pr-0.5">
             {filteredProducts.map(p => {
               const retailP = p.singleRetailPrice || p.price;
-              const inCartCount = cart.filter(c => c.product.id === p.id).reduce((sum, item) => sum + item.quantity, 0);
+              const inCartCount = cart
+                .filter(c => c.product.id === p.id)
+                .reduce((sum, item) => {
+                  if (item.saleType === 'carton') {
+                    const upc = (p.unitsPerCarton && p.unitsPerCarton > 0) ? p.unitsPerCarton : 1;
+                    return sum + (item.quantity * upc);
+                  }
+                  return sum + item.quantity;
+                }, 0);
+              const remainingStock = p.stock - inCartCount;
 
               return (
                 <div
@@ -1357,12 +1330,19 @@ export const POSTab: React.FC<POSTabProps> = ({
                   }}
                   className="bg-[#070D1C] hover:bg-[#0E172E] p-2.5 rounded-2xl border border-slate-800 hover:border-amber-500/50 flex flex-col justify-between gap-2 cursor-pointer active:scale-95 transition-all shadow-md relative group"
                 >
-                  {inCartCount > 0 && (
-                    <span className="absolute top-1.5 left-1.5 rtl:left-auto rtl:right-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-mono font-black text-[10px] shadow">
-                      {inCartCount}
+                  <div className="absolute top-1.5 left-1.5 rtl:left-auto rtl:right-1.5 flex items-center gap-1">
+                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                      remainingStock <= 0 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {remainingStock <= 0 ? (isAr ? '0' : isKu ? '0' : '0') : `${remainingStock} ${p.unit}`}
                     </span>
-                  )}
-                  <div className="flex items-start gap-2">
+                    {inCartCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-mono font-black text-[9px] shadow">
+                        +{inCartCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-2 pt-4">
                     <span className="text-xl p-1 rounded-xl bg-slate-800/80">{p.imageIcon || '📦'}</span>
                     <div className="min-w-0 flex-1">
                       <h4 className="text-xs font-bold text-white truncate">{isAr ? p.nameAr : isKu ? p.nameAr : p.name}</h4>
@@ -2012,7 +1992,6 @@ export const POSTab: React.FC<POSTabProps> = ({
                       {canViewPurchasePrice && (
                         <span className="w-20 text-center text-purple-300">{isAr ? 'سعر الشراء' : isKu ? 'نرخی کڕین' : 'Cost Price'}</span>
                       )}
-                      <span className="w-20 text-center text-amber-300">{isAr ? 'داخل الكرتون' : isKu ? 'ناو کارتۆن' : 'In Carton'}</span>
                       <span className="w-22 text-center text-cyan-300">{isAr ? 'السعر' : isKu ? 'نرخ' : 'Price'}</span>
                       <span className="w-28 text-center text-slate-300">{isAr ? 'نوع البيع' : isKu ? 'جۆری فرۆشتن' : 'Sale Type'}</span>
                       <span className="w-18 text-center text-emerald-300">{isAr ? 'العدد' : isKu ? 'ژمارە' : 'Qty'}</span>
@@ -2060,18 +2039,6 @@ export const POSTab: React.FC<POSTabProps> = ({
                                 <p className="text-xs font-bold text-slate-100 truncate">
                                   {isAr ? item.product.nameAr : isKu ? (item.product.nameAr || item.product.name) : item.product.name}
                                 </p>
-                                {(item.quantity > item.product.stock || item.product.stock <= 0) && (
-                                  <span className="px-1.5 py-0.5 rounded-md bg-rose-950/90 text-rose-300 border border-rose-500/60 text-[9px] font-bold flex items-center gap-1 shadow-sm">
-                                    <span>⚠️</span>
-                                    <span>
-                                      {isKu
-                                        ? `قەرزی کۆگا: +${item.quantity - Math.max(0, item.product.stock)} دانە`
-                                        : isAr
-                                        ? `سحب على المكشوف: +${item.quantity - Math.max(0, item.product.stock)} ق`
-                                        : `Loan deficit: +${item.quantity - Math.max(0, item.product.stock)} pcs`}
-                                    </span>
-                                  </span>
-                                )}
                               </div>
                               <div className="flex items-center gap-1 text-[9px] text-slate-400 mt-0.5 flex-wrap">
                                 {item.product.dosageForm && (
@@ -2102,16 +2069,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                               </div>
                             )}
 
-                            {/* 2. Yellow Circle Spot: عدد المواد داخل الكرتون */}
-                            <div className="w-20 text-center shrink-0 flex flex-col items-center">
-                              <span className="lg:hidden text-[8.5px] text-amber-400 mb-0.5 font-bold">{isAr ? 'داخل الكرتون' : isKu ? 'ناو کارتۆن' : 'In Carton'}</span>
-                              <div className="px-1.5 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10.5px] font-mono font-bold flex items-center justify-center gap-1 w-full" title={isAr ? 'عدد المواد داخل الكرتون' : isKu ? 'ژمارەی دانە لەناو کارتۆن' : 'Units inside carton'}>
-                                <Package className="w-3 h-3 text-amber-400 shrink-0" />
-                                <span>{item.product.unitsPerCarton || 1} {isAr ? 'علبة' : isKu ? 'قوتی' : 'pcs'}</span>
-                              </div>
-                            </div>
-
-                            {/* 3. Red Circle Spot: السعر */}
+                            {/* السعر (Unit Price) - تم نقله مكان داخل الكرتون المحذوف */}
                             <div className="w-22 text-center shrink-0 flex flex-col items-center">
                               <span className="lg:hidden text-[8.5px] text-cyan-400 mb-0.5 font-bold">{isAr ? 'السعر' : isKu ? 'نرخ' : 'Price'}</span>
                               <div className="px-1.5 py-0.5 rounded-lg bg-slate-900/90 border border-cyan-500/30 text-center w-full shadow-inner">
@@ -2121,8 +2079,8 @@ export const POSTab: React.FC<POSTabProps> = ({
                               </div>
                             </div>
 
-                            {/* 4. Sale Type Pills (مفرد / شريط / جملة / كرتون - يدعم الكردي) */}
-                            <div className="w-28 shrink-0 flex flex-col items-center">
+                            {/* 4. Sale Type Pills (مفرد / جملة / كرتون - يدعم الكردي) */}
+                            <div className="w-24 shrink-0 flex flex-col items-center">
                               <span className="lg:hidden text-[8.5px] text-slate-400 mb-0.5 font-bold">{isAr ? 'نوع البيع' : isKu ? 'جۆری فرۆشتن' : 'Sale Type'}</span>
                               <div className="flex items-center gap-0.5 bg-[#0B1120] p-0.5 rounded-lg border border-slate-800 w-full justify-center">
                                 <button
@@ -2136,19 +2094,6 @@ export const POSTab: React.FC<POSTabProps> = ({
                                   title={isAr ? 'بيع بالعلبة (مفرد)' : isKu ? 'فرۆشتن بە قوتی (تاک)' : 'Box'}
                                 >
                                   {isAr ? 'علبة' : isKu ? 'قوتی' : 'Box'}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'blister')}
-                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
-                                    item.saleType === 'blister'
-                                      ? 'bg-amber-400 text-slate-950 font-extrabold shadow-sm'
-                                      : 'text-slate-400 hover:text-white'
-                                  }`}
-                                  title={isAr ? 'بيع بالشريط' : isKu ? 'فرۆشتن بە شریت' : 'Strip'}
-                                >
-                                  {isAr ? 'شريط' : isKu ? 'شریت' : 'Str'}
                                 </button>
 
                                 <button
@@ -2341,7 +2286,16 @@ export const POSTab: React.FC<POSTabProps> = ({
             {/* Inventory Grid List (Compact & Responsive Grid) */}
             <div className="p-3 sm:p-4 overflow-y-auto max-h-[60vh] grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-2.5">
               {filteredProducts.map(p => {
-                const totalInCart = cart.filter(c => c.product.id === p.id).reduce((sum, item) => sum + item.quantity, 0);
+                const totalUnitsInCart = cart
+                  .filter(c => c.product.id === p.id)
+                  .reduce((sum, item) => {
+                    if (item.saleType === 'carton') {
+                      const upc = (p.unitsPerCarton && p.unitsPerCarton > 0) ? p.unitsPerCarton : 1;
+                      return sum + (item.quantity * upc);
+                    }
+                    return sum + item.quantity;
+                  }, 0);
+                const remainingStock = p.stock - totalUnitsInCart;
                 const retailP = p.singleRetailPrice || p.price;
                 const wholesaleP = p.wholesalePrice || (p.price * 0.85);
                 const cartonP = p.cartonSellingPrice || (p.price * 10);
@@ -2350,7 +2304,7 @@ export const POSTab: React.FC<POSTabProps> = ({
                   <div
                     key={p.id}
                     className={`p-2 sm:p-2.5 rounded-2xl text-right rtl:text-right border transition-all flex flex-col justify-between space-y-2 ${
-                      p.stock <= 0
+                      remainingStock <= 0
                         ? 'bg-rose-950/20 border-rose-500/30 hover:border-rose-400'
                         : 'bg-[#070D1C] border-blue-500/20 hover:border-emerald-500/60'
                     }`}
@@ -2361,13 +2315,13 @@ export const POSTab: React.FC<POSTabProps> = ({
                       </div>
                       <div className="flex flex-col items-end gap-0.5">
                         <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full ${
-                          p.stock <= 0 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-slate-800 text-slate-300'
+                          remainingStock <= 0 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-slate-800 text-slate-300'
                         }`}>
-                          {p.stock <= 0 ? (isAr ? 'نفد (متاح)' : isKu ? 'تەواوبوو' : '0 left') : `${p.stock} ${p.unit}`}
+                          {remainingStock <= 0 ? (isAr ? 'نفد (متاح)' : isKu ? 'تەواوبوو' : '0 left') : `${remainingStock} ${p.unit}`}
                         </span>
-                        {totalInCart > 0 && (
+                        {totalUnitsInCart > 0 && (
                           <span className="bg-emerald-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full">
-                            +{totalInCart} {isAr ? 'بالسلة' : isKu ? 'لە سەبەتەدا' : 'in cart'}
+                            +{totalUnitsInCart} {isAr ? 'بالسلة' : isKu ? 'لە سەبەتەدا' : 'in cart'}
                           </span>
                         )}
                       </div>
@@ -2608,6 +2562,17 @@ export const POSTab: React.FC<POSTabProps> = ({
                 })
                 .map(p => {
                   const retailP = p.singleRetailPrice || p.price;
+                  const inCartCount = cart
+                    .filter(c => c.product.id === p.id)
+                    .reduce((sum, item) => {
+                      if (item.saleType === 'carton') {
+                        const upc = (p.unitsPerCarton && p.unitsPerCarton > 0) ? p.unitsPerCarton : 1;
+                        return sum + (item.quantity * upc);
+                      }
+                      return sum + item.quantity;
+                    }, 0);
+                  const remainingStock = p.stock - inCartCount;
+
                   return (
                     <div
                       key={p.id}
@@ -2629,9 +2594,14 @@ export const POSTab: React.FC<POSTabProps> = ({
                             <span>•</span>
                             <span className="text-emerald-400 font-mono font-bold">{settings.currencySymbol}{formatNumber(retailP)}</span>
                             <span>•</span>
-                            <span className={p.stock > 0 ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
-                              {isAr ? `المتوفر بالصيدلية: ${p.stock}` : isKu ? `بەردەست لە کۆگا: ${p.stock}` : `Stock: ${p.stock}`}
+                            <span className={remainingStock > 0 ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
+                              {isAr ? `المتوفر: ${remainingStock}` : isKu ? `بەردەست: ${remainingStock}` : `Stock: ${remainingStock}`}
                             </span>
+                            {inCartCount > 0 && (
+                              <span className="text-emerald-400 font-bold bg-emerald-950/80 px-1.5 py-0.5 rounded-md border border-emerald-500/30 text-[9px]">
+                                +{inCartCount} {isAr ? 'بالسلة' : isKu ? 'لە سەبەتەدا' : 'in cart'}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>

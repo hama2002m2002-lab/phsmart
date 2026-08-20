@@ -259,69 +259,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   return (
     <div className={`space-y-4 sm:space-y-6 animate-fadeIn ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
       
-      {/* Top Banner Hero Section for Dashboard */}
-      <div className={`relative rounded-2xl sm:rounded-3xl border p-4 sm:p-6 shadow-2xl overflow-hidden ${
-        isLight 
-          ? 'bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 border-slate-700 text-white' 
-          : 'bg-gradient-to-r from-[#0F172A] via-[#13203C] to-[#0A101D] border-blue-500/30 text-white'
-      }`}>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col gap-4">
-          {/* TOP USER / ADMIN PROFILE MENU BAR (قائمة المدير العام أعلى لوحة التحكم) */}
-          <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-700/50">
-            <div className="flex items-center gap-3 bg-slate-900/90 backdrop-blur-md p-2 px-3.5 rounded-2xl border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
-              {/* ROUND AVATAR IMAGE (صورة مدورة) */}
-              <div className="relative shrink-0">
-                <img
-                  src={
-                    currentUser?.avatar ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
-                  }
-                  alt={currentUser?.fullName || 'Manager Avatar'}
-                  className="w-11 h-11 sm:w-13 sm:h-13 rounded-full border-2 border-cyan-400 object-cover p-0.5 bg-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.5)]"
-                />
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-[#0F172A] shadow-md animate-pulse" title={isAr ? 'متصل حالياً' : isKu ? 'پەیوەستە' : 'Active'} />
-              </div>
-
-              {/* USER DETAILS */}
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                    {currentUser?.role === 'Admin' ? (isKu ? 'بەڕێوەبەری گشتی' : isAr ? 'المدير العام (ADMIN)' : 'Admin') : currentUser?.role === 'Manager' ? (isKu ? 'بەڕێوەبەر' : isAr ? 'مدير' : 'Manager') : (isKu ? 'کاشێر' : isAr ? 'كاشير مبيعات' : 'Cashier')}
-                  </span>
-                </div>
-                <div className="text-sm sm:text-base font-black text-white tracking-tight leading-tight">
-                  {currentUser?.fullName || currentUser?.username || (isKu ? 'بەڕێوەبەری گشتی (Admin)' : isAr ? 'المدير العام (Admin)' : 'General Manager')}
-                </div>
-                <div className="text-[10px] font-mono font-bold text-slate-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span className="text-emerald-400 font-semibold">{isKu ? 'پەیوەستە - بەردەستە' : isAr ? 'متصل - جاهز للعمل' : 'Online & Active'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* QUICK STATUS BADGE / STORE INFO */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700 text-xs text-slate-300">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{settings.storeName || (isKu ? 'فرۆشگا' : isAr ? 'المتجر' : 'Store')}</span>
-            </div>
-          </div>
-
-          {/* DASHBOARD CONTROL PANEL TITLE (لوحة التحكم والمراقبة المركزية) */}
-          <div className="space-y-1 pt-1">
-            <div className="inline-flex items-center space-x-1.5 rtl:space-x-reverse px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[10px] sm:text-xs font-semibold">
-              <Sparkles className="w-3 h-3" />
-              <span>{isKu ? 'داشبۆردی سەرەکی و چاودێری' : isAr ? 'لوحة التحكم والمراقبة المركزية' : 'Central Store Control Center'}</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              {isKu ? 'تەواوی شیکارییەکان و داشبۆردی فرۆشتن' : isAr ? 'لوحة المبيعات والتحليلات العامة' : 'Sales Dashboard & Analytics'}
-            </h2>
-          </div>
-        </div>
-      </div>
-
       {/* KPI Cards Grid (المؤشرات السريعة للمخزن والمبيعات) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         

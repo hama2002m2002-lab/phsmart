@@ -14,9 +14,10 @@ interface BarcodePrintModalProps {
   initialProduct?: Product | null;
   products?: Product[];
   settings: StoreSettings;
+  mode?: 'barcode' | 'price' | 'no_barcode';
 }
 
-export type PricePrintOption = 'single' | 'carton' | 'wholesale' | 'blister' | 'all_three' | 'custom';
+export type PricePrintOption = 'single' | 'carton' | 'wholesale' | 'blister' | 'all_three' | 'none' | 'custom_multi' | 'custom';
 export type LabelLayoutMode = '1-up' | '2-up' | 'a4_grid';
 
 const DEFAULT_CONFIG_KEY = '7amo_barcode_print_config_v2';
@@ -27,14 +28,28 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   product,
   initialProduct,
   products = [],
-  settings
+  settings,
+  mode = 'barcode'
 }) => {
   const targetInitialProduct = initialProduct || product;
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(targetInitialProduct || null);
 
   // Price Option selection
-  const [priceOption, setPriceOption] = useState<PricePrintOption>('single');
+  const [priceOption, setPriceOption] = useState<PricePrintOption>(mode === 'barcode' ? 'none' : 'single');
   const [customPriceVal, setCustomPriceVal] = useState<number>(0);
+
+  // Multi-type price selections (e.g. Single + Carton, Single + Wholesale, etc.)
+  const [selectedPriceTypes, setSelectedPriceTypes] = useState<{
+    single: boolean;
+    carton: boolean;
+    wholesale: boolean;
+    blister: boolean;
+  }>({
+    single: mode !== 'barcode',
+    carton: false,
+    wholesale: false,
+    blister: false
+  });
 
   // Copies count
   const [copiesCount, setCopiesCount] = useState<number>(1);
@@ -47,7 +62,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   const [titleFontSize, setTitleFontSize] = useState<number>(14);
   const [priceFontSize, setPriceFontSize] = useState<number>(18);
   const [barcodeFontSize, setBarcodeFontSize] = useState<number>(11);
-  const [barcodeHeightPx, setBarcodeHeightPx] = useState<number>(28);
+  const [barcodeHeightPx, setBarcodeHeightPx] = useState<number>(32);
 
   // Colors
   const [labelBgColor, setLabelBgColor] = useState<string>('#ffffff');
@@ -63,6 +78,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
   // Field Toggles
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
+  const [showProductName, setShowProductName] = useState<boolean>(true);
   const [showScientificName, setShowScientificName] = useState<boolean>(false);
   const [showDosageForm, setShowDosageForm] = useState<boolean>(false);
   const [showBatchNumber, setShowBatchNumber] = useState<boolean>(false);
@@ -85,6 +101,21 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     }
   }, [product, initialProduct, products, isOpen]);
 
+  // Adjust defaults based on mode when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      if (mode === 'barcode' || mode === 'no_barcode') {
+        setPriceOption('none');
+        setBarcodeHeightPx(36);
+      } else if (mode === 'price') {
+        if (priceOption === 'none') {
+          setPriceOption('single');
+          setSelectedPriceTypes(prev => ({ ...prev, single: true }));
+        }
+      }
+    }
+  }, [mode, isOpen]);
+
   // Load saved configuration from localStorage on mount
   useEffect(() => {
     try {
@@ -105,6 +136,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         if (parsed.borderWidthPx !== undefined) setBorderWidthPx(parsed.borderWidthPx);
         if (parsed.paddingPx !== undefined) setPaddingPx(parsed.paddingPx);
         if (parsed.showStoreName !== undefined) setShowStoreName(parsed.showStoreName);
+        if (parsed.showProductName !== undefined) setShowProductName(parsed.showProductName);
         if (parsed.showScientificName !== undefined) setShowScientificName(parsed.showScientificName);
         if (parsed.showDosageForm !== undefined) setShowDosageForm(parsed.showDosageForm);
         if (parsed.showBatchNumber !== undefined) setShowBatchNumber(parsed.showBatchNumber);
@@ -171,6 +203,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         borderWidthPx,
         paddingPx,
         showStoreName,
+        showProductName,
         showScientificName,
         showDosageForm,
         showBatchNumber,
@@ -259,11 +292,12 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       <div class="label-page">
         ${showStoreName ? `<div class="store-title">${settings.storeNameAr || settings.storeName}</div>` : ''}
         
-        <div class="prod-title">${activeProduct.nameAr || activeProduct.name}</div>
+        ${showProductName ? `<div class="prod-title">${activeProduct.nameAr || activeProduct.name}</div>` : ''}
 
         ${showScientificName && activeProduct.scientificName ? `<div class="sci-name">🧪 ${activeProduct.scientificName}</div>` : ''}
         ${showDosageForm && activeProduct.dosageForm ? `<div class="dosage-form">${activeProduct.dosageForm}</div>` : ''}
 
+        ${priceOption !== 'none' ? `
         <div class="prices-container">
           ${priceOption !== 'all_three' ? `
             <div class="price-badge">${currency}${formatNumber(displayedPrice)}</div>
@@ -276,6 +310,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             </div>
           `}
         </div>
+        ` : ''}
 
         ${barcodeSVGMarkup}
         ${showBarcodeText ? `<div class="barcode-text">${activeProduct.barcode}</div>` : ''}
@@ -509,13 +544,29 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black text-white flex items-center gap-2">
-                <span>{isKu ? 'دەستکاریکردن و چاپکردنی لەزگەی بارکۆد و نرخ' : isAr ? 'تخصيص وطباعة ملصقات الباركود والأسعار' : 'Customize & Print Barcode Price Tags'}</span>
+                <span>
+                  {mode === 'no_barcode'
+                    ? (isKu ? '🏷️ چاپکردنی بارکۆد بۆ ئەو کاڵایانەی بێ بارکۆدن' : isAr ? '🏷️ طباعة وتوليد باركود للمواد التي لا يوجد لديها باركود' : '🏷️ Print Barcode for Items Without Barcode')
+                    : mode === 'barcode'
+                    ? (isKu ? '🏷️ چاپکردن و ڕێکخستنی بارکۆدی کاڵاکان' : isAr ? '🏷️ طباعة وتخصيص باركود المواد' : '🏷️ Print & Customize Product Barcodes')
+                    : mode === 'price'
+                    ? (isKu ? '💲 چاپکردن و ڕێکخستنی نرخی کاڵاکان (ملصقی ڕەفەکان)' : isAr ? '💲 طباعة وتخصيص أسعار المواد (ملصقات الرفوف)' : '💲 Print & Customize Product Price Tags')
+                    : (isKu ? 'دەستکاریکردن و چاپکردنی لەزگەی بارکۆد و نرخ' : isAr ? 'تخصيص وطباعة ملصقات الباركود والأسعار' : 'Customize & Print Barcode Price Tags')
+                  }
+                </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-mono">
-                  {activeProduct.barcode}
+                  {activeProduct.barcode || 'NO-BARCODE'}
                 </span>
               </h3>
               <p className="text-[11px] text-amber-300 font-medium">
-                {isKu ? 'کۆنترۆڵی تەواوی قەبارەی فۆنت، ڕەنگەکان، قەبارەی لەزگە و جۆری نرخی پیشاندراو' : isAr ? 'التحكم الشامل بأحجام الخطوط، الألوان، أبعاد الملصق، ونوع السعر المعروض' : 'Full manual control over fonts, colors, label dimensions, and price tags'}
+                {mode === 'no_barcode'
+                  ? (isKu ? 'تولید و چاپکردنی بارکۆدی ستاندارد بۆ ئەو کاڵایانەی لە سیستەمدا بێ بارکۆد بوون بۆ خوێندنەوە بە سکانەر' : isAr ? 'توليد وطباعة باركودات قياسية للمواد التي لا تحتوي على باركود لمسحها ضوئياً بنجاح' : 'Generate and print scannable barcodes for items without existing barcodes')
+                  : mode === 'barcode'
+                  ? (isKu ? 'چاپکردنی لەزگەی بارکۆد بۆ خوێندنەوەی خێرا بە سکانەری بارکۆد لەگەڵ ناوی مادە' : isAr ? 'توليد وطباعة ملصقات الباركود للمنتجات ومسحها عبر أجهزة وقارئات الباركود' : 'Configure and print barcode labels optimized for barcode scanners')
+                  : mode === 'price'
+                  ? (isKu ? 'چاپکردنی نرخی دیار بۆ ڕەفەکان، کارتۆن، مفرد و کۆ بە قەبارەی گەورە' : isAr ? 'طباعة بطاقات وملصقات الأسعار الكبيرة للرفوف وعرض أسعار البيع والكرتون' : 'Configure high-visibility shelf price tags, retail, wholesale, and carton prices')
+                  : (isKu ? 'کۆنترۆڵی تەواوی قەبارەی فۆنت، ڕەنگەکان، قەبارەی لەزگە و جۆری نرخی پیشاندراو' : isAr ? 'التحكم الشامل بأحجام الخطوط، الألوان، أبعاد الملصق، ونوع السعر المعروض' : 'Full manual control over fonts, colors, label dimensions, and price tags')
+                }
               </p>
             </div>
           </div>
@@ -580,7 +631,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 >
                   {filteredProducts.map(p => (
                     <option key={p.id} value={p.id}>
-                      {isKu ? (p.nameKu || p.nameAr || p.name) : (p.nameAr || p.name)} — [{p.barcode}] — {settings.currencySymbol}{p.singleRetailPrice || p.price}
+                      {isKu ? (p.nameKu || p.nameAr || p.name) : (p.nameAr || p.name)} — [{p.barcode || (isKu ? 'بێ بارکۆد' : isAr ? 'بدون باركود' : 'No Barcode')}] — {settings.currencySymbol}{p.singleRetailPrice || p.price}
                     </option>
                   ))}
                   {filteredProducts.length === 0 && (
@@ -610,7 +661,21 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
+                {/* Barcode Only / None */}
+                <button
+                  type="button"
+                  onClick={() => setPriceOption('none')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                    priceOption === 'none'
+                      ? 'bg-cyan-600 text-white border-cyan-400 font-bold shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                      : 'bg-[#0B1120] text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span className="text-[11px] block font-black">{isKu ? 'تەنها بارکۆد' : isAr ? 'باركود فقط' : 'Barcode Only'}</span>
+                  <span className="text-[9.5px] opacity-80">{isKu ? 'بێ نرخ' : isAr ? 'بدون سعر' : 'No Price'}</span>
+                </button>
+
                 {/* Single Retail */}
                 <button
                   type="button"
@@ -962,7 +1027,17 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 {isKu ? 'پیشاندان و شاردنەوەی بەشەکانی لەزگە:' : isAr ? 'إظهار وإخفاء عناصر الملصق:' : 'Toggle Label Elements:'}
               </span>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-[11px]">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={showProductName}
+                    onChange={(e) => setShowProductName(e.target.checked)}
+                    className="accent-cyan-500 w-3.5 h-3.5 rounded"
+                  />
+                  <span className="font-bold text-white">{isKu ? 'ناوی کاڵا' : isAr ? 'اسم المادة' : 'Product Name'}</span>
+                </label>
+
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 bg-[#0B1120] p-2 rounded-xl border border-slate-800 hover:border-slate-700">
                   <input
                     type="checkbox"
@@ -1085,12 +1160,14 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 )}
 
                 {/* Product Name */}
-                <h4
-                  style={{ color: textColor, fontSize: `${titleFontSize}px` }}
-                  className="font-black leading-tight truncate max-w-full px-1 my-0.5"
-                >
-                  {isKu ? (activeProduct.nameKu || activeProduct.nameAr || activeProduct.name) : (activeProduct.nameAr || activeProduct.name)}
-                </h4>
+                {showProductName && (
+                  <h4
+                    style={{ color: textColor, fontSize: `${titleFontSize}px` }}
+                    className="font-black leading-tight truncate max-w-full px-1 my-0.5"
+                  >
+                    {isKu ? (activeProduct.nameKu || activeProduct.nameAr || activeProduct.name) : (activeProduct.nameAr || activeProduct.name)}
+                  </h4>
+                )}
 
                 {/* Optional Scientific Name */}
                 {showScientificName && activeProduct.scientificName && (
@@ -1110,39 +1187,41 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 )}
 
                 {/* Price Display */}
-                <div className="w-full my-0.5">
-                  {priceOption !== 'all_three' ? (
-                    <div>
-                      <span style={{ color: priceColor, fontSize: `${priceFontSize}px` }} className="font-black block font-mono leading-none">
-                        {currency}{formatNumber(getDisplayPrice())}
-                      </span>
-                      {showPriceLabel && (
-                        <span style={{ color: textColor, fontSize: `${Math.max(8, priceFontSize - 7)}px` }} className="font-bold opacity-80">
-                          {priceOption === 'single' ? (isKu ? 'نرخی تاک' : 'سعر المفرد') :
-                           priceOption === 'carton' ? (isKu ? `نرخی کارتۆن (${activeProduct.unitsPerCarton || 12} دانە)` : `سعر الكرتون (${activeProduct.unitsPerCarton || 12} قطعة)`) :
-                           priceOption === 'wholesale' ? (isKu ? 'نرخی کۆ' : 'سعر الجملة') :
-                           priceOption === 'blister' ? (isKu ? 'نرخی شریت' : 'سعر الشريط') : (isKu ? 'نرخی دیاریکراو' : 'سعر مخصص')}
+                {priceOption !== 'none' && (
+                  <div className="w-full my-0.5">
+                    {priceOption !== 'all_three' ? (
+                      <div>
+                        <span style={{ color: priceColor, fontSize: `${priceFontSize}px` }} className="font-black block font-mono leading-none">
+                          {currency}{formatNumber(getDisplayPrice())}
                         </span>
-                      )}
-                    </div>
-                  ) : (
-                    /* All Three Prices */
-                    <div className="flex items-center justify-around w-full py-1 border-y border-slate-300 text-[10px]" style={{ color: textColor }}>
-                      <div className="flex flex-col">
-                        <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'تاک' : 'مفرد'}</span>
-                        <span className="font-mono font-black text-emerald-600">{currency}{formatNumber(singlePrice)}</span>
+                        {showPriceLabel && (
+                          <span style={{ color: textColor, fontSize: `${Math.max(8, priceFontSize - 7)}px` }} className="font-bold opacity-80">
+                            {priceOption === 'single' ? (isKu ? 'نرخی تاک' : 'سعر المفرد') :
+                             priceOption === 'carton' ? (isKu ? `نرخی کارتۆن (${activeProduct.unitsPerCarton || 12} دانە)` : `سعر الكرتون (${activeProduct.unitsPerCarton || 12} قطعة)`) :
+                             priceOption === 'wholesale' ? (isKu ? 'نرخی کۆ' : 'سعر الجملة') :
+                             priceOption === 'blister' ? (isKu ? 'نرخی شریت' : 'سعر الشريط') : (isKu ? 'نرخی دیاریکراو' : 'سعر مخصص')}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex flex-col border-x border-slate-300 px-1.5">
-                        <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کۆ' : 'جملة'}</span>
-                        <span className="font-mono font-black text-blue-600">{currency}{formatNumber(wholesalePrice)}</span>
+                    ) : (
+                      /* All Three Prices */
+                      <div className="flex items-center justify-around w-full py-1 border-y border-slate-300 text-[10px]" style={{ color: textColor }}>
+                        <div className="flex flex-col">
+                          <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'تاک' : 'مفرد'}</span>
+                          <span className="font-mono font-black text-emerald-600">{currency}{formatNumber(singlePrice)}</span>
+                        </div>
+                        <div className="flex flex-col border-x border-slate-300 px-1.5">
+                          <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کۆ' : 'جملة'}</span>
+                          <span className="font-mono font-black text-blue-600">{currency}{formatNumber(wholesalePrice)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کارتۆن' : 'كرتون'}</span>
+                          <span className="font-mono font-black text-purple-600">{currency}{formatNumber(cartonPrice)}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کارتۆن' : 'كرتون'}</span>
-                        <span className="font-mono font-black text-purple-600">{currency}{formatNumber(cartonPrice)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Graphic Barcode */}
                 <div className="w-full flex flex-col items-center justify-center">

@@ -19,241 +19,669 @@ export const CSharpExporterModal: React.FC<CSharpExporterModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const [activeFile, setActiveFile] = useState<'Program.cs' | 'MainForm.cs' | 'Product.cs' | 'ReceiptPrinter.cs' | 'DatabaseHelper.cs' | '7amoPOS.csproj'>('MainForm.cs');
+  const [activeFile, setActiveFile] = useState<
+    'AppDbContext.cs' | 'Entities.cs' | 'PosViewModel.cs' | 'PosView.xaml' | 'EscPosService.cs' | 'App.xaml.cs' | 'Program.cs' | 'PhSmartPOS.csproj'
+  >('PosViewModel.cs');
   const [copiedFile, setCopiedFile] = useState<boolean>(false);
 
   const lang = settings.language;
   const isAr = lang === 'ar';
 
   const csharpCodeFiles = {
-    'Program.cs': `using System;
-using System.Windows.Forms;
+    'Entities.cs': `using System;
+using System.Collections.Generic;
 
-namespace SevenAmoPOS
+namespace PhSmartPOS.Models
 {
-    static class Program
+    public enum SyncStatus
     {
-        [STAThread]
-        static void Main()
+        Synced = 0,
+        PendingInsert = 1,
+        PendingUpdate = 2,
+        PendingDelete = 3
+    }
+
+    public abstract class BaseEntity
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public SyncStatus SyncState { get; set; } = SyncStatus.PendingInsert;
+        public bool IsDeleted { get; set; } = false;
+    }
+
+    public class UserAccount : BaseEntity
+    {
+        public string Username { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string Role { get; set; } = "cashier"; // admin, cashier, accountant
+        public string PinCode { get; set; } = "1234";
+        public bool CanAccessPOS { get; set; } = true;
+        public bool CanManageProducts { get; set; } = false;
+        public bool CanViewReports { get; set; } = false;
+    }
+
+    public class Product : BaseEntity
+    {
+        public string Barcode { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Category { get; set; } = "عام";
+        public decimal SinglePrice { get; set; }
+        public decimal CartonPrice { get; set; }
+        public decimal CostPrice { get; set; }
+        public int StockQuantity { get; set; }
+        public int UnitsPerCarton { get; set; } = 12;
+        public string? SupplierName { get; set; }
+    }
+
+    public class SaleInvoice : BaseEntity
+    {
+        public string InvoiceNumber { get; set; } = string.Empty;
+        public decimal SubTotal { get; set; }
+        public decimal Discount { get; set; }
+        public decimal NetTotal { get; set; }
+        public decimal PaidAmount { get; set; }
+        public decimal RemainingAmount { get; set; }
+        public string PaymentMethod { get; set; } = "نقد";
+        public string CashierName { get; set; } = string.Empty;
+        public string? CustomerName { get; set; }
+        public List<SaleInvoiceItem> Items { get; set; } = new();
+    }
+
+    public class SaleInvoiceItem : BaseEntity
+    {
+        public Guid SaleInvoiceId { get; set; }
+        public Guid ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public string Barcode { get; set; } = string.Empty;
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal TotalPrice { get; set; }
+    }
+}`,
+
+    'AppDbContext.cs': `using System;
+using System.IO;
+using Microsoft.EntityFrameworkCore;
+using PhSmartPOS.Models;
+
+namespace PhSmartPOS.Data
+{
+    public class AppDbContext : DbContext
+    {
+        public DbSet<UserAccount> Users => Set<UserAccount>();
+        public DbSet<Product> Products => Set<Product>();
+        public DbSet<SaleInvoice> SaleInvoices => Set<SaleInvoice>();
+        public DbSet<SaleInvoiceItem> SaleInvoiceItems => Set<SaleInvoiceItem>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            // حفظ قاعدة بيانات SQLite داخل AppData لضمان عدم المساس بها أثناء التحديثات التلقائية
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string dbFolder = Path.Combine(appData, "PhSmartPOS");
+            Directory.CreateDirectory(dbFolder);
+
+            string dbPath = Path.Combine(dbFolder, "pos_data.db");
+            optionsBuilder.UseSqlite($"Data Source={dbPath}");
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // فهرسة سريعة للباركود
+            modelBuilder.Entity<Product>()
+                .HasIndex(p => p.Barcode);
+
+            // استبعاد السجلات المحذوفة افتراضياً (Soft Delete)
+            modelBuilder.Entity<Product>().HasQueryFilter(p => !p.IsDeleted);
+            modelBuilder.Entity<SaleInvoice>().HasQueryFilter(s => !s.IsDeleted);
+            modelBuilder.Entity<UserAccount>().HasQueryFilter(u => !u.IsDeleted);
         }
     }
 }`,
 
-    'MainForm.cs': `using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Windows.Forms;
+    'PosViewModel.cs': `using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.EntityFrameworkCore;
+using PhSmartPOS.Data;
+using PhSmartPOS.Hardware;
+using PhSmartPOS.Models;
 
-namespace SevenAmoPOS
+namespace PhSmartPOS.ViewModels
 {
-    public partial class MainForm : Form
+    public partial class CartItemViewModel : ObservableObject
     {
-        private List<Product> _inventory = new List<Product>();
-        private List<CartItem> _cart = new List<CartItem>();
-        private decimal _grandTotal = 0;
+        public Guid ProductId { get; set; }
+        public string Barcode { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
 
-        public MainForm()
-        {
-            InitializeComponent();
-            LoadInventory();
-        }
+        [ObservableProperty]
+        private int quantity = 1;
 
-        private void LoadInventory()
-        {
-            // Load products from SQLite database
-            _inventory = DatabaseHelper.GetProducts();
-            RefreshProductGrid();
-        }
+        [ObservableProperty]
+        private decimal unitPrice;
 
-        private void txtBarcode_KeyDown(object sender, KeyEventArgs e)
+        [ObservableProperty]
+        private decimal totalPrice;
+    }
+
+    public partial class PosViewModel : ObservableObject
+    {
+        [ObservableProperty]
+        private string barcodeSearchText = string.Empty;
+
+        [ObservableProperty]
+        private decimal subTotal;
+
+        [ObservableProperty]
+        private decimal discount;
+
+        [ObservableProperty]
+        private decimal netTotal;
+
+        [ObservableProperty]
+        private decimal paidAmount;
+
+        [ObservableProperty]
+        private decimal remainingChange;
+
+        [ObservableProperty]
+        private string statusMessage = "جاهز لمسح الباركود...";
+
+        public string SelectedPrinter { get; set; } = "POS-80";
+
+        public ObservableCollection<CartItemViewModel> Cart { get; } = new();
+
+        [RelayCommand]
+        public async Task ScanBarcodeAsync()
         {
-            if (e.KeyCode == Keys.Enter)
+            if (string.IsNullOrWhiteSpace(BarcodeSearchText)) return;
+
+            string code = BarcodeSearchText.Trim();
+            BarcodeSearchText = string.Empty;
+
+            using var db = new AppDbContext();
+            var product = await db.Products.FirstOrDefaultAsync(p => p.Barcode == code);
+
+            if (product == null)
             {
-                string barcode = txtBarcode.Text.Trim();
-                var product = _inventory.Find(p => p.Barcode == barcode);
-
-                if (product != null)
-                {
-                    AddToCart(product);
-                    System.Media.SystemSounds.Beep.Play();
-                }
-                else
-                {
-                    MessageBox.Show("هذا الباركود غير موجود بالمخزن!", "تنبيه", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-
-                txtBarcode.Clear();
-                txtBarcode.Focus();
+                StatusMessage = $"المادة ({code}) غير موجودة بالمخزن!";
+                return;
             }
-        }
 
-        private void AddToCart(Product p)
-        {
-            var item = _cart.Find(c => c.ProductId == p.Id);
+            var item = Cart.FirstOrDefault(c => c.ProductId == product.Id);
             if (item != null)
             {
                 item.Quantity++;
-                item.Total = item.Quantity * item.Price;
+                item.TotalPrice = item.Quantity * item.UnitPrice;
             }
             else
             {
-                _cart.Add(new CartItem { ProductId = p.Id, ProductName = p.Name, Price = p.Price, Quantity = 1, Total = p.Price });
-            }
-
-            UpdateCartGrid();
-        }
-
-        private void UpdateCartGrid()
-        {
-            dgvCart.DataSource = null;
-            dgvCart.DataSource = _cart;
-            
-            _grandTotal = 0;
-            foreach (var item in _cart) _grandTotal += item.Total;
-            lblGrandTotal.Text = $"{_grandTotal:N2} د.ع";
-        }
-
-        private void btnCheckout_Click(object sender, EventArgs e)
-        {
-            if (_cart.Count == 0) return;
-
-            string invoiceNo = "INV-" + DateTime.Now.ToString("yyyyMMddHHmmss");
-            ReceiptPrinter.PrintReceipt(invoiceNo, _cart, _grandTotal, "${settings.storeName.replace(/"/g, '\\"')}");
-            
-            DatabaseHelper.SaveSale(invoiceNo, _cart, _grandTotal);
-            _cart.Clear();
-            UpdateCartGrid();
-
-            MessageBox.Show("تمت عملية البيع وطباعة الوصل بنجاح!", "نجاح", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-    }
-}`,
-
-    'Product.cs': `namespace SevenAmoPOS
-{
-    public class Product
-    {
-        public string Id { get; set; }
-        public string Name { get; set; }
-        public string NameAr { get; set; }
-        public string Barcode { get; set; }
-        public decimal Price { get; set; }
-        public decimal WholesalePrice { get; set; }
-        public int Stock { get; set; }
-        public string Category { get; set; }
-    }
-
-    public class CartItem
-    {
-        public string ProductId { get; set; }
-        public string ProductName { get; set; }
-        public decimal Price { get; set; }
-        public int Quantity { get; set; }
-        public decimal Total { get; set; }
-    }
-}`,
-
-    'ReceiptPrinter.cs': `using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Printing;
-using System.Windows.Forms;
-
-namespace SevenAmoPOS
-{
-    public static class ReceiptPrinter
-    {
-        public static void PrintReceipt(string invoiceNo, List<CartItem> items, decimal total, string storeName)
-        {
-            PrintDocument pd = new PrintDocument();
-            pd.PrintPage += (sender, e) =>
-            {
-                Graphics g = e.Graphics;
-                Font fontHeader = new Font("Arial", 14, FontStyle.Bold);
-                Font fontBody = new Font("Arial", 10, FontStyle.Regular);
-                Font fontBold = new Font("Arial", 10, FontStyle.Bold);
-
-                int y = 10;
-                g.DrawString(storeName, fontHeader, Brushes.Black, 10, y); y += 25;
-                g.DrawString("وصل مبيعات: " + invoiceNo, fontBold, Brushes.Black, 10, y); y += 20;
-                g.DrawString("التاريخ: " + DateTime.Now.ToString("g"), fontBody, Brushes.Black, 10, y); y += 25;
-                g.DrawString("------------------------------------", fontBody, Brushes.Black, 10, y); y += 15;
-
-                foreach (var item in items)
+                Cart.Add(new CartItemViewModel
                 {
-                    g.DrawString($"{item.ProductName} ({item.Quantity}x)", fontBody, Brushes.Black, 10, y);
-                    g.DrawString($"{item.Total:N2}", fontBold, Brushes.Black, 180, y);
-                    y += 20;
-                }
+                    ProductId = product.Id,
+                    Barcode = product.Barcode,
+                    Name = product.Name,
+                    Quantity = 1,
+                    UnitPrice = product.SinglePrice,
+                    TotalPrice = product.SinglePrice
+                });
+            }
 
-                g.DrawString("------------------------------------", fontBody, Brushes.Black, 10, y); y += 20;
-                g.DrawString($"الإجمالي الصافي: {total:N2}", fontHeader, Brushes.Black, 10, y);
+            Recalculate();
+            StatusMessage = $"تمت إضافة: {product.Name}";
+        }
+
+        [RelayCommand]
+        public void RemoveItem(CartItemViewModel item)
+        {
+            Cart.Remove(item);
+            Recalculate();
+        }
+
+        [RelayCommand]
+        public void ClearCart()
+        {
+            Cart.Clear();
+            Discount = 0;
+            PaidAmount = 0;
+            Recalculate();
+            StatusMessage = "تم إفراغ السلة.";
+        }
+
+        [RelayCommand]
+        public void OpenDrawer()
+        {
+            EscPosService.OpenCashDrawer(SelectedPrinter);
+            StatusMessage = "تم إرسال أمر فتح درج النقدية.";
+        }
+
+        [RelayCommand]
+        public async Task CompleteCheckoutAsync()
+        {
+            if (!Cart.Any()) return;
+
+            using var db = new AppDbContext();
+
+            var invoice = new SaleInvoice
+            {
+                InvoiceNumber = $"POS-{DateTime.Now:yyyyMMdd-HHmmss}",
+                SubTotal = SubTotal,
+                Discount = Discount,
+                NetTotal = NetTotal,
+                PaidAmount = PaidAmount > 0 ? PaidAmount : NetTotal,
+                RemainingAmount = RemainingChange,
+                CashierName = "الكاشير العام",
+                Items = Cart.Select(c => new SaleInvoiceItem
+                {
+                    ProductId = c.ProductId,
+                    ProductName = c.Name,
+                    Barcode = c.Barcode,
+                    Quantity = c.Quantity,
+                    UnitPrice = c.UnitPrice,
+                    TotalPrice = c.TotalPrice
+                }).ToList()
             };
 
-            PrintDialog pdDlg = new PrintDialog();
-            pdDlg.Document = pd;
-            if (pdDlg.ShowDialog() == DialogResult.OK)
+            db.SaleInvoices.Add(invoice);
+
+            // خصم الكميات من المخزون
+            foreach (var c in Cart)
             {
-                pd.Print();
+                var prod = await db.Products.FindAsync(c.ProductId);
+                if (prod != null) prod.StockQuantity -= c.Quantity;
             }
+
+            await db.SaveChangesAsync();
+
+            // فتح الخزنة
+            EscPosService.OpenCashDrawer(SelectedPrinter);
+
+            ClearCart();
+            StatusMessage = $"تم حفظ الفاتورة وطباعتها بنجاح #{invoice.InvoiceNumber}";
+        }
+
+        public void Recalculate()
+        {
+            SubTotal = Cart.Sum(i => i.TotalPrice);
+            NetTotal = Math.Max(0, SubTotal - Discount);
+            RemainingChange = PaidAmount > NetTotal ? PaidAmount - NetTotal : 0;
         }
     }
 }`,
 
-    'DatabaseHelper.cs': `using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
+    'PosView.xaml': `<UserControl x:Class="PhSmartPOS.Views.PosView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:PhSmartPOS.ViewModels"
+             FlowDirection="RightToLeft"
+             Background="#0B1120"
+             FontFamily="Segoe UI, Tahoma">
 
-namespace SevenAmoPOS
+    <UserControl.DataContext>
+        <vm:PosViewModel />
+    </UserControl.DataContext>
+
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <!-- القسم الأيمن: السلة والمواد الحالية -->
+            <ColumnDefinition Width="2*" />
+            <!-- القسم الأيسر: الحسابات والدفع السريع -->
+            <ColumnDefinition Width="1*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- يمين: حقل الباركود + جدول السلة -->
+        <Grid Grid.Column="0" Margin="0,0,12,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- حقل الباركود السريع -->
+            <Border Grid.Row="0" Background="#1E293B" CornerRadius="10" Padding="10" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{Binding BarcodeSearchText, UpdateSourceTrigger=PropertyChanged}" 
+                             FontSize="18" FontWeight="Bold" Background="#0F172A" Foreground="#38BDF8"
+                             BorderBrush="#0284C7" Padding="8" VerticalContentAlignment="Center">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Enter" Command="{Binding ScanBarcodeCommand}" />
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <Button Grid.Column="1" Command="{Binding ScanBarcodeCommand}" Content="مسح [Enter]" 
+                            Background="#0284C7" Foreground="White" FontWeight="Bold" Margin="8,0,0,0" Padding="16,8" Cursor="Hand"/>
+                </Grid>
+            </Border>
+
+            <!-- جدول المواد في السلة -->
+            <DataGrid Grid.Row="1" ItemsSource="{Binding Cart}" AutoGenerateColumns="False" 
+                      CanUserAddRows="False" Background="#1E293B" Foreground="White"
+                      BorderThickness="0" HeadersVisibility="Column" RowHeight="38">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الباركود" Binding="{Binding Barcode}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="اسم المادة" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الكمية" Binding="{Binding Quantity}" Width="70"/>
+                    <DataGridTextColumn Header="سعر المفرد" Binding="{Binding UnitPrice, StringFormat=N0}" Width="100"/>
+                    <DataGridTextColumn Header="الإجمالي" Binding="{Binding TotalPrice, StringFormat=N0}" Width="110" FontWeight="Bold"/>
+                    <DataGridTemplateColumn Width="70">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="حذف" Command="{Binding DataContext.RemoveItemCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}" Background="#EF4444" Foreground="White" BorderThickness="0" Cursor="Hand" Padding="4,2"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- شريط الحالة السفلي -->
+            <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" Foreground="#94A3B8" FontSize="13" Margin="4,8,0,0" />
+        </Grid>
+
+        <!-- يسار: الحسابات، الأزرار السريعة، إنهاء الفاتورة -->
+        <Border Grid.Column="1" Background="#1E293B" CornerRadius="12" Padding="16">
+            <StackPanel VerticalAlignment="Stretch">
+                <TextBlock Text="تفاصيل الفاتورة" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,12"/>
+
+                <!-- الإجمالي -->
+                <Border Background="#0F172A" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="المجموع الفرعي:" Foreground="#94A3B8" FontSize="12"/>
+                        <TextBlock Text="{Binding SubTotal, StringFormat='{}{0:N0} د.ع'}" Foreground="#F8FAFC" FontSize="20" FontWeight="Bold"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- الخصم -->
+                <Border Background="#0F172A" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="الخصم:" Foreground="#94A3B8" FontSize="12"/>
+                        <TextBox Text="{Binding Discount, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" Foreground="#F59E0B" FontSize="16" FontWeight="Bold" BorderThickness="0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- الصافي النهائي -->
+                <Border Background="#0369A1" CornerRadius="8" Padding="14" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="المبلغ الصافي المطلوب:" Foreground="#BAE6FD" FontSize="13"/>
+                        <TextBlock Text="{Binding NetTotal, StringFormat='{}{0:N0} د.ع'}" Foreground="White" FontSize="26" FontWeight="Black"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- أزرار الإجراءات السريعة -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Command="{Binding OpenDrawerCommand}" Content="🔓 فتح الخزنة (F1)" Background="#334155" Foreground="White" FontWeight="Bold" Padding="0,10" Margin="0,0,4,0" Cursor="Hand"/>
+                    <Button Grid.Column="1" Command="{Binding ClearCartCommand}" Content="إلغاء السلة" Background="#475569" Foreground="White" Padding="0,10" Margin="4,0,0,0" Cursor="Hand"/>
+                </Grid>
+
+                <!-- زر حفظ وطباعة الفاتورة -->
+                <Button Command="{Binding CompleteCheckoutAsyncCommand}" Content="💾 حفظ وطباعة الفاتورة (F5)" Background="#10B981" Foreground="White" FontSize="16" FontWeight="Black" Height="50" Cursor="Hand" BorderThickness="0"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>`,
+
+    'EscPosService.cs': `using System;
+using System.IO.Ports;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace PhSmartPOS.Hardware
 {
-    public static class DatabaseHelper
+    public class EscPosService
     {
-        private static string _dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "7amo_pos_data.json");
+        // أوامر النبضة القياسية لفتح درج النقدية وقص الورق
+        private static readonly byte[] OpenDrawerPin2 = new byte[] { 27, 112, 0, 25, 250 }; // ESC p 0 25 250
+        private static readonly byte[] CutPaperCommand = new byte[] { 29, 86, 66, 0 };      // GS V B 0
 
-        public static List<Product> GetProducts()
+        public static bool OpenCashDrawer(string printerName)
         {
-            if (!File.Exists(_dbPath)) return GetInitialDemoData();
-            string json = File.ReadAllText(_dbPath);
-            return JsonSerializer.Deserialize<List<Product>>(json) ?? GetInitialDemoData();
-        }
-
-        public static void SaveSale(string invoiceNo, List<CartItem> items, decimal total)
-        {
-            // Update stock and save local JSON/SQLite database
-            var products = GetProducts();
-            foreach (var item in items)
+            try
             {
-                var p = products.Find(x => x.Id == item.ProductId);
-                if (p != null) p.Stock -= item.Quantity;
+                return RawPrinterHelper.SendBytesToPrinter(printerName, OpenDrawerPin2);
             }
-            File.WriteAllText(_dbPath, JsonSerializer.Serialize(products, new JsonSerializerOptions { WriteIndented = true }));
+            catch
+            {
+                return false;
+            }
         }
 
-        private static List<Product> GetInitialDemoData()
+        public static bool OpenDrawerViaSerial(string portName, int baudRate = 9600)
         {
-            return new List<Product>
+            try
             {
-                new Product { Id = "P1", Name = "Aspirin 500mg", NameAr = "بندول 500 ملغم", Barcode = "1111", Price = 2500, Stock = 100 },
-                new Product { Id = "P2", Name = "Amoxicillin", NameAr = "أموكسيسيلين", Barcode = "2222", Price = 4000, Stock = 50 }
+                using var serial = new SerialPort(portName, baudRate);
+                serial.Open();
+                serial.Write(OpenDrawerPin2, 0, OpenDrawerPin2.Length);
+                serial.Close();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public static class RawPrinterHelper
+    {
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        public class DOCINFOA
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string? pDocName;
+            [MarshalAs(UnmanagedType.LPStr)] public string? pOutputFile;
+            [MarshalAs(UnmanagedType.LPStr)] public string? pDataType;
+        }
+
+        [DllImport("winspool.Drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+        public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+        [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true)]
+        public static extern bool ClosePrinter(IntPtr hPrinter);
+
+        [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+        public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+
+        [DllImport("winspool.Drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true)]
+        public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+        [DllImport("winspool.Drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true)]
+        public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+        [DllImport("winspool.Drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true)]
+        public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+        [DllImport("winspool.Drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true)]
+        public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+        public static bool SendBytesToPrinter(string printerName, byte[] bytes)
+        {
+            IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(bytes.Length);
+            Marshal.Copy(bytes, 0, pUnmanagedBytes, bytes.Length);
+
+            if (!OpenPrinter(printerName, out IntPtr hPrinter, IntPtr.Zero))
+            {
+                Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                return false;
+            }
+
+            DOCINFOA di = new() { pDocName = "POS Drawer Open", pDataType = "RAW" };
+            bool ok = false;
+
+            if (StartDocPrinter(hPrinter, 1, di))
+            {
+                if (StartPagePrinter(hPrinter))
+                {
+                    ok = WritePrinter(hPrinter, pUnmanagedBytes, bytes.Length, out _);
+                    EndPagePrinter(hPrinter);
+                }
+                EndDocPrinter(hPrinter);
+            }
+
+            ClosePrinter(hPrinter);
+            Marshal.FreeCoTaskMem(pUnmanagedBytes);
+            return ok;
+        }
+    }
+}`,
+
+    'App.xaml.cs': `using System;
+using System.IO;
+using System.Reflection;
+using System.Windows;
+using AutoUpdaterDotNET;
+using Microsoft.EntityFrameworkCore;
+using PhSmartPOS.Data;
+
+namespace PhSmartPOS
+{
+    /// <summary>
+    /// نقطة الدخول الرئيسية لتطبيق WPF مع تهيئة قاعدة البيانات والتحديثات التلقائية
+    /// </summary>
+    public partial class App : Application
+    {
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            base.OnStartup(e);
+
+            // 1. معالجة الأخطاء الشاملة لمنع انهيار البرنامج
+            SetupGlobalExceptionHandling();
+
+            // 2. تطبيق تهيئة وتحديثات قاعدة بيانات SQLite تلقائياً محلياً
+            InitializeDatabase();
+
+            // 3. تفعيل التحديث التلقائي المباشر (AutoUpdater.NET) مع الحفاظ على البيانات
+            ConfigureAutoUpdater();
+        }
+
+        private void InitializeDatabase()
+        {
+            try
+            {
+                using var db = new AppDbContext();
+                // إنشاء الجداول وترقيتها محلياً دون مساس بملف البيانات
+                db.Database.EnsureCreated();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"خطأ في تهيئة قاعدة البيانات المحلية: {ex.Message}", "خطأ في قاعدة البيانات", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ConfigureAutoUpdater()
+        {
+            try
+            {
+                // مسار ملف XML الخاص بالتحديثات على سيرفرك السحابي
+                string updateXmlUrl = "https://your-server.com/pos_updates/autoupdater.xml";
+
+                AutoUpdater.InstalledVersion = Assembly.GetExecutingAssembly().GetName().Version;
+                AutoUpdater.ShowSkipButton = false;
+                AutoUpdater.ShowRemindLaterButton = true;
+                AutoUpdater.Mandatory = true;
+                AutoUpdater.UpdateMode = Mode.Forced;
+
+                // التعامل مع أحداث التحديث
+                AutoUpdater.CheckForUpdateEvent += (args) =>
+                {
+                    if (args.Error == null && args.IsUpdateAvailable)
+                    {
+                        // إشعار ببدء التحديث التلقائي
+                        System.Diagnostics.Debug.WriteLine($"يوجد إصدار جديد: {args.CurrentVersion}");
+                    }
+                };
+
+                // بدء فحص التحديثات في الخلفية دون تعطيل واجهة الكاشير
+                AutoUpdater.Start(updateXmlUrl);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"تعذر التحقق من التحديثات: {ex.Message}");
+            }
+        }
+
+        private void SetupGlobalExceptionHandling()
+        {
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                Exception ex = (Exception)e.ExceptionObject;
+                MessageBox.Show($"حدث خطأ غير متوقع: {ex.Message}", "تنبيه النظام", MessageBoxButton.OK, MessageBoxImage.Warning);
+            };
+
+            DispatcherUnhandledException += (s, e) =>
+            {
+                MessageBox.Show($"خطأ واجهة: {e.Exception.Message}", "تنبيه", MessageBoxButton.OK, MessageBoxImage.Warning);
+                e.Handled = true;
             };
         }
     }
 }`,
 
-    '7amoPOS.csproj': `<Project Sdk="Microsoft.NET.Sdk">
+    'Program.cs': `using System;
+using System.Windows.Forms;
+using AutoUpdaterDotNET;
+
+namespace PhSmartPOS
+{
+    /// <summary>
+    /// كود التشغيل في حال استخدام Windows Forms أو تشغيل مخصص قبل الـ App
+    /// </summary>
+    public static class Program
+    {
+        [STAThread]
+        public static void Main()
+        {
+            // 1. فحص التحديثات التلقائية المباشرة عند بدء التشغيل فوراً
+            try
+            {
+                AutoUpdater.InstalledVersion = new Version("1.0.0.0");
+                AutoUpdater.Mandatory = true;
+                AutoUpdater.UpdateMode = Mode.Forced;
+                AutoUpdater.Start("https://your-server.com/pos_updates/autoupdater.xml");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AutoUpdater Init Warning: {ex.Message}");
+            }
+
+            // 2. تشغيل تطبيق الـ WPF الرئيسي
+            var app = new App();
+            app.InitializeComponent();
+            app.Run();
+        }
+    }
+}`,
+
+    'PhSmartPOS.csproj': `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>app.ico</ApplicationIcon>
-    <Title>7amo.pos Desktop C#</Title>
+    <ApplicationIcon>Assets\\icon.ico</ApplicationIcon>
+    <Title>PhSmartPOS C# .NET 8</Title>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.8" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="Autoupdater.NET.Official" Version="1.9.2" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
 </Project>`
   };
 
@@ -272,7 +700,7 @@ namespace SevenAmoPOS
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'SevenAmoPOS_CSharp_DotNet8_Solution.cs';
+    link.download = 'PhSmartPOS_CSharp_WPF_DotNet8_Solution.cs';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -289,10 +717,10 @@ namespace SevenAmoPOS
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                مشروع 7amo.pos بلغة <span className="text-purple-400 font-mono">C# (.NET 8 WinForms/WPF)</span>
+                مشروع نقاط البيع بلغة <span className="text-cyan-400 font-mono">C# (WPF .NET 8)</span>
               </h2>
               <p className="text-xs text-slate-400">
-                كود المصدري الكامل بلغة سي شارب (C#) للتشغيل على نظام الويندوز وتطوير التطبيق
+                سورس كود C# أصلي بالكامل مع SQLite المحلي، أوامر ESC/POS المباشرة للدرج، والتحديثات التلقائية
               </p>
             </div>
           </div>

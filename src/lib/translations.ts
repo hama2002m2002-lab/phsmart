@@ -49,7 +49,7 @@ export const uiTranslations: TranslationDict = {
   filter: { ar: 'تصفية', en: 'Filter', ku: 'فلتەر' },
   export: { ar: 'تصدير', en: 'Export', ku: 'ڕەوانەکردن' },
   import: { ar: 'استيراد', en: 'Import', ku: 'هێنانەژوورەوە' },
-  print: { ar: 'طباعة', en: 'Print', ku: 'چاپکردن' },
+  print: { ar: 'مركز الطباعة والملصقات', en: 'Printing Center', ku: 'ناوەندی چاپکردن' },
   back: { ar: 'رجوع', en: 'Back', ku: 'گەڕانەوە' },
   confirm: { ar: 'تأكيد', en: 'Confirm', ku: 'پشتڕاستکردنەوە' },
   clearCart: { ar: 'تفريغ السلة', en: 'Clear Cart', ku: 'خاڵیکردنی سەبەتە' },

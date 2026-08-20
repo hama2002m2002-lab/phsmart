@@ -5,7 +5,6 @@ import {
   Store, 
   ArrowRight, 
   ArrowLeft,
-  Settings as SettingsIcon,
   ShieldCheck
 } from 'lucide-react';
 import { 
@@ -23,7 +22,7 @@ import { SuppliersTab } from './SuppliersTab';
 import { CustomersTab } from './CustomersTab';
 import { OrdersTab } from './OrdersTab';
 import { ReportsTab } from './ReportsTab';
-import { SettingsTab } from './SettingsTab';
+import { PermissionsManagerTab } from './PermissionsManagerTab';
 
 export type AccountsSubTab = 
   | 'hub'
@@ -63,7 +62,6 @@ interface AccountsHubTabProps {
 export const AccountsHubTab: React.FC<AccountsHubTabProps> = ({
   initialSubTab = 'hub',
   settings,
-  setSettings,
   currentUser,
   userAccounts,
   setUserAccounts,
@@ -77,19 +75,15 @@ export const AccountsHubTab: React.FC<AccountsHubTabProps> = ({
   salesHistory,
   purchaseInvoices,
   setPurchaseInvoices,
-  notifications,
-  onImportBackup,
-  onOpenPOS,
   onOpenAddProductForSupplier,
   onViewReceipt,
   onBackToDashboard,
 }) => {
-  const lang = settings.language;
-  const isAr = lang === 'ar';
-  const isKu = lang === 'ku';
+  const isAr = settings.language === 'ar';
+  const isKu = settings.language === 'ku';
 
   const [activeSubTab, setActiveSubTab] = useState<AccountsSubTab>(
-    initialSubTab === 'permissions' ? 'settings' : initialSubTab
+    initialSubTab === 'settings' ? 'permissions' : initialSubTab
   );
 
   const isAdmin = !currentUser || currentUser.role === 'Admin';
@@ -277,23 +271,13 @@ export const AccountsHubTab: React.FC<AccountsHubTabProps> = ({
           </div>
         )}
 
-        {/* 2. SUBTAB: CASHIER ACCOUNTS & PERMISSIONS (حسابات الكاشير وإعطاء الصلاحيات) */}
-        {(activeSubTab === 'settings' || activeSubTab === 'permissions') && (
+        {/* 2. SUBTAB: CASHIER ACCOUNTS & PERMISSIONS */}
+        {(activeSubTab === 'permissions' || activeSubTab === 'settings') && (
           <div className="h-full">
-            <SettingsTab
-              onlyPermissionsAndAccounts={true}
+            <PermissionsManagerTab
               settings={settings}
-              setSettings={setSettings || (() => {})}
               userAccounts={userAccounts}
               setUserAccounts={setUserAccounts}
-              products={products}
-              salesHistory={salesHistory}
-              suppliers={suppliers}
-              customers={customers}
-              orders={orders}
-              notifications={notifications}
-              purchaseInvoices={purchaseInvoices}
-              onImportBackup={onImportBackup}
             />
           </div>
         )}

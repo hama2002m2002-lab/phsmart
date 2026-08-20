@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Lock,
   FileText,
+  Printer,
   LogOut,
   User,
   Users,
@@ -38,6 +39,7 @@ export type MainNavTab =
   | 'analytics'
   | 'reports'
   | 'cashierAccounts'
+  | 'print'
   | 'settings';
 
 interface SidebarProps {
@@ -138,6 +140,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: 'from-purple-500 via-indigo-500 to-pink-500',
       badge: isKu ? 'هەژمارەکان' : isAr ? 'الحسابات' : 'Accounts',
       badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30 shadow-[0_0_8px_rgba(168,85,247,0.25)]',
+    },
+    {
+      id: 'print' as MainNavTab,
+      labelKey: 'print',
+      icon: Printer,
+      color: 'from-amber-500 via-orange-500 to-cyan-500',
+      badge: isKu ? 'چاپ' : isAr ? 'طباعة' : 'Print',
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.25)]',
     },
     {
       id: 'settings' as MainNavTab,

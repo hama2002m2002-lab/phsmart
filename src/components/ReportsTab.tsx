@@ -24,9 +24,10 @@ import {
   MinusCircle, Lock, Award, Zap, ArrowRight, ArrowLeft, Eye,
   FileSpreadsheet, Trash2, Tag, PlusCircle, RotateCcw, FolderPlus,
   Edit2, Check, Boxes, Search, ShoppingCart, BookOpen, Coins,
-  Star, Flame, Gauge, CalendarRange, CheckCircle2
+  Star, Flame, Gauge, CalendarRange, CheckCircle2, ClipboardCheck,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
-import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings, OperatingExpenseItem } from '../types';
+import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings, OperatingExpenseItem, InventoryAuditSession } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { parseDate, isToday, isThisWeek, isThisMonth, isThreeMonths, isThisYear, formatDisplayDate, formatDisplayTime, formatDisplayDateTime, formatDateDDMMYYYY } from '../lib/dateUtils';
 import { getItemUnitCost, getItemTotalProfit } from '../lib/financialUtils';
@@ -50,6 +51,7 @@ interface ReportsTabProps {
   onToggleFullscreen?: (isFull: boolean) => void;
   onBackToDashboard?: () => void;
   onOpenDamagedItemsModal?: () => void;
+  onOpenInventoryAudit?: () => void;
 }
 
 export type MainReportCategory = 
@@ -89,7 +91,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   onViewReceipt,
   onToggleFullscreen,
   onBackToDashboard,
-  onOpenDamagedItemsModal
+  onOpenDamagedItemsModal,
+  onOpenInventoryAudit
 }) => {
   const lang = settings.language;
   const isLight = settings?.themeMode === 'light';
@@ -97,7 +100,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   const isKu = lang === 'ku';
   const currency = settings.currencySymbol || 'د.ع';
 
-  const t = (ar: string, ku: string, en: string) => isKu ? ku : (isAr ? ar : en);
+  const t = (ar: string, ku: string, en: string = ar) => isKu ? ku : (isAr ? ar : en);
 
   // ----------------------------------------------------
   // NAVIGATION & FILTER STATES
@@ -113,6 +116,18 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   const [stockSearchQuery, setStockSearchQuery] = useState<string>('');
   const [itemTurnoverTab, setItemTurnoverTab] = useState<'fast' | 'slow' | 'dead'>('fast');
 
+  // Inventory Audit Sessions State & Expand Accordion
+  const [auditSessions, setAuditSessions] = useState<InventoryAuditSession[]>(() => {
+    try {
+      const saved = localStorage.getItem('pos_inventory_audit_sessions_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [expandedAuditSessionId, setExpandedAuditSessionId] = useState<string | null>(null);
+  const [auditSessionSearch, setAuditSessionSearch] = useState<string>('');
+
   // Damaged Items Logs State & Filter for Wastage Report
   const [damagedLogsFilter, setDamagedLogsFilter] = useState<'ALL' | 'DAMAGED' | 'BROKEN' | 'EXPIRED' | 'DEFECTIVE'>('ALL');
   const [damagedLogs, setDamagedLogs] = useState<any[]>(() => {
@@ -127,8 +142,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   useEffect(() => {
     const handleStorageChange = () => {
       try {
-        const saved = localStorage.getItem('pos_damaged_items_logs');
-        setDamagedLogs(saved ? JSON.parse(saved) : []);
+        const savedDamaged = localStorage.getItem('pos_damaged_items_logs');
+        setDamagedLogs(savedDamaged ? JSON.parse(savedDamaged) : []);
+
+        const savedAudits = localStorage.getItem('pos_inventory_audit_sessions_v1');
+        setAuditSessions(savedAudits ? JSON.parse(savedAudits) : []);
       } catch {
         // ignore
       }
@@ -689,6 +707,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
     const netSales = grossSales - totalDiscounts - totalRefundsValue;
     const grossProfit = netSales - cogs;
+    const earnedProfit = grossProfit; // الأرباح المحققة المكتسبة الفعلية من المبيعات
     const totalOperatingExpenses = opExpenseItems.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
     const netOperatingProfit = grossProfit - totalOperatingExpenses;
 
@@ -712,6 +731,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       netSales,
       cogs,
       grossProfit,
+      earnedProfit,
       totalOperatingExpenses,
       netOperatingProfit,
       cashInHand,
@@ -1510,6 +1530,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       titleEn: '2. Inventory & Damaged Stock',
       icon: Package,
       subTabs: [
+        { id: 'inventory_audit_reports', labelAr: 'تقارير وسجلات جرد المخزون الفعلي', labelKu: 'ڕاپۆرت و تۆمارەکانی جردی کۆگا', labelEn: 'Physical Inventory Audit Reports', icon: ClipboardCheck, color: 'text-amber-400 bg-amber-500/10' },
         { id: 'stock_valuation', labelAr: 'جرد وتقييم المخزون ( بسعر البيع والشراء )', labelKu: 'جرد و هەڵسەنگاندنی کۆگا (بە نرخی تاک و تێچوو)', labelEn: 'Stock Valuation', icon: Boxes, color: 'text-cyan-400 bg-cyan-500/10' },
         { id: 'item_turnover', labelAr: 'حركة ودوران البضائع (الأكثر/الأقل/الراكد)', labelKu: 'جووڵە و خولانەوەی کاڵاکان (پڕفرۆش/کەمفرۆش/مەند)', labelEn: 'Item Turnover', icon: RefreshCw, color: 'text-emerald-400 bg-emerald-500/10' },
         { id: 'wastage_damage', labelAr: 'تقارير المواد المتلفة والهالك والتسويات', labelKu: 'ڕاپۆرتی کاڵای تێکچوو و زەرەر', labelEn: 'Damaged & Spoiled Stock', icon: AlertTriangle, color: 'text-amber-400 bg-amber-500/10' },
@@ -2648,7 +2669,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="space-y-4">
               
               {/* Financial Summary Highlight Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div className="p-3.5 rounded-2xl bg-[#090E1A] border border-blue-500/30 space-y-1">
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                     {t('المبيعات الإجمالية (Gross Sales)', 'سەرجەمی فرۆشتن (Gross Sales)', 'Gross Sales')}
@@ -2670,6 +2691,24 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                   </p>
                   <p className="text-[10px] text-slate-500 text-center">
                     {t('المبيعات الفعالية المستلمة', 'فرۆشتنی ڕاستەقینەی وەرگیراو', 'Net actual sales')}
+                  </p>
+                </div>
+
+                {/* حقل الأرباح المكتسبة المحققة (غير مرتبطة بالتكاليف التشغيلية اليدوية) */}
+                <div className="p-3.5 rounded-2xl bg-[#090E1A] border border-teal-500/50 space-y-1 shadow-lg shadow-teal-950/20">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-teal-400 uppercase tracking-wider">
+                      {t('الأرباح المكتسبة المحققة ✨', 'قازانجی بەدەستهاتوو ✨', 'Earned Profit ✨')}
+                    </p>
+                    <span className="px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 text-[9px] font-bold">
+                      {t('أرباح البيع', 'قازانجی فرۆشتن', 'Earned')}
+                    </span>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-teal-300 font-mono text-center">
+                    {currency} {financialMetrics.earnedProfit.toLocaleString('en-US')}
+                  </p>
+                  <p className="text-[10px] text-slate-400 text-center">
+                    {t('أرباح المبيعات المحققة (بدون خصم المصاريف)', 'قازانجی بەدەستهاتووی فرۆشتن بێ دەرکردنی خەرجی', 'Earned profit from sales (excl. OPEX)')}
                   </p>
                 </div>
 
@@ -2819,6 +2858,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         <td className="p-2.5 text-cyan-300">{t('(=) إجمالي هامش الربح (Gross Profit)', '(=) سەرجەمی هامشی قازانج (Gross Profit)', '(=) Gross Profit')}</td>
                         <td className="p-2.5 text-center text-cyan-400">{t('صافي المبيعات - تكلفة البضاعة المباعة', 'پاکی فرۆشتن - تێچووی کاڵای فرۆشراو', 'Net Sales - COGS')}</td>
                         <td className="p-2.5 text-center font-mono text-cyan-300 text-sm">{currency} {financialMetrics.grossProfit.toLocaleString('en-US')}</td>
+                      </tr>
+                      <tr className="bg-teal-500/10 font-bold border-t border-teal-500/20">
+                        <td className="p-2.5 text-teal-300 flex items-center gap-1.5">
+                          <span>✨</span>
+                          <span>{t('(=) الأرباح المحققة المكتسبة (Earned Profit)', '(=) قازانجی بەدەستهاتووی فرۆشتن (Earned Profit)', '(=) Earned Profit')}</span>
+                        </td>
+                        <td className="p-2.5 text-center text-teal-400">{t('الأرباح الفعلية المكتسبة من عمليات البيع (غير مرتبطة بالمصاريف التشغيلية)', 'قازانجی فرۆشتن بەبێ بەستنەوە بە تێچووەکانی کارکردن', 'Actual earned sales profit (independent of operating expenses)')}</td>
+                        <td className="p-2.5 text-center font-mono text-teal-300 text-sm">{currency} {financialMetrics.earnedProfit.toLocaleString('en-US')}</td>
                       </tr>
 
                       {/* Dynamic Manual Operating Expenses Block */}
@@ -3866,6 +3913,467 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       {/* ---------------------------------------------------- */}
       {activeCategory === 'inventory' && (
         <div className="space-y-4">
+
+          {/* Sub-tab: Physical Inventory Audit Reports & Master Logs */}
+          {activeSubTab === 'inventory_audit_reports' && (() => {
+            const filteredSessions = auditSessions.filter(s => {
+              if (!auditSessionSearch) return true;
+              const q = auditSessionSearch.toLowerCase();
+              return (
+                s.sessionNumber?.toLowerCase().includes(q) ||
+                s.date?.includes(q) ||
+                s.auditorName?.toLowerCase().includes(q) ||
+                s.notes?.toLowerCase().includes(q)
+              );
+            });
+
+            // Overall Stats across all sessions
+            const totalSessionsCount = auditSessions.length;
+            const totalProductsAuditedEver = auditSessions.reduce((acc, s) => acc + (s.totalProductsAudited || 0), 0);
+            const totalDiscrepanciesEver = auditSessions.reduce((acc, s) => acc + (s.discrepancyCount || 0), 0);
+            const totalFinancialVarianceEver = auditSessions.reduce((acc, s) => acc + (s.totalFinancialVariance || 0), 0);
+            const avgAccuracyRate = totalSessionsCount > 0
+              ? Math.round(auditSessions.reduce((acc, s) => {
+                  const match = s.matchedCount || 0;
+                  const total = s.totalProductsAudited || 1;
+                  return acc + ((match / total) * 100);
+                }, 0) / totalSessionsCount)
+              : 100;
+
+            const handleDeleteSession = (sessionId: string) => {
+              if (confirm(t('هل أنت متأكد من حذف هذا السجل من أرشيف الجرد؟', 'دڵنیایت لە سڕینەوەی ئەم تۆمارەی جرد؟', 'Are you sure you want to delete this audit record?'))) {
+                const updated = auditSessions.filter(s => s.id !== sessionId);
+                setAuditSessions(updated);
+                localStorage.setItem('pos_inventory_audit_sessions_v1', JSON.stringify(updated));
+              }
+            };
+
+            const handlePrintSingleSession = (session: InventoryAuditSession) => {
+              const printWin = window.open('', '_blank');
+              if (!printWin) return;
+              printWin.document.write(`
+                <!DOCTYPE html>
+                <html dir="rtl">
+                  <head>
+                    <meta charset="utf-8" />
+                    <title>تقرير محضر جرد المخزون - ${session.sessionNumber}</title>
+                    <style>
+                      @page { size: A4 landscape; margin: 10mm; }
+                      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0f172a; margin: 0; padding: 0; direction: rtl; font-size: 11px; }
+                      .header { border-bottom: 2px solid #0284c7; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+                      .title { font-size: 18px; font-weight: bold; color: #0369a1; }
+                      .meta { font-size: 11px; color: #475569; line-height: 1.6; }
+                      .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
+                      .kpi { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; text-align: center; background: #f8fafc; }
+                      .kpi-title { font-size: 10px; color: #64748b; font-weight: bold; }
+                      .kpi-val { font-size: 15px; font-weight: bold; margin-top: 4px; }
+                      table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                      th { background: #0f172a; color: white; padding: 6px; text-align: right; }
+                      td { border-bottom: 1px solid #e2e8f0; padding: 6px; }
+                      .match { color: #16a34a; font-weight: bold; }
+                      .deficit { color: #dc2626; font-weight: bold; }
+                      .surplus { color: #0284c7; font-weight: bold; }
+                    </style>
+                  </head>
+                  <body>
+                    <div class="header">
+                      <div>
+                        <div class="title">📋 تقرير جلسة جرد المخزون رقم: ${session.sessionNumber}</div>
+                        <div>${settings.storeName || 'المتجر'}</div>
+                      </div>
+                      <div class="meta">
+                        <div>التاريخ والوقت: ${session.date} ${session.time}</div>
+                        <div>المسؤول: ${session.auditorName}</div>
+                      </div>
+                    </div>
+                    <div class="kpis">
+                      <div class="kpi"><div class="kpi-title">الأصناف المدققة</div><div class="kpi-val">${session.totalProductsAudited}</div></div>
+                      <div class="kpi"><div class="kpi-title">المتطابق تماماً</div><div class="kpi-val" style="color:#16a34a">${session.matchedCount}</div></div>
+                      <div class="kpi"><div class="kpi-title">أصناف بها عجز</div><div class="kpi-val" style="color:#dc2626">${session.deficitCount}</div></div>
+                      <div class="kpi"><div class="kpi-title">الفارق المالي</div><div class="kpi-val">${currency} ${session.totalFinancialVariance.toLocaleString('en-US')}</div></div>
+                    </div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>الباركود</th>
+                          <th>اسم المادة</th>
+                          <th>رصيد النظام</th>
+                          <th>جرد الماركت</th>
+                          <th>جرد المخزن</th>
+                          <th>الجرد الفعلي</th>
+                          <th>فارق القطع</th>
+                          <th>الفارق المالي</th>
+                          <th>الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${session.items.map(item => `
+                          <tr>
+                            <td style="font-family: monospace;">${item.barcode}</td>
+                            <td>${item.productName}</td>
+                            <td>${item.systemUnits} قط (${item.systemCartons} ك)</td>
+                            <td>${item.marketUnits}</td>
+                            <td>${item.warehouseUnits}</td>
+                            <td><strong>${item.actualUnits} قط (${item.actualCartons} ك)</strong></td>
+                            <td class="${item.diffUnits === 0 ? 'match' : item.diffUnits < 0 ? 'deficit' : 'surplus'}">${item.diffUnits > 0 ? `+${item.diffUnits}` : item.diffUnits}</td>
+                            <td style="font-family: monospace;">${currency} ${item.financialVariance.toLocaleString('en-US')}</td>
+                            <td class="${item.diffUnits === 0 ? 'match' : item.diffUnits < 0 ? 'deficit' : 'surplus'}">
+                              ${item.status === 'match' ? 'مطابق' : item.status === 'deficit' ? 'عجز' : 'زيادة'}
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </body>
+                </html>
+              `);
+              printWin.document.close();
+              printWin.focus();
+              setTimeout(() => printWin.print(), 350);
+            };
+
+            return (
+              <div className="space-y-4 animate-fadeIn">
+                
+                {/* Header Action Bar */}
+                <div className={`flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl border ${
+                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0A0F1D] border-amber-500/30'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-600 text-white flex items-center justify-center font-bold shadow-lg shadow-amber-500/20">
+                      <ClipboardCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className={`text-sm sm:text-base font-black flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        <span>{t('تقارير وسجلات جرد المخزون الفعلي ومطابقة الأرصدة', 'ڕاپۆرت و تۆمارەکانی جردی کۆگا و پشکنینی باڵانس', 'Physical Inventory Audit Reports & Logs')}</span>
+                      </h2>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {t('سجل تاريخي كامل لجميع جلسات الجرد، رصد العجز والزيادة، حساب الفروقات المالية، وتوثيق المحاضر',
+                           'مێژووی تەواوی جردەکان، ئاشکراکردنی کەم و زۆری و بەهای دارایی جیاوازییەکان',
+                           'Complete history of all audit sessions, variance tracking, and discrepancies analysis')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {onOpenInventoryAudit && (
+                      <button
+                        type="button"
+                        onClick={onOpenInventoryAudit}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 hover:brightness-110 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-900/20 active:scale-95 border border-amber-400/40"
+                      >
+                        <ClipboardCheck className="w-4 h-4" />
+                        <span>{t('بدء عملية جرد فعلي جديدة 📝', 'دەستپێکردنی جردی نوێ 📝', 'Start New Inventory Audit 📝')}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => exportDataToExcel(auditSessions.map(s => ({
+                        'رقم الجلسة': s.sessionNumber,
+                        'التاريخ': s.date,
+                        'الوقت': s.time,
+                        'المسؤول': s.auditorName,
+                        'الأصناف المدققة': s.totalProductsAudited,
+                        'المتطابق': s.matchedCount,
+                        'العجز': s.deficitCount,
+                        'الزيادة': s.surplusCount,
+                        'صافي فارق القطع': s.netUnitVariance,
+                        'صافي فارق الكراتين': s.netCartonVariance,
+                        'الفارق المالي بالتكلفة': s.totalFinancialVariance,
+                        'الملاحظات': s.notes || ''
+                      })), `audit_history_report_${new Date().toISOString().split('T')[0]}.xlsx`, 'جلسات الجرد')}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow border border-emerald-400/30 active:scale-95"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>{t('تصدير إكسل', 'تۆمار لە ئێکسڵ', 'Export Excel')}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* KPI Analytics Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-blue-200 shadow-sm' : 'bg-[#090E1A] border-blue-500/30'
+                  }`}>
+                    <p className="text-[11px] font-bold text-blue-500 uppercase tracking-wider">
+                      {t('إجمالي جلسات الجرد الموثقة', 'کۆی دانیشتنەکانی جرد', 'Total Documented Audits')}
+                    </p>
+                    <p className={`text-2xl font-black font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {totalSessionsCount} <span className="text-xs font-normal text-slate-400">{t('جلسة جرد', 'دانیشتن', 'sessions')}</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {auditSessions[0] ? `${t('آخر جرد:', 'دواین جرد:', 'Last:')} ${auditSessions[0].date}` : t('لا يوجد جرد سابق', 'هیچ جردێک نەکراوە', 'No previous audit')}
+                    </p>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-emerald-200 shadow-sm' : 'bg-[#090E1A] border-emerald-500/30'
+                  }`}>
+                    <p className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider">
+                      {t('متوسط نسبة دقة المخزون', 'تێکڕای ڕێژەی دروستی کۆگا', 'Avg Stock Accuracy')}
+                    </p>
+                    <p className={`text-2xl font-black font-mono ${avgAccuracyRate >= 95 ? 'text-emerald-500' : avgAccuracyRate >= 80 ? 'text-amber-500' : 'text-rose-500'}`}>
+                      {avgAccuracyRate}%
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {t('نسبة مطابقة الكميات الفعلية مع النظام', 'ڕێژەی هاوتایی بڕەکان', 'Physical vs recorded match rate')}
+                    </p>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-amber-200 shadow-sm' : 'bg-[#090E1A] border-amber-500/30'
+                  }`}>
+                    <p className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">
+                      {t('إجمالي الفروقات المكتشفة', 'کۆی جیاوازییە دۆزراوەکان', 'Total Discrepancies Found')}
+                    </p>
+                    <p className="text-2xl font-black font-mono text-amber-400">
+                      {totalDiscrepanciesEver} <span className="text-xs font-normal text-slate-400">{t('صنف / فارق', 'جۆر / جیاوازی', 'items')}</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {t('مجموع حالات العجز والفائض عبر الجلسات', 'کۆی کەم و زۆرییەکان', 'Total deficits & surplus items')}
+                    </p>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-1 ${
+                    isLight ? 'bg-white border-purple-200 shadow-sm' : 'bg-[#090E1A] border-purple-500/30'
+                  }`}>
+                    <p className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">
+                      {t('صافي الأثر المالي للتسويات', 'پوختەی کاریگەری دارایی', 'Net Financial Impact')}
+                    </p>
+                    <p className={`text-2xl font-black font-mono ${totalFinancialVarianceEver === 0 ? 'text-emerald-400' : totalFinancialVarianceEver < 0 ? 'text-rose-400' : 'text-cyan-400'}`}>
+                      {currency} {totalFinancialVarianceEver.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {t('قيمة فروقات التكلفة المسجلة بالجرد', 'بەهای جیاوازی تێچووی جرد', 'Total cost valuation of variances')}
+                    </p>
+                  </div>
+
+                </div>
+
+                {/* Filter and Search Bar for Sessions */}
+                <div className={`p-3 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
+                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0A0F1D] border-slate-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-amber-400" />
+                    <h3 className={`font-bold text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {t('أرشيف جلسات ومحاضر الجرد المسجلة بالنظام', 'ئەرشیفی دانیشتنەکانی جردی تۆمارکراو', 'Recorded Audit Sessions & Logs Master Archive')}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold">
+                      {filteredSessions.length} {t('جلسات', 'دانیشتن', 'sessions')}
+                    </span>
+                  </div>
+
+                  <div className="relative min-w-[260px]">
+                    <Search className="w-3.5 h-3.5 absolute right-3 rtl:right-3 rtl:left-auto left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={auditSessionSearch}
+                      onChange={(e) => setAuditSessionSearch(e.target.value)}
+                      placeholder={t('بحث برقم الجلسة أو التاريخ أو المسؤول...', 'گەڕان بەپێی ژمارە، بەروار یان بەرپرس...', 'Search by session, date, auditor...')}
+                      className={`w-full text-xs rounded-xl py-1.5 px-8 border outline-none transition-all ${
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-amber-500' : 'bg-[#050914] border-slate-700 text-white focus:border-amber-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Audit Sessions History List */}
+                {filteredSessions.length === 0 ? (
+                  <div className={`p-10 rounded-2xl border text-center space-y-3 ${
+                    isLight ? 'bg-white border-slate-200' : 'bg-[#0A0F1D] border-slate-800'
+                  }`}>
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 mx-auto flex items-center justify-center">
+                      <ClipboardCheck className="w-8 h-8" />
+                    </div>
+                    <h3 className={`font-bold text-base ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {t('لم يتم تسجيل جلسات جرد محفوظة حتى الآن', 'هیچ دانیشتنێکی جرد تۆمار نەکراوە تا ئێستا', 'No saved inventory audit sessions yet')}
+                    </h3>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      {t('يمكنك البدء في فحص وتدقيق المخزون ومطابقة كميات الماركت والمستودع بضغطة زر وتوثيق أول تقرير جرد رسمي.',
+                         'دەتوانیت دەست بکەیت بە جردی کۆگا و تۆمارکردنی یەکەمین ڕاپۆرتی فەرمی.',
+                         'You can start auditing shelves & warehouse stock and generate your first documented audit session.')}
+                    </p>
+                    {onOpenInventoryAudit && (
+                      <button
+                        type="button"
+                        onClick={onOpenInventoryAudit}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 hover:brightness-110 text-white text-xs font-black shadow-lg shadow-amber-900/20 cursor-pointer transition-all active:scale-95 inline-flex items-center gap-2 mt-2"
+                      >
+                        <ClipboardCheck className="w-4 h-4" />
+                        <span>{t('ابدأ أول عملية جرد وتدقيق الآن 📝', 'دەستپێکردنی یەکەمین جرد 📝', 'Start First Inventory Audit Now 📝')}</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredSessions.map((session) => {
+                      const isExpanded = expandedAuditSessionId === session.id;
+
+                      return (
+                        <div
+                          key={session.id}
+                          className={`rounded-2xl border transition-all overflow-hidden ${
+                            isLight ? 'bg-white border-slate-200 shadow-sm hover:border-amber-300' : 'bg-[#0A0F1D] border-slate-800 hover:border-amber-500/40'
+                          }`}
+                        >
+                          {/* Session Header Card */}
+                          <div className="p-4 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold shrink-0">
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className={`font-black text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                    {t('جلسة جرد رقم:', 'دانیشتنی جردی ژمارە:', 'Audit Session:')} <span className="font-mono text-cyan-400">{session.sessionNumber}</span>
+                                  </h4>
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono text-[10px]">
+                                    {session.date} - {session.time}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 font-bold text-[10px] border border-cyan-800">
+                                    👤 {session.auditorName}
+                                  </span>
+                                </div>
+                                {session.notes && (
+                                  <p className="text-[11px] text-slate-400 mt-1 italic">
+                                    📝 {session.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Badges & Stats in Session Card */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold font-mono">
+                                ✅ {session.matchedCount} {t('مطابق', 'هاوتا', 'matched')}
+                              </span>
+
+                              {session.deficitCount > 0 && (
+                                <span className="px-2.5 py-1 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs font-bold font-mono">
+                                  🔻 {session.deficitCount} {t('عجز', 'کەم', 'deficits')}
+                                </span>
+                              )}
+
+                              {session.surplusCount > 0 && (
+                                <span className="px-2.5 py-1 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/40 text-xs font-bold font-mono">
+                                  🔺 {session.surplusCount} {t('فائض', 'زیاد', 'surplus')}
+                                </span>
+                              )}
+
+                              <div className="text-left rtl:text-right px-2 border-r rtl:border-r-0 rtl:border-l border-slate-800">
+                                <span className="text-[10px] text-slate-400 block">{t('الفارق المالي', 'جیاوازی دارایی', 'Variance')}</span>
+                                <span className={`text-xs font-black font-mono ${session.totalFinancialVariance === 0 ? 'text-emerald-400' : session.totalFinancialVariance < 0 ? 'text-rose-400' : 'text-cyan-400'}`}>
+                                  {currency} {session.totalFinancialVariance.toLocaleString('en-US')}
+                                </span>
+                              </div>
+
+                              {/* Controls */}
+                              <button
+                                type="button"
+                                onClick={() => handlePrintSingleSession(session)}
+                                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer border border-slate-700"
+                                title={t('طباعة محضر الجلسة', 'چاپ', 'Print Session')}
+                              >
+                                <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSession(session.id)}
+                                className="p-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white transition-all cursor-pointer border border-slate-700"
+                                title={t('حذف من الأرشيف', 'سڕینەوە', 'Delete Record')}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setExpandedAuditSessionId(isExpanded ? null : session.id)}
+                                className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  isExpanded
+                                    ? 'bg-amber-500 text-slate-950 font-black'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                <span>{isExpanded ? t('إخفاء التفاصيل', 'شاردنەوە', 'Hide') : t('عرض تفاصيل المواد', 'پشاندانی وردەکاری', 'View Details')}</span>
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Expanded Itemized Table for Session */}
+                          {isExpanded && (
+                            <div className="border-t border-slate-800 p-4 bg-[#050914] overflow-x-auto animate-fadeIn">
+                              <table className="w-full text-xs text-slate-200">
+                                <thead className="bg-[#0A0F1D] text-slate-400 font-bold border-b border-slate-800">
+                                  <tr>
+                                    <th className="p-2.5 text-right rtl:text-right">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
+                                    <th className="p-2.5 text-right rtl:text-right">{t('اسم المادة', 'ناوی کاڵا', 'Product Name')}</th>
+                                    <th className="p-2.5 text-center">{t('رصيد النظام', 'سیستم', 'System')}</th>
+                                    <th className="p-2.5 text-center">{t('جرد الماركت', 'مارکێت', 'Market')}</th>
+                                    <th className="p-2.5 text-center">{t('جرد المخزن', 'کۆگا', 'Warehouse')}</th>
+                                    <th className="p-2.5 text-center">{t('إجمالي الفعلي', 'کۆی ڕاستەقینە', 'Actual Total')}</th>
+                                    <th className="p-2.5 text-center">{t('فارق القطع', 'جیاوازی دانە', 'Unit Diff')}</th>
+                                    <th className="p-2.5 text-center">{t('الأثر المالي', 'بەهای دارایی', 'Financial Impact')}</th>
+                                    <th className="p-2.5 text-center">{t('الحالة', 'دۆخ', 'Status')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/80">
+                                  {session.items.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
+                                      <td className="p-2.5 font-mono text-cyan-400">{item.barcode}</td>
+                                      <td className="p-2.5 font-bold text-white max-w-[200px] truncate">{item.productName}</td>
+                                      <td className="p-2.5 text-center font-mono text-slate-300">{item.systemUnits} ({item.systemCartons} {t('ك', 'ک', 'ctn')})</td>
+                                      <td className="p-2.5 text-center font-mono text-amber-300">{item.marketUnits}</td>
+                                      <td className="p-2.5 text-center font-mono text-indigo-300">{item.warehouseUnits}</td>
+                                      <td className="p-2.5 text-center font-mono font-bold text-white">{item.actualUnits} ({item.actualCartons} {t('ك', 'ک', 'ctn')})</td>
+                                      <td className="p-2.5 text-center font-mono font-bold">
+                                        {item.diffUnits === 0 ? (
+                                          <span className="text-emerald-400">0</span>
+                                        ) : item.diffUnits > 0 ? (
+                                          <span className="text-blue-400">+{item.diffUnits}</span>
+                                        ) : (
+                                          <span className="text-rose-400">{item.diffUnits}</span>
+                                        )}
+                                      </td>
+                                      <td className="p-2.5 text-center font-mono font-bold">
+                                        <span className={item.financialVariance === 0 ? 'text-slate-400' : item.financialVariance > 0 ? 'text-blue-400' : 'text-rose-400'}>
+                                          {currency} {item.financialVariance.toLocaleString('en-US')}
+                                        </span>
+                                      </td>
+                                      <td className="p-2.5 text-center">
+                                        {item.status === 'match' ? (
+                                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">
+                                            {t('مطابق', 'هاوتا', 'Match')}
+                                          </span>
+                                        ) : item.status === 'deficit' ? (
+                                          <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold text-[10px]">
+                                            {t('عجز', 'کەم', 'Deficit')}
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold text-[10px]">
+                                            {t('زيادة', 'زیاد', 'Surplus')}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+              </div>
+            );
+          })()}
 
           {/* Sub-tab: Stock Valuation & Inventory Audit */}
           {activeSubTab === 'stock_valuation' && (() => {

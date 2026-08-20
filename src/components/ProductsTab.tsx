@@ -26,8 +26,8 @@ import {
 import { Product, Category, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { getSavedCategories } from './ProductModal';
-import { InventoryAuditModal } from './InventoryAuditModal';
 import { PriceHistoryTooltip } from './PriceHistoryTooltip';
+import { InventoryAuditView } from './InventoryAuditView';
 import { exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
 
@@ -43,6 +43,7 @@ interface ProductsTabProps {
   onOpenInventoryAudit?: () => void;
   onOpenDamagedItems?: () => void;
   onOpenInvoices?: () => void;
+  onNavigateToReports?: () => void;
 }
 
 const CATEGORIES = [
@@ -69,6 +70,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   onOpenInventoryAudit,
   onOpenDamagedItems,
   onOpenInvoices,
+  onNavigateToReports,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -92,10 +94,10 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const canViewInvoices = isAdmin || Boolean(perms?.canViewInvoices ?? perms?.canManageOrders);
 
   // Retain active subview in session so updates and hot reloads don't kick user out of their open warehouse view
-  const [activeSubView, setActiveSubView] = useState<'catalog' | 'stockStatus' | null>(() => {
+  const [activeSubView, setActiveSubView] = useState<'catalog' | 'stockStatus' | 'inventoryAudit' | null>(() => {
     try {
       const saved = sessionStorage.getItem('supermarket_warehouse_subview');
-      if (saved === 'catalog' || saved === 'stockStatus') return saved;
+      if (saved === 'catalog' || saved === 'stockStatus' || saved === 'inventoryAudit') return saved;
     } catch (e) {}
     return null;
   });
@@ -113,7 +115,6 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const [selectedCat, setSelectedCat] = useState<string>('ALL');
   const [stockFilter, setStockFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW' | 'OUT' | 'DEBT'>('ALL');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
-  const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [importBanner, setImportBanner] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -220,65 +221,29 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         </div>
 
         {/* Dedicated Navigation Buttons / Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pt-1">
           
           {/* Button 1: إدخال مادة جديدة (زیادکردنی کاڵای نوێ) - Only for Admins / Managers with edit rights */}
           {canEditProducts && (
             <button
               type="button"
               onClick={onOpenAddModal}
-              className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
                 isLight
-                  ? 'bg-white border-emerald-200 hover:border-emerald-500 shadow-md hover:shadow-xl'
-                  : 'bg-gradient-to-br from-[#061C14] via-[#0B2E21] to-[#04160F] border-emerald-500/40 hover:border-emerald-400 hover:shadow-[0_0_35px_rgba(16,185,129,0.35)]'
+                  ? 'bg-white border-emerald-200 hover:border-emerald-500 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-br from-[#061C14] to-[#0A2E21] border-emerald-500/40 hover:border-emerald-400 hover:shadow-[0_0_20px_rgba(16,185,129,0.25)]'
               }`}
             >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform">
-                    <Plus className="w-7 h-7 text-white stroke-[2.5]" />
-                  </div>
-                  <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
-                    isLight
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                  }`}>
-                    + {t('مادة جديدة', 'کاڵای نوێ', 'New Item')}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
-                    isLight
-                      ? 'text-slate-900 group-hover:text-emerald-700'
-                      : 'text-white group-hover:text-emerald-300'
-                  }`}>
-                    <span>{t('إدخال مادة جديدة', 'زیادکردنی کاڵای نوێ', 'New Product Entry')}</span>
-                  </h3>
-                  <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
-                    isLight ? 'text-slate-600' : 'text-slate-400'
-                  }`}>
-                    {t(
-                      'تسجيل مادة جديدة، إدخال الباركود، الاسم التجاري والعلمي، كلفة الكرتون، أسعار البيع، والكميات.',
-                      'تۆمارکردنی کاڵای نوێ، بارکۆد، ناوی بازرگانی و زانستی، تێچووی کارتۆن، نرخی فرۆشتن و بڕی سەرەتایی.',
-                      'Register new products, enter barcodes, trade/scientific names, carton costs, sell prices, and initial stock.'
-                    )}
-                  </p>
-                </div>
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                <Plus className="w-6 h-6 text-white stroke-[2.5]" />
               </div>
-
-              <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+              <span className={`text-sm sm:text-base font-black transition-colors ${
                 isLight
-                  ? 'border-slate-100 text-emerald-700'
-                  : 'border-slate-800/80 text-emerald-400'
+                  ? 'text-slate-900 group-hover:text-emerald-700'
+                  : 'text-white group-hover:text-emerald-300'
               }`}>
-                <span>{t('فتح نافذة إدخال مادة جديدة ←', 'کردنەوەی فۆڕمی زیادکردن ←', 'Open Product Entry Form →')}</span>
-                <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
-                  isLight ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-500/10 text-emerald-300'
-                }`}>
-                  {t('نموذج جديد', 'فۆڕمی نوێ', 'New Form')}
-                </span>
-              </div>
+                {t('إدخال مادة جديدة', 'زیادکردنی کاڵای نوێ', 'New Product Entry')}
+              </span>
             </button>
           )}
 
@@ -286,308 +251,120 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubView('catalog')}
-            className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+            className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
               isLight
-                ? 'bg-white border-blue-200 hover:border-blue-500 shadow-md hover:shadow-xl'
-                : 'bg-gradient-to-br from-[#0B1528] via-[#0F1D38] to-[#0A1224] border-cyan-500/40 hover:border-cyan-400 hover:shadow-[0_0_35px_rgba(6,182,212,0.35)]'
+                ? 'bg-white border-blue-200 hover:border-blue-500 shadow-sm hover:shadow-md'
+                : 'bg-gradient-to-br from-[#0B1528] to-[#0F1D38] border-cyan-500/40 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.25)]'
             }`}
           >
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] group-hover:scale-110 transition-transform">
-                  <Package className="w-7 h-7 text-white" />
-                </div>
-                <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
-                  isLight
-                    ? 'bg-blue-50 border-blue-200 text-blue-800'
-                    : 'bg-cyan-950/80 border-cyan-500/40 text-cyan-300'
-                }`}>
-                  {products.length} {t('مادة', 'کاڵا', 'Items')}
-                </span>
-              </div>
-
-              <div>
-                <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
-                  isLight
-                    ? 'text-slate-900 group-hover:text-blue-700'
-                    : 'text-white group-hover:text-cyan-300'
-                }`}>
-                  <span>{t('دليل وسجل المواد والأسعار', 'ڕێبەری کاڵاکان و نرخەکان', 'Products & Price Catalog')}</span>
-                </h3>
-                <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
-                  isLight ? 'text-slate-600' : 'text-slate-400'
-                }`}>
-                  {canViewPurchasePrice ? t(
-                    'شاشة عرض شاملة لكل معلومات المواد، الباركود، تكاليف الشراء، أسعار البيع المفرد والجملة، والأرباح مع إمكانية التعديل والإضافة.',
-                    'بینراوی گشتگیر بۆ زانیاری کاڵاکان، بارکۆد، تێچووی کڕین، نرخی فرۆشتنی تاک و کۆ، و قازانجەکان لەگەڵ دەستکاری و زیادکردن.',
-                    'Full display interface for all product details, barcodes, costs, retail/wholesale selling prices, and profits.'
-                  ) : t(
-                    'استعراض دليل المواد، الباركود، أسعار البيع المفرد وسعر الكرتون، والكميات المتبقية المتوفرة في المخزن.',
-                    'بینینی تەواوی کاڵاکان، بارکۆد، نرخی فرۆشتنی تاک و کارتۆن، و بڕی ماوەی کاڵاکانی کۆگا.',
-                    'Browse catalog items, barcodes, retail prices, carton prices, and remaining stock quantities.'
-                  )}
-                </p>
-              </div>
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <Package className="w-6 h-6 text-white" />
             </div>
-
-            <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+            <span className={`text-sm sm:text-base font-black transition-colors ${
               isLight
-                ? 'border-slate-100 text-blue-700'
-                : 'border-slate-800/80 text-cyan-400'
+                ? 'text-slate-900 group-hover:text-blue-700'
+                : 'text-white group-hover:text-cyan-300'
             }`}>
-              <span>{t('فتح دليل وسجل المواد ←', 'کردنەوەی ڕێبەری کاڵاکان ←', 'Open Products Catalog →')}</span>
-              <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
-                isLight ? 'bg-blue-100 text-blue-800' : 'bg-cyan-500/10 text-cyan-300'
-              }`}>
-                {canViewPurchasePrice ? t('عرض شامل', 'بینراوی تەواو', 'Full View') : t('عرض الأسعار والمخزون', 'بینینی نرخ و کۆگا', 'Prices & Stock')}
-              </span>
-            </div>
+              {t('دليل وسجل المواد والأسعار', 'ڕێبەری کاڵاکان و نرخەکان', 'Products & Price Catalog')}
+            </span>
           </button>
 
-          {/* Button 3: المواد المتبقية والنافذة - حالة المخزون (کاڵا ماوەکان و تەواوبووەکان) */}
-          <button
-            type="button"
-            onClick={() => setActiveSubView('stockStatus')}
-            className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
-              isLight
-                ? 'bg-white border-amber-200 hover:border-amber-500 shadow-md hover:shadow-xl'
-                : 'bg-gradient-to-br from-[#1A1208] via-[#24170A] to-[#120D06] border-amber-500/50 hover:border-amber-400 hover:shadow-[0_0_35px_rgba(245,158,11,0.35)]'
-            }`}
-          >
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(245,158,11,0.4)] group-hover:scale-110 transition-transform">
-                  <AlertTriangle className="w-7 h-7 text-white" />
-                </div>
-                {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) ? (
-                  <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border animate-pulse ${
-                    isLight
-                      ? 'bg-amber-50 border-amber-300 text-amber-900'
-                      : 'bg-amber-950/90 border-amber-500/50 text-amber-300'
-                  }`}>
-                    {lowStockProducts.length + outOfStockProducts.length} {t('تنبيه', 'ئاگاداری', 'Alerts')}
-                  </span>
-                ) : (
-                  <span className={`px-3.5 py-1.5 rounded-xl font-mono font-bold text-xs shadow border ${
-                    isLight
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300'
-                  }`}>
-                    {t('المخزون آمن', 'کۆگا ئارامە', 'Stock Safe')}
-                  </span>
-                )}
+          {/* Button 3: جرد وتدقيق المخزون الفعلي ومطابقة الأرصدة (پشکنین و جردی کۆگا) */}
+          {canManageAudit && (
+            <button
+              type="button"
+              onClick={() => setActiveSubView('inventoryAudit')}
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+                isLight
+                  ? 'bg-white border-amber-200 hover:border-amber-500 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-br from-[#1A1208] to-[#25180B] border-amber-500/40 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+              }`}
+            >
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-600 to-amber-600 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                <ClipboardCheck className="w-6 h-6 text-white stroke-[2.2]" />
               </div>
-
-              <div>
-                <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
+              <div className="flex flex-col">
+                <span className={`text-sm sm:text-base font-black transition-colors ${
                   isLight
                     ? 'text-slate-900 group-hover:text-amber-700'
                     : 'text-white group-hover:text-amber-300'
                 }`}>
-                  <span>{t('المواد المتبقية والنافذة (حالة المخزون)', 'کاڵا ماوەکان و تەواوبووەکان (دۆخی کۆگا)', 'Remaining & Out of Stock Items')}</span>
-                </h3>
-                <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
-                  isLight ? 'text-slate-600' : 'text-slate-400'
-                }`}>
-                  {t(
-                    'جدول تتبع الكميات المتبقية، المواد القريبة من النفاد، المنتهية، وعدد الكراتين والمحتوى ومتابعة حركة المخزن.',
-                    'خشتەی بەدواداچوونی بڕی ماوە، کاڵا کەمبووەکان، تەواوبووەکان، ژمارەی کارتۆن و چاودێری جووڵەی کۆگا.',
-                    'Inventory tracking table for remaining units, low stock alerts, zero units, carton counts, and stock monitoring.'
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
-              isLight
-                ? 'border-slate-100 text-amber-700'
-                : 'border-slate-800/80 text-amber-400'
-            }`}>
-              <span>{t('فتح حالة المخزون والنواقص ←', 'کردنەوەی دۆخی کۆگا و کەمییەکان ←', 'Open Stock Status →')}</span>
-              <div className="flex items-center gap-2 text-[11px] font-mono">
-                <span className={isLight ? 'text-amber-700' : 'text-amber-400'}>⚠️ {lowStockProducts.length} {t('منخفض', 'کەم', 'Low')}</span>
-                <span className={isLight ? 'text-rose-700' : 'text-rose-400'}>🚫 {outOfStockProducts.length} {t('نفد', 'نەما', 'Out')}</span>
-              </div>
-            </div>
-          </button>
-
-          {/* Button 4: جرد وتدقيق المخزون (پشکنین و جردی کۆگا) */}
-          {canManageAudit && (
-            <button
-              type="button"
-              onClick={onOpenInventoryAudit ? onOpenInventoryAudit : () => setIsAuditOpen(true)}
-              className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
-                isLight
-                  ? 'bg-white border-indigo-200 hover:border-indigo-500 shadow-md hover:shadow-xl'
-                  : 'bg-gradient-to-br from-[#0E1328] via-[#141C38] to-[#0A0E20] border-indigo-500/40 hover:border-indigo-400 hover:shadow-[0_0_35px_rgba(99,102,241,0.35)]'
-              }`}
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] group-hover:scale-110 transition-transform">
-                    <ClipboardCheck className="w-7 h-7 text-white stroke-[2.2]" />
-                  </div>
-                  <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
-                    isLight
-                      ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
-                      : 'bg-indigo-950/80 border-indigo-500/40 text-indigo-300'
-                  }`}>
-                    {t('جرد وتدقيق', 'پشکنینی کۆگا', 'Audit & Count')}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
-                    isLight
-                      ? 'text-slate-900 group-hover:text-indigo-700'
-                      : 'text-white group-hover:text-indigo-300'
-                  }`}>
-                    <span>{t('جرد وتدقيق المخزون', 'پشکنین و جردی کۆگا', 'Inventory Audit & Physical Count')}</span>
-                  </h3>
-                  <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
-                    isLight ? 'text-slate-600' : 'text-slate-400'
-                  }`}>
-                    {t(
-                      'جرد فعلي ومطابقة الأرصدة الحقيقية مع بيانات النظام بالباركود أو الاسم، وحساب الفروقات والأرباح/الخسائر بدقة متناهية.',
-                      'جردکردنی فیعلی کۆگا و یەکسانکردنی بڕی ڕاستەقینە لەگەڵ سیستەم بە بارکۆد، دۆزینەوەی جیاوازی و قازانج/زیانەکان.',
-                      'Physical stock count, reconciliation with system records via barcode, and exact discrepancy calculations.'
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
-                isLight
-                  ? 'border-slate-100 text-indigo-700'
-                  : 'border-slate-800/80 text-indigo-400'
-              }`}>
-                <span>{t('فتح نافذة جرد وتدقيق المخزون ←', 'کردنەوەی پشکنین و جردی کۆگا ←', 'Open Stock Audit →')}</span>
-                <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
-                  isLight ? 'bg-indigo-100 text-indigo-800' : 'bg-indigo-500/10 text-indigo-300'
-                }`}>
-                  {t('تدقيق شامل', 'پشکنینی گشتی', 'Full Audit')}
+                  {t('جرد وتدقيق المخزون الفعلي', 'پشکنین و جردی کۆگا', 'Physical Inventory Audit')}
+                </span>
+                <span className="text-[11px] text-slate-400 font-semibold">
+                  {t('جرد الماركت والمستودع، كشف العجز، وتعديل الأرصدة', 'جردی مارکێت و کۆگا، دۆزینەوەی جیاوازی', 'Count market & storage, variance detection')}
                 </span>
               </div>
             </button>
           )}
 
-          {/* Button 5: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
+          {/* Button 4: المواد المتبقية والنافذة - حالة المخزون (کاڵا ماوەکان و تەواوبووەکان) */}
+          <button
+            type="button"
+            onClick={() => setActiveSubView('stockStatus')}
+            className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              isLight
+                ? 'bg-white border-slate-200 hover:border-blue-500 shadow-sm hover:shadow-md'
+                : 'bg-gradient-to-br from-[#0B1220] to-[#121B30] border-blue-500/30 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.2)]'
+            }`}
+          >
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-600 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <AlertTriangle className="w-6 h-6 text-white" />
+            </div>
+            <span className={`text-sm sm:text-base font-black transition-colors ${
+              isLight
+                ? 'text-slate-900 group-hover:text-blue-700'
+                : 'text-white group-hover:text-cyan-300'
+            }`}>
+              {t('المواد المتبقية والنافذة (حالة المخزون)', 'کاڵا ماوەکان و تەواوبووەکان (دۆخی کۆگا)', 'Stock Status')}
+            </span>
+          </button>
+
+          {/* Button 4: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
           {canManageDamaged && (
             <button
               type="button"
               onClick={onOpenDamagedItems}
-              className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
                 isLight
-                  ? 'bg-white border-rose-200 hover:border-rose-500 shadow-md hover:shadow-xl'
-                  : 'bg-gradient-to-br from-[#200A10] via-[#2D0F18] to-[#16060B] border-rose-500/40 hover:border-rose-400 hover:shadow-[0_0_35px_rgba(244,63,94,0.35)]'
+                  ? 'bg-white border-rose-200 hover:border-rose-500 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-br from-[#200A10] to-[#2D0F18] border-rose-500/40 hover:border-rose-400 hover:shadow-[0_0_20px_rgba(244,63,94,0.25)]'
               }`}
             >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-rose-500 to-red-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(244,63,94,0.4)] group-hover:scale-110 transition-transform">
-                    <Trash2 className="w-7 h-7 text-white stroke-[2.2]" />
-                  </div>
-                  <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
-                    isLight
-                      ? 'bg-rose-50 border-rose-200 text-rose-800'
-                      : 'bg-rose-950/80 border-rose-500/40 text-rose-300'
-                  }`}>
-                    {t('إتلاف وهدر', 'تێکچوو و بەسەرچوو', 'Damaged & Waste')}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
-                    isLight
-                      ? 'text-slate-900 group-hover:text-rose-700'
-                      : 'text-white group-hover:text-rose-300'
-                  }`}>
-                    <span>{t('مواد متلفة / مكسورة / منتهية', 'کاڵای تێکچوو / شکاو / بەسەرچوو', 'Damaged & Expired Items')}</span>
-                  </h3>
-                  <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
-                    isLight ? 'text-slate-600' : 'text-slate-400'
-                  }`}>
-                    {t(
-                      'تسجيل وتوثيق المواد المتلفة، البضائع المكسورة، والمنتجات المنتهية الصلاحية مع خصمها من المخزون وتوثيق تكاليفها.',
-                      'تۆمارکردنی کاڵا تێکچووەکان، شکاوەکان و بەسەرچووەکان و دەرکردنیان لە کۆگا لەگەڵ خەمڵاندنی تێچووی زیانەکان.',
-                      'Log damaged, broken, and expired items, deduct them from stock, and track loss values.'
-                    )}
-                  </p>
-                </div>
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-rose-500 to-red-600 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                <Trash2 className="w-6 h-6 text-white stroke-[2.2]" />
               </div>
-
-              <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+              <span className={`text-sm sm:text-base font-black transition-colors ${
                 isLight
-                  ? 'border-slate-100 text-rose-700'
-                  : 'border-slate-800/80 text-rose-400'
+                  ? 'text-slate-900 group-hover:text-rose-700'
+                  : 'text-white group-hover:text-rose-300'
               }`}>
-                <span>{t('فتح سجل المواد المتلفة ←', 'کردنەوەی کاڵا تێکچووەکان ←', 'Open Damaged Items Log →')}</span>
-                <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
-                  isLight ? 'bg-rose-100 text-rose-800' : 'bg-rose-500/10 text-rose-300'
-                }`}>
-                  {t('سجل الإتلاف', 'تۆماری تێکچوو', 'Loss Records')}
-                </span>
-              </div>
+                {t('مواد متلفة ومكسورة ومنتهية', 'کاڵای تێکچوو و بەسەرچوو', 'Damaged & Expired Items')}
+              </span>
             </button>
           )}
 
-          {/* Button 6: فواتير ومبيعات (پسوولە و فرۆشتنەکان) */}
+          {/* Button 5: فواتير ومبيعات (پسوولە و فرۆشتنەکان) */}
           {Boolean(onOpenInvoices && canViewInvoices) && (
             <button
               type="button"
               onClick={onOpenInvoices}
-              className={`group relative flex flex-col justify-between p-6 sm:p-7 rounded-3xl border-2 transition-all duration-300 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
                 isLight
-                  ? 'bg-white border-teal-200 hover:border-teal-500 shadow-md hover:shadow-xl'
-                  : 'bg-gradient-to-br from-[#06181B] via-[#0A272B] to-[#041215] border-teal-500/40 hover:border-teal-400 hover:shadow-[0_0_35px_rgba(20,184,166,0.35)]'
+                  ? 'bg-white border-teal-200 hover:border-teal-500 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-br from-[#06181B] to-[#0A272B] border-teal-500/40 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(20,184,166,0.25)]'
               }`}
             >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-teal-500 to-cyan-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(20,184,166,0.4)] group-hover:scale-110 transition-transform">
-                    <Receipt className="w-7 h-7 text-white stroke-[2.2]" />
-                  </div>
-                  <span className={`px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm shadow border ${
-                    isLight
-                      ? 'bg-teal-50 border-teal-200 text-teal-800'
-                      : 'bg-teal-950/80 border-teal-500/40 text-teal-300'
-                  }`}>
-                    {t('فواتير ومبيعات', 'پسوولەی فرۆشتن', 'Sales & Invoices')}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className={`text-lg sm:text-xl font-black transition-colors flex items-center gap-2 ${
-                    isLight
-                      ? 'text-slate-900 group-hover:text-teal-700'
-                      : 'text-white group-hover:text-teal-300'
-                  }`}>
-                    <span>{t('فواتير ومبيعات (سجل المبيعات)', 'فواتیر و مبيعات (پسوولەکان)', 'Invoices & Sales Registry')}</span>
-                  </h3>
-                  <p className={`text-xs sm:text-sm mt-2 leading-relaxed ${
-                    isLight ? 'text-slate-600' : 'text-slate-400'
-                  }`}>
-                    {t(
-                      'استعراض وإدارة جميع فواتير البيع الصادرة، البحث السريع برقم الفاتورة أو العميل، إعادة طباعة الإيصالات، وتتبع المبيعات.',
-                      'بینین و بەڕێوەبردنی تەواوی پسوولەکانی فرۆشتن، گەڕان بە ژمارەی پسوولە، چاپکردنەوەی پسوولە و بەدواداچوونی فرۆش.',
-                      'View and manage all sales invoices, search by invoice number or customer, reprint receipts, and track sales.'
-                    )}
-                  </p>
-                </div>
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-600 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                <Receipt className="w-6 h-6 text-white stroke-[2.2]" />
               </div>
-
-              <div className={`mt-6 pt-4 border-t flex items-center justify-between font-bold text-xs ${
+              <span className={`text-sm sm:text-base font-black transition-colors ${
                 isLight
-                  ? 'border-slate-100 text-teal-700'
-                  : 'border-slate-800/80 text-teal-400'
+                  ? 'text-slate-900 group-hover:text-teal-700'
+                  : 'text-white group-hover:text-teal-300'
               }`}>
-                <span>{t('فتح سجل الفواتير والمبيعات ←', 'کردنەوەی پسوولەکانی فرۆشتن ←', 'Open Sales Invoices →')}</span>
-                <span className={`px-2.5 py-1 rounded-lg font-mono text-[11px] ${
-                  isLight ? 'bg-teal-100 text-teal-800' : 'bg-teal-500/10 text-teal-300'
-                }`}>
-                  {t('سجل الفواتير', 'پسوولەکان', 'Invoices Hub')}
-                </span>
-              </div>
+                {t('فواتير ومبيعات', 'پسوولەکانی فرۆشتن', 'Invoices & Sales')}
+              </span>
             </button>
           )}
 
@@ -681,135 +458,170 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 </span>
               )}
             </button>
+
+            {canManageAudit && (
+              <button
+                onClick={() => setActiveSubView('inventoryAudit')}
+                className={`px-3 py-1.5 rounded-lg font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeSubView === 'inventoryAudit'
+                    ? isLight
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-sm'
+                      : 'bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 text-white shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+                    : isLight
+                      ? 'text-slate-600 hover:text-slate-900'
+                      : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ClipboardCheck className={`w-3.5 h-3.5 ${activeSubView === 'inventoryAudit' ? 'text-white' : 'text-amber-500'}`} />
+                <span>{t('جرد وتدقيق المخزون الفعلي', 'پشکنین و جردی کۆگا', 'Inventory Audit')}</span>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Action Buttons for Catalog View */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Hidden File Input for Importing Products / Backup */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".json, .xlsx, .xls"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
+        {activeSubView !== 'inventoryAudit' && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Hidden File Input for Importing Products / Backup */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json, .xlsx, .xls"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
 
-              try {
-                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                  const excelParsed = await parseExcelBackupFile(file);
-                  if (excelParsed.products && excelParsed.products.length > 0) {
-                    const merged = [...excelParsed.products];
-                    products.forEach((p) => {
-                      if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                        merged.push(p);
-                      }
-                    });
-                    setProducts(merged);
-                    localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
-                    syncBulkWriteCollection('products', merged);
-                    setImportBanner(isAr ? `✅ تم استيراد وترتيب ${excelParsed.products.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${excelParsed.products.length} products!`);
-                    setTimeout(() => setImportBanner(''), 6000);
-                  } else {
-                    alert(isAr ? 'لم يتم العثور على ورقة مواد صالحة في ملف الإكسل!' : 'No valid products sheet found in Excel file!');
-                  }
-                } else {
-                  const reader = new FileReader();
-                  reader.onload = (event) => {
-                    try {
-                      const jsonText = event.target?.result as string;
-                      const parsedData = JSON.parse(jsonText);
-                      const importedProds: Product[] = Array.isArray(parsedData)
-                        ? parsedData
-                        : (parsedData.products && Array.isArray(parsedData.products) ? parsedData.products : []);
-
-                      if (importedProds.length > 0) {
-                        const merged = [...importedProds];
-                        products.forEach((p) => {
-                          if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                            merged.push(p);
-                          }
-                        });
-                        setProducts(merged);
-                        localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
-                        syncBulkWriteCollection('products', merged);
-                        setImportBanner(isAr ? `✅ تم استيراد وترتيب ${importedProds.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${importedProds.length} products!`);
-                        setTimeout(() => setImportBanner(''), 6000);
-                      } else {
-                        alert(isAr ? 'لم يتم العثور على قائمة مواد صالحة في ملف JSON!' : 'No valid products list found in JSON!');
-                      }
-                    } catch (err) {
-                      alert(isAr ? 'ملف JSON غير صالح!' : 'Invalid JSON file!');
+                try {
+                  if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                    const excelParsed = await parseExcelBackupFile(file);
+                    if (excelParsed.products && excelParsed.products.length > 0) {
+                      const merged = [...excelParsed.products];
+                      products.forEach((p) => {
+                        if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
+                          merged.push(p);
+                        }
+                      });
+                      setProducts(merged);
+                      localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
+                      syncBulkWriteCollection('products', merged);
+                      setImportBanner(isAr ? `✅ تم استيراد وترتيب ${excelParsed.products.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${excelParsed.products.length} products!`);
+                      setTimeout(() => setImportBanner(''), 6000);
+                    } else {
+                      alert(isAr ? 'لم يتم العثور على ورقة مواد صالحة في ملف الإكسل!' : 'No valid products sheet found in Excel file!');
                     }
-                  };
-                  reader.readAsText(file);
+                  } else {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      try {
+                        const jsonText = event.target?.result as string;
+                        const parsedData = JSON.parse(jsonText);
+                        const importedProds: Product[] = Array.isArray(parsedData)
+                          ? parsedData
+                          : (parsedData.products && Array.isArray(parsedData.products) ? parsedData.products : []);
+
+                        if (importedProds.length > 0) {
+                          const merged = [...importedProds];
+                          products.forEach((p) => {
+                            if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
+                              merged.push(p);
+                            }
+                          });
+                          setProducts(merged);
+                          localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
+                          syncBulkWriteCollection('products', merged);
+                          setImportBanner(isAr ? `✅ تم استيراد وترتيب ${importedProds.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${importedProds.length} products!`);
+                          setTimeout(() => setImportBanner(''), 6000);
+                        } else {
+                          alert(isAr ? 'لم يتم العثور على قائمة مواد صالحة في ملف JSON!' : 'No valid products list found in JSON!');
+                        }
+                      } catch (err) {
+                        alert(isAr ? 'ملف JSON غير صالح!' : 'Invalid JSON file!');
+                      }
+                    };
+                    reader.readAsText(file);
+                  }
+                } catch (err) {
+                  alert(isAr ? 'حدث خطأ أثناء قراءة الملف!' : 'Error reading file!');
+                } finally {
+                  e.target.value = '';
                 }
-              } catch (err) {
-                alert(isAr ? 'حدث خطأ أثناء قراءة الملف!' : 'Error reading file!');
-              } finally {
-                e.target.value = '';
-              }
-            }}
-          />
+              }}
+            />
 
-          {canEditProducts && (
+            {canEditProducts && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
+                title={t('استيراد مواد أو ملف إكسل للمخزن', 'هێنانی کاڵاکان لە فایلی ئێکسڵ', 'Import products from Excel / JSON file')}
+              >
+                <Upload className="w-3.5 h-3.5 text-blue-100" />
+                <span>{t('استيراد مواد (Excel / JSON)', 'استيراد (Excel / JSON)', 'Import Products')}</span>
+              </button>
+            )}
+
+            {onOpenPrintBarcode && (
+              <button
+                onClick={() => onOpenPrintBarcode(filteredProducts[0] || products[0] || null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border border-amber-400/30"
+                title={t('مولد وتصميم ملصقات الباركود والأسعار', 'دروستکەری ستیکەری بارکۆد و نرخ', 'Barcode & Price Tag Generator')}
+              >
+                <Printer className="w-3.5 h-3.5 text-amber-100" />
+                <span>{t('مولد ملصقات الباركود', 'دروستکەری بارکۆد', 'Barcode Generator')}</span>
+              </button>
+            )}
+
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
-              title={t('استيراد مواد أو ملف إكسل للمخزن', 'هێنانی کاڵاکان لە فایلی ئێکسڵ', 'Import products from Excel / JSON file')}
+              onClick={() => exportProductsToExcel(filteredProducts, `products_list_${new Date().toISOString().split('T')[0]}.xlsx`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
+              title={t('تصدير المواد الحالية إلى ملف إكسل', 'ناردنی کاڵاکان بۆ فایلی ئێکسڵ', 'Export current products to Excel')}
             >
-              <Upload className="w-3.5 h-3.5 text-blue-100" />
-              <span>{t('استيراد مواد (Excel / JSON)', 'استيراد (Excel / JSON)', 'Import Products')}</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+              <span>{t('تصدير إكسل (.xlsx)', 'ناردن بۆ ئێکسڵ (.xlsx)', 'Export Excel')}</span>
             </button>
-          )}
 
-          {onOpenPrintBarcode && (
-            <button
-              onClick={() => onOpenPrintBarcode(filteredProducts[0] || products[0] || null)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border border-amber-400/30"
-              title={t('مولد وتصميم ملصقات الباركود والأسعار', 'دروستکەری ستیکەری بارکۆد و نرخ', 'Barcode & Price Tag Generator')}
-            >
-              <Printer className="w-3.5 h-3.5 text-amber-100" />
-              <span>{t('مولد ملصقات الباركود', 'دروستکەری بارکۆد', 'Barcode Generator')}</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => exportProductsToExcel(filteredProducts, `products_list_${new Date().toISOString().split('T')[0]}.xlsx`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
-            title={t('تصدير المواد الحالية إلى ملف إكسل', 'ناردنی کاڵاکان بۆ فایلی ئێکسڵ', 'Export current products to Excel')}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
-            <span>{t('تصدير إكسل (.xlsx)', 'ناردن بۆ ئێکسڵ (.xlsx)', 'Export Excel')}</span>
-          </button>
-
-          {canEditProducts && (
-            <button
-              onClick={onOpenAddModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('إدخال مادة جديدة', 'زیادکردنی کاڵای نوێ', 'New Product Entry')}</span>
-            </button>
-          )}
-        </div>
+            {canEditProducts && (
+              <button
+                onClick={onOpenAddModal}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white text-xs font-bold shadow hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('إدخال مادة جديدة', 'زیادکردنی کاڵای نوێ', 'New Product Entry')}</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Import Notification Banner */}
-      {importBanner && (
-        <div className="p-3 bg-emerald-900/60 border border-emerald-500/50 rounded-2xl text-emerald-200 text-xs font-bold flex items-center justify-between shadow-lg animate-fadeIn">
-          <span>{importBanner}</span>
-          <button onClick={() => setImportBanner('')} className="text-emerald-400 font-black hover:text-white">✕</button>
-        </div>
+      {/* View 3: Dedicated Physical Inventory Audit Sub-View (واجهة الجرد ومطابقة الأرصدة) */}
+      {activeSubView === 'inventoryAudit' && (
+        <InventoryAuditView
+          products={products}
+          setProducts={setProducts}
+          settings={settings}
+          currentUser={currentUser}
+          onBackToWarehouse={() => setActiveSubView('catalog')}
+          onNavigateToReports={onNavigateToReports}
+        />
       )}
 
-      {/* Streamlined Search & Optional Category Filter Bar */}
-      <div className={`p-3.5 rounded-2xl border space-y-2.5 transition-all ${
-        isLight
-          ? 'bg-white border-slate-200 shadow-sm'
-          : 'bg-[#10192D] border-blue-500/20 shadow-md'
-      }`}>
+      {/* Catalog & Stock Status Search + Views */}
+      {activeSubView !== 'inventoryAudit' && (
+        <>
+          {/* Import Notification Banner */}
+          {importBanner && (
+            <div className="p-3 bg-emerald-900/60 border border-emerald-500/50 rounded-2xl text-emerald-200 text-xs font-bold flex items-center justify-between shadow-lg animate-fadeIn">
+              <span>{importBanner}</span>
+              <button onClick={() => setImportBanner('')} className="text-emerald-400 font-black hover:text-white">✕</button>
+            </div>
+          )}
+
+          {/* Streamlined Search & Optional Category Filter Bar */}
+          <div className={`p-3.5 rounded-2xl border space-y-2.5 transition-all ${
+            isLight
+              ? 'bg-white border-slate-200 shadow-sm'
+              : 'bg-[#10192D] border-blue-500/20 shadow-md'
+          }`}>
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           
           {/* Search Box */}
@@ -1592,15 +1404,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           </div>
         </div>
       )}
-
-      {/* Inventory Audit Modal */}
-      <InventoryAuditModal
-        isOpen={isAuditOpen}
-        onClose={() => setIsAuditOpen(false)}
-        products={products}
-        setProducts={setProducts}
-        settings={settings}
-      />
+      </>
+      )}
 
     </div>
   );

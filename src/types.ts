@@ -375,4 +375,46 @@ export interface ExpenseCategory {
   isCustom?: boolean;
 }
 
+export interface InventoryAuditItem {
+  productId: string;
+  productName: string;
+  barcode: string;
+  unitsPerCarton: number;
+  systemUnits: number;
+  systemCartons: number;
+  marketUnits: number;
+  warehouseUnits: number;
+  actualUnits: number;
+  actualCartons: number;
+  diffUnits: number;
+  diffCartons: number;
+  unitCost: number;
+  unitPrice: number;
+  financialVariance: number;
+  status: 'match' | 'deficit' | 'surplus';
+}
+
+export interface InventoryAuditSession {
+  id: string;
+  sessionNumber: string;
+  timestamp: string;
+  date: string;
+  time: string;
+  auditorName: string;
+  totalProductsAudited: number;
+  matchedCount: number;
+  discrepancyCount: number;
+  deficitCount: number;
+  surplusCount: number;
+  totalSystemUnits: number;
+  totalActualUnits: number;
+  totalSystemCartons: number;
+  totalActualCartons: number;
+  netUnitVariance: number;
+  netCartonVariance: number;
+  totalFinancialVariance: number;
+  items: InventoryAuditItem[];
+  notes?: string;
+}
+
 

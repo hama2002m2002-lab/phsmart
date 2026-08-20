@@ -15,6 +15,7 @@ import { AnalyticsTab } from './components/AnalyticsTab';
 import { ReportsTab } from './components/ReportsTab';
 import { NotificationsTab } from './components/NotificationsTab';
 import { SettingsTab } from './components/SettingsTab';
+import { PrintCenterTab } from './components/PrintCenterTab';
 import { AccountsHubTab } from './components/AccountsHubTab';
 import { LoginScreen } from './components/LoginScreen';
 import { ReceiptModal } from './components/ReceiptModal';
@@ -166,6 +167,7 @@ export function App() {
   const [isAccountsModalOpen, setIsAccountsModalOpen] = useState(false);
   const [isYellowLineModalOpen, setIsYellowLineModalOpen] = useState(false);
   const [isReportsFullscreen, setIsReportsFullscreen] = useState(false);
+  const [isInventoryAuditOpen, setIsInventoryAuditOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
@@ -767,6 +769,7 @@ export function App() {
             products={products}
             setProducts={setProducts}
             settings={settings}
+            currentUser={currentUser}
             onOpenAddModal={handleOpenAddProduct}
             onEditProduct={handleEditProduct}
             onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
@@ -777,6 +780,7 @@ export function App() {
             onOpenInventoryAudit={() => setActiveTab('inventoryAudit')}
             onOpenDamagedItems={() => setActiveTab('damagedItems')}
             onOpenInvoices={() => setActiveTab('invoices')}
+            onNavigateToReports={() => setActiveTopTab('reports')}
           />
         );
 
@@ -836,7 +840,7 @@ export function App() {
       case 'permissions':
         return (
           <AccountsHubTab
-            initialSubTab={activeTab === 'permissions' ? 'settings' : 'hub'}
+            initialSubTab={activeTab === 'permissions' ? 'permissions' : 'hub'}
             settings={settings}
             setSettings={setSettings}
             currentUser={currentUser}
@@ -968,6 +972,7 @@ export function App() {
             onOpenAccountsModal={() => setIsAccountsModalOpen(true)}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onOpenDamagedItemsModal={() => setActiveTab('damagedItems')}
+            onOpenInventoryAudit={() => setIsInventoryAuditOpen(true)}
             onToggleFullscreen={(isFull) => setIsReportsFullscreen(isFull)}
             onBackToDashboard={() => {
               setActiveTopTab('overview');
@@ -1022,6 +1027,16 @@ export function App() {
               setSalesReturnPreInvoiceNo(sale.invoiceNumber);
               setIsSalesReturnOpen(true);
             }}
+          />
+        );
+
+      case 'print':
+        return (
+          <PrintCenterTab
+            products={products}
+            setProducts={setProducts}
+            settings={settings}
+            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
         );
 
@@ -1381,6 +1396,14 @@ export function App() {
         }}
         onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
         onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
+      />
+
+      <InventoryAuditModal
+        isOpen={isInventoryAuditOpen}
+        onClose={() => setIsInventoryAuditOpen(false)}
+        products={products}
+        setProducts={setProducts}
+        settings={settings}
       />
 
     </div>
