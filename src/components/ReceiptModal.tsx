@@ -880,9 +880,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                     <div className="space-y-2 py-1">
                       {safeItems.map((item, idx) => (
                         <div key={idx} className="space-y-0.5 border-b border-slate-800/60 pb-1.5">
-                          <div className="flex justify-between text-white font-bold text-xs font-sans">
-                            <span className="truncate max-w-[190px]">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</span>
-                            <span className="font-mono text-emerald-400">{settings.currencySymbol}{formatNumber(item.total)}</span>
+                          <div className="flex justify-between items-start text-white font-bold text-xs font-sans">
+                            <div>
+                              <span className="truncate max-w-[190px] inline-block">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</span>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 inline-block mx-1 font-sans">
+                                {item.saleType === 'carton' 
+                                  ? t('كرتون', 'کارتۆن', 'Carton') 
+                                  : item.saleType === 'wholesale' 
+                                  ? t('جملة', 'کۆ', 'Wholesale') 
+                                  : item.saleType === 'blister' 
+                                  ? t('شريط', 'شریت', 'Strip') 
+                                  : t('مفرد', 'تاک', 'Unit')}
+                              </span>
+                            </div>
+                            <span className="font-mono text-emerald-400 shrink-0">{settings.currencySymbol}{formatNumber(item.total)}</span>
                           </div>
                           {item.dosageInstruction && (
                             <div className="text-[10px] text-cyan-300 font-medium italic">

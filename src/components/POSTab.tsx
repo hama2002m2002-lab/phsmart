@@ -974,11 +974,13 @@ export const POSTab: React.FC<POSTabProps> = ({
             productId: i.product.id,
             productName: i.product.name,
             productNameAr: i.product.nameAr,
+            productNameKu: i.product.nameKu || i.product.nameAr,
             price: itemUnitPrice,
             quantity: i.quantity,
             saleType: i.saleType,
             total: itemUnitPrice * i.quantity,
-            addedAtTime: i.addedAtTime || formatDisplayTime(new Date(), settings.language)
+            addedAtTime: i.addedAtTime || formatDisplayTime(new Date(), settings.language),
+            dosageInstruction: i.dosageInstruction
           };
         }),
         returnedItems: cart.map(i => {
@@ -987,6 +989,7 @@ export const POSTab: React.FC<POSTabProps> = ({
             productId: i.product.id,
             productName: i.product.name,
             productNameAr: i.product.nameAr,
+            productNameKu: i.product.nameKu || i.product.nameAr,
             price: itemUnitPrice,
             quantity: i.quantity,
             saleType: i.saleType,
@@ -999,10 +1002,10 @@ export const POSTab: React.FC<POSTabProps> = ({
         discount: discountAmount,
         total: -Math.abs(grandTotal),
         paymentMethod,
-        customerName: prescriptionInfo.patientName || (isAr ? 'زبون إرجاع (مرتجع)' : 'Return Customer'),
+        customerName: prescriptionInfo.patientName || (isKu ? 'کڕیاری گەڕاندنەوە' : isAr ? 'زبون إرجاع (مرتجع)' : 'Return Customer'),
         amountTendered: 0,
         changeDue: 0,
-        cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+        cashierName: currentUser?.fullName || currentUser?.username || (isKu ? 'کاشێر' : isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
         status: 'refunded'
       };
 
@@ -1029,7 +1032,7 @@ export const POSTab: React.FC<POSTabProps> = ({
         currencySymbol: settings.currencySymbol || 'د.ع',
         phone: settings.phone,
         address: settings.address,
-        cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+        cashierName: currentUser?.fullName || currentUser?.username || (isKu ? 'کاشێر' : isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
         completedSale: {
           invoiceNumber: returnInvoiceNo,
           total: -Math.abs(grandTotal),
@@ -1041,10 +1044,6 @@ export const POSTab: React.FC<POSTabProps> = ({
         },
         lastUpdated: Date.now(),
       });
-
-      if (onViewReceipt) {
-        onViewReceipt(returnSale);
-      }
 
       if (options?.shouldPrintReceipt) {
         try {
@@ -1112,6 +1111,7 @@ export const POSTab: React.FC<POSTabProps> = ({
           productId: i.product.id,
           productName: i.product.name,
           productNameAr: i.product.nameAr,
+          productNameKu: i.product.nameKu || i.product.nameAr,
           price: itemUnitPrice,
           quantity: i.quantity,
           saleType: i.saleType,
@@ -1125,10 +1125,10 @@ export const POSTab: React.FC<POSTabProps> = ({
       discount: discountAmount,
       total: grandTotal,
       paymentMethod,
-      customerName: prescriptionInfo.patientName || (isAr ? 'زبون عام (كاش)' : 'Walk-in Customer'),
+      customerName: prescriptionInfo.patientName || (isKu ? 'کڕیاری گشتی (نەقد)' : isAr ? 'زبون عام (كاش)' : 'Walk-in Customer'),
       amountTendered: paymentMethod === 'cash' && cashTendered > 0 ? cashTendered : grandTotal,
       changeDue: paymentMethod === 'cash' && cashTendered > grandTotal ? changeDue : 0,
-      cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+      cashierName: currentUser?.fullName || currentUser?.username || (isKu ? 'کاشێر' : isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
       status: 'completed'
     };
 
@@ -1155,7 +1155,7 @@ export const POSTab: React.FC<POSTabProps> = ({
       currencySymbol: settings.currencySymbol || 'د.ع',
       phone: settings.phone,
       address: settings.address,
-      cashierName: currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
+      cashierName: currentUser?.fullName || currentUser?.username || (isKu ? 'کاشێر' : isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
       completedSale: {
         invoiceNumber,
         total: grandTotal,

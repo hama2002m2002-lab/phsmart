@@ -57,8 +57,14 @@ import {
   syncDeleteDocument, 
   syncBulkWriteCollection 
 } from './lib/firestoreSync';
+import {
+  localDbBulkPut,
+  localDbSetKV,
+  localDbGetKV,
+  localDbGetAll
+} from './lib/localDb';
 
-// Custom persistent state hook to keep data in localStorage across updates & reloads
+// Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
     try {
@@ -72,15 +78,35 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
     return initialValue;
   });
 
+  // Async IndexedDB hydration check (for large data exceeding 5MB)
+  useEffect(() => {
+    localDbGetKV<T>(key, initialValue).then((val) => {
+      if (val !== undefined && val !== null) {
+        if (Array.isArray(val) && val.length > 0) {
+          setState((prev) => {
+            if (Array.isArray(prev) && prev.length === 0) return val;
+            return prev;
+          });
+        }
+      }
+    }).catch(() => {});
+  }, [key]);
+
   useEffect(() => {
     try {
       if (state === undefined) {
         localStorage.removeItem(key);
       } else {
-        localStorage.setItem(key, JSON.stringify(state));
+        try {
+          localStorage.setItem(key, JSON.stringify(state));
+        } catch {
+          // If localStorage quota (5MB) is exceeded, silently rely on IndexedDB
+        }
+        // Always persist in High-Capacity IndexedDB KV store
+        localDbSetKV(key, state);
       }
     } catch (err) {
-      console.warn(`Failed to save to localStorage key "${key}":`, err);
+      console.warn(`Failed to save key "${key}":`, err);
     }
   }, [key, state]);
 
@@ -438,58 +464,66 @@ export function App() {
     let restoredCount = 0;
     if (backup.products && Array.isArray(backup.products)) {
       setProducts(backup.products);
-      localStorage.setItem('supermarket_products_v1', JSON.stringify(backup.products));
+      try { localStorage.setItem('supermarket_products_v1', JSON.stringify(backup.products)); } catch {}
+      localDbBulkPut('products', backup.products);
       syncBulkWriteCollection('products', backup.products);
       restoredCount++;
     }
     const salesData = backup.salesHistory || backup.sales;
     if (salesData && Array.isArray(salesData)) {
       setSalesHistory(salesData);
-      localStorage.setItem('supermarket_sales_v1', JSON.stringify(salesData));
+      try { localStorage.setItem('supermarket_sales_v1', JSON.stringify(salesData)); } catch {}
+      localDbBulkPut('sales', salesData);
       syncBulkWriteCollection('sales', salesData);
       restoredCount++;
     }
     if (backup.suppliers && Array.isArray(backup.suppliers)) {
       setSuppliers(backup.suppliers);
-      localStorage.setItem('supermarket_suppliers_v1', JSON.stringify(backup.suppliers));
+      try { localStorage.setItem('supermarket_suppliers_v1', JSON.stringify(backup.suppliers)); } catch {}
+      localDbBulkPut('suppliers', backup.suppliers);
       syncBulkWriteCollection('suppliers', backup.suppliers);
       restoredCount++;
     }
     if (backup.customers && Array.isArray(backup.customers)) {
       setCustomers(backup.customers);
-      localStorage.setItem('supermarket_customers_v1', JSON.stringify(backup.customers));
+      try { localStorage.setItem('supermarket_customers_v1', JSON.stringify(backup.customers)); } catch {}
+      localDbBulkPut('customers', backup.customers);
       syncBulkWriteCollection('customers', backup.customers);
       restoredCount++;
     }
     if (backup.orders && Array.isArray(backup.orders)) {
       setOrders(backup.orders);
-      localStorage.setItem('supermarket_orders_v1', JSON.stringify(backup.orders));
+      try { localStorage.setItem('supermarket_orders_v1', JSON.stringify(backup.orders)); } catch {}
+      localDbBulkPut('orders', backup.orders);
       syncBulkWriteCollection('orders', backup.orders);
       restoredCount++;
     }
     if (backup.notifications && Array.isArray(backup.notifications)) {
       setNotifications(backup.notifications);
-      localStorage.setItem('supermarket_notifications_v1', JSON.stringify(backup.notifications));
+      try { localStorage.setItem('supermarket_notifications_v1', JSON.stringify(backup.notifications)); } catch {}
+      localDbBulkPut('notifications', backup.notifications);
       syncBulkWriteCollection('notifications', backup.notifications);
       restoredCount++;
     }
     const purchasesData = backup.purchaseInvoices || backup.purchases;
     if (purchasesData && Array.isArray(purchasesData)) {
       setPurchaseInvoices(purchasesData);
-      localStorage.setItem('supermarket_purchases_v1', JSON.stringify(purchasesData));
+      try { localStorage.setItem('supermarket_purchases_v1', JSON.stringify(purchasesData)); } catch {}
+      localDbBulkPut('purchases', purchasesData);
       syncBulkWriteCollection('purchases', purchasesData);
       restoredCount++;
     }
     const usersData = backup.userAccounts || backup.users;
     if (usersData && Array.isArray(usersData)) {
       setUserAccounts(usersData);
-      localStorage.setItem('supermarket_user_accounts_v3', JSON.stringify(usersData));
+      try { localStorage.setItem('supermarket_user_accounts_v3', JSON.stringify(usersData)); } catch {}
+      localDbBulkPut('users', usersData);
       syncBulkWriteCollection('users', usersData);
       restoredCount++;
     }
     if (backup.settings && typeof backup.settings === 'object') {
       setSettings(backup.settings);
-      localStorage.setItem('supermarket_settings_v3', JSON.stringify(backup.settings));
+      try { localStorage.setItem('supermarket_settings_v3', JSON.stringify(backup.settings)); } catch {}
       syncWriteDocument('settings', 'store', backup.settings);
       restoredCount++;
     }

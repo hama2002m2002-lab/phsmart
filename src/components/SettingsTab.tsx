@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck } from 'lucide-react';
 import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount } from '../types';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { DatabaseStorageModal } from './DatabaseStorageModal';
 import { getTranslation } from '../lib/translations';
 import { exportStoreToExcel, exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
@@ -46,6 +47,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   // POS Keyboard Shortcuts Modal State
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isDbStorageModalOpen, setIsDbStorageModalOpen] = useState(false);
 
   const handleChange = (field: keyof StoreSettings, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -385,10 +387,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <Database className="w-4 h-4 text-emerald-400" />
               <span>{isKu ? 'پاشەکەوتکردن و هاوردە/هەناردەی گشتی داتاکان' : isAr ? 'النسخ الاحتياطي وإدارة تصدير واستيراد بيانات المنظومة' : 'Data Backup, Export & Import Management'}</span>
             </h3>
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{isKu ? 'سیستەمی پاراستنی داتا' : isAr ? 'نظام الحفظ المتكامل' : 'Safe Storage'}</span>
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDbStorageModalOpen(true)}
+                className="text-xs px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-cyan-400/40"
+              >
+                <Database className="w-3.5 h-3.5 text-cyan-200" />
+                <span>{isKu ? '💾 ناوەندی داتابەیسی ناوخۆیی (IndexedDB)' : isAr ? '💾 محرك قاعدة البيانات وسعة التخزين' : '💾 Local Database & Storage Engine'}</span>
+              </button>
+
+              <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isKu ? 'سیستەمی پاراستنی داتا' : isAr ? 'نظام الحفظ المتكامل' : 'Safe Storage'}</span>
+              </span>
+            </div>
           </div>
 
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#0B1528] to-[#070D18] border border-blue-500/30 shadow-xl space-y-4">
@@ -645,6 +658,23 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
       </div>
+
+      {/* POS Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+        settings={settings}
+      />
+
+      {/* High-Capacity Local Database & Storage Engine Modal */}
+      <DatabaseStorageModal
+        isOpen={isDbStorageModalOpen}
+        onClose={() => setIsDbStorageModalOpen(false)}
+        settings={settings}
+        onDataRestored={() => {
+          window.location.reload();
+        }}
+      />
 
     </div>
   );

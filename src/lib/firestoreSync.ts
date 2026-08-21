@@ -7,6 +7,13 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { 
+  localDbGetAll, 
+  localDbPut, 
+  localDbDelete, 
+  localDbBulkPut, 
+  StoreName 
+} from './localDb';
 
 const API_BASE = '/api';
 
@@ -32,8 +39,7 @@ async function fastFetch(url: string, options: RequestInit = {}, timeoutMs = 400
 }
 
 /**
- * Real-time Firebase Firestore collection subscription.
- * Uses persistent IndexedDB local cache instantly, never blocking offline startup.
+ * Real-time Firebase Firestore collection subscription with Instant IndexedDB Local Pre-loading
  */
 export function subscribeToCollection<T extends { id?: string }>(
   collectionName: string,
@@ -43,8 +49,15 @@ export function subscribeToCollection<T extends { id?: string }>(
   let isMounted = true;
   let hasReceivedData = false;
 
+  // 1. Instant Local IndexedDB Load (0ms offline load for 100,000+ items)
+  localDbGetAll<T>(collectionName as StoreName).then((localItems) => {
+    if (isMounted && !hasReceivedData && localItems && localItems.length > 0) {
+      hasReceivedData = true;
+      onData(localItems);
+    }
+  }).catch(() => {});
+
   const fetchLocalFallback = async () => {
-    // Only attempt if mounted and no data received
     if (!isMounted || hasReceivedData) return;
     try {
       const res = await fastFetch(`${API_BASE}/${collectionName}`);
@@ -53,14 +66,15 @@ export function subscribeToCollection<T extends { id?: string }>(
         if (Array.isArray(items) && items.length > 0) {
           hasReceivedData = true;
           onData(items);
+          localDbBulkPut(collectionName as StoreName, items).catch(() => {});
         }
       }
     } catch {
-      // Offline fallback silently continues using React's localStorage state
+      // Handled silently
     }
   };
 
-  // Set up real-time Firebase Firestore listener with IndexedDB cache priority
+  // 2. Set up real-time Firebase Firestore listener with IndexedDB cache priority
   try {
     const colRef = collection(db, collectionName);
     const unsubscribeFirestore = onSnapshot(
@@ -76,6 +90,8 @@ export function subscribeToCollection<T extends { id?: string }>(
         if (items.length > 0) {
           hasReceivedData = true;
           onData(items);
+          // Mirror immediately to high-capacity local IndexedDB
+          localDbBulkPut(collectionName as StoreName, items).catch(() => {});
         } else if (!hasReceivedData && initialFallbackData && initialFallbackData.length > 0) {
           // If empty and online, populate initial data quietly
           if (typeof navigator !== 'undefined' && navigator.onLine) {
@@ -126,6 +142,7 @@ export function subscribeToDocument<T>(
         if (docSnap.exists()) {
           const data = docSnap.data() as T;
           onData(data);
+          localDbPut(collectionName as StoreName, { ...(data as any), id: documentId }).catch(() => {});
         }
       },
       (error) => {
@@ -145,7 +162,7 @@ export function subscribeToDocument<T>(
 }
 
 /**
- * Write/Update a document in Firebase Firestore online and backup to local REST API
+ * Write/Update a document in High-Capacity IndexedDB, Firebase Firestore, and Local REST API
  */
 export async function syncWriteDocument(collectionName: string, docId: string, data: any) {
   if (!docId && data?.id) {
@@ -157,7 +174,14 @@ export async function syncWriteDocument(collectionName: string, docId: string, d
 
   const payload = { ...data, id: docId };
 
-  // Write to Firestore (IndexedDB persistence handles offline instantly)
+  // 1. High-Capacity Local IndexedDB Save (Immediate & Unlimited Capacity)
+  try {
+    await localDbPut(collectionName as StoreName, payload);
+  } catch (err) {
+    console.warn('[LocalDB Write Error]', err);
+  }
+
+  // 2. Write to Firestore (Cloud sync & offline persistent cache)
   try {
     const docRef = doc(db, collectionName, docId);
     await setDoc(docRef, payload, { merge: true });
@@ -165,7 +189,7 @@ export async function syncWriteDocument(collectionName: string, docId: string, d
     // Handled by local persistence
   }
 
-  // Non-blocking local API backup
+  // 3. Non-blocking local API backup
   fastFetch(`${API_BASE}/${collectionName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -174,25 +198,34 @@ export async function syncWriteDocument(collectionName: string, docId: string, d
 }
 
 /**
- * Delete a document from Firebase Firestore online
+ * Delete a document from High-Capacity IndexedDB, Firebase Firestore, and Local REST API
  */
 export async function syncDeleteDocument(collectionName: string, docId: string) {
   if (!docId) return;
 
+  // 1. Delete from Local IndexedDB
+  try {
+    await localDbDelete(collectionName as StoreName, docId);
+  } catch (err) {
+    console.warn('[LocalDB Delete Error]', err);
+  }
+
+  // 2. Delete from Firestore
   try {
     const docRef = doc(db, collectionName, docId);
     await deleteDoc(docRef);
-  } catch {
+  } catch (err) {
     // Handled by local persistence
   }
 
+  // 3. Delete from Local REST API
   fastFetch(`${API_BASE}/${collectionName}/${docId}`, {
     method: 'DELETE'
   }).catch(() => {});
 }
 
 /**
- * Bulk write items to Firebase Firestore in batches
+ * Bulk write items to High-Capacity IndexedDB, Firebase Firestore in batches
  */
 export async function syncBulkWriteCollection<T extends { id?: string }>(
   collectionName: string,
@@ -200,6 +233,14 @@ export async function syncBulkWriteCollection<T extends { id?: string }>(
 ) {
   if (!items || items.length === 0) return;
 
+  // 1. Instant High-Capacity Local IndexedDB Bulk Save
+  try {
+    await localDbBulkPut(collectionName as StoreName, items);
+  } catch (err) {
+    console.warn('[LocalDB Bulk Put Error]', err);
+  }
+
+  // 2. Write to Firestore in batches
   try {
     const batch = writeBatch(db);
     let count = 0;

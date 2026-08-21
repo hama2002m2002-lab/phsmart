@@ -107,6 +107,7 @@ export interface SaleTransaction {
     productId: string;
     productName: string;
     productNameAr: string;
+    productNameKu?: string;
     price: number;
     quantity: number;
     saleType?: SaleUnitType;
