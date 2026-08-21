@@ -11,8 +11,29 @@ import { db } from './firebase';
 const API_BASE = '/api';
 
 /**
+ * Fast non-blocking fetch with short timeout to prevent UI lag in offline mode
+ */
+async function fastFetch(url: string, options: RequestInit = {}, timeoutMs = 400): Promise<Response | null> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch {
+    clearTimeout(id);
+    return null;
+  }
+}
+
+/**
  * Real-time Firebase Firestore collection subscription.
- * Listens for live updates across all connected devices and tabs online.
+ * Uses persistent IndexedDB local cache instantly, never blocking offline startup.
  */
 export function subscribeToCollection<T extends { id?: string }>(
   collectionName: string,
@@ -20,27 +41,26 @@ export function subscribeToCollection<T extends { id?: string }>(
   initialFallbackData?: T[]
 ): () => void {
   let isMounted = true;
-  let hasReceivedCloudData = false;
+  let hasReceivedData = false;
 
   const fetchLocalFallback = async () => {
+    // Only attempt if mounted and no data received
+    if (!isMounted || hasReceivedData) return;
     try {
-      const res = await fetch(`${API_BASE}/${collectionName}`);
-      if (res.ok && isMounted) {
+      const res = await fastFetch(`${API_BASE}/${collectionName}`);
+      if (res && res.ok && isMounted) {
         const items = await res.json();
         if (Array.isArray(items) && items.length > 0) {
+          hasReceivedData = true;
           onData(items);
-        } else if (initialFallbackData) {
-          onData(initialFallbackData);
         }
       }
     } catch {
-      if (isMounted && initialFallbackData) {
-        onData(initialFallbackData);
-      }
+      // Offline fallback silently continues using React's localStorage state
     }
   };
 
-  // Set up real-time Firebase Firestore listener
+  // Set up real-time Firebase Firestore listener with IndexedDB cache priority
   try {
     const colRef = collection(db, collectionName);
     const unsubscribeFirestore = onSnapshot(
@@ -54,18 +74,20 @@ export function subscribeToCollection<T extends { id?: string }>(
         });
 
         if (items.length > 0) {
-          hasReceivedCloudData = true;
+          hasReceivedData = true;
           onData(items);
-        } else if (!hasReceivedCloudData && initialFallbackData && initialFallbackData.length > 0) {
-          onData(initialFallbackData);
-          syncBulkWriteCollection(collectionName, initialFallbackData).catch(() => {});
-        } else if (hasReceivedCloudData) {
+        } else if (!hasReceivedData && initialFallbackData && initialFallbackData.length > 0) {
+          // If empty and online, populate initial data quietly
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+            syncBulkWriteCollection(collectionName, initialFallbackData).catch(() => {});
+          }
+        } else if (hasReceivedData) {
           onData([]);
         }
       },
       (error) => {
-        console.warn(`[Online Cloud Sync] Firestore listener for ${collectionName}:`, error);
-        if (!hasReceivedCloudData && isMounted && initialFallbackData) {
+        console.warn(`[Firestore Offline Note] Collection ${collectionName}:`, error?.message || error);
+        if (!hasReceivedData && isMounted) {
           fetchLocalFallback();
         }
       }
@@ -76,7 +98,7 @@ export function subscribeToCollection<T extends { id?: string }>(
       unsubscribeFirestore();
     };
   } catch (err) {
-    console.warn(`[Online Cloud Sync Setup Error] ${collectionName}:`, err);
+    console.warn(`[Firestore Offline Init Note] ${collectionName}:`, err);
     fetchLocalFallback();
     return () => {
       isMounted = false;
@@ -104,16 +126,10 @@ export function subscribeToDocument<T>(
         if (docSnap.exists()) {
           const data = docSnap.data() as T;
           onData(data);
-        } else if (initialFallbackData) {
-          onData(initialFallbackData);
-          syncWriteDocument(collectionName, documentId, initialFallbackData).catch(() => {});
         }
       },
       (error) => {
-        console.warn(`[Online Cloud Sync] Firestore doc listener for ${collectionName}/${documentId}:`, error);
-        if (isMounted && initialFallbackData) {
-          onData(initialFallbackData);
-        }
+        console.warn(`[Firestore Offline Note] Doc ${collectionName}/${documentId}:`, error?.message || error);
       }
     );
 
@@ -122,9 +138,6 @@ export function subscribeToDocument<T>(
       unsubscribeDoc();
     };
   } catch {
-    if (initialFallbackData) {
-      onData(initialFallbackData);
-    }
     return () => {
       isMounted = false;
     };
@@ -144,24 +157,20 @@ export async function syncWriteDocument(collectionName: string, docId: string, d
 
   const payload = { ...data, id: docId };
 
-  // Write online to Firestore
+  // Write to Firestore (IndexedDB persistence handles offline instantly)
   try {
     const docRef = doc(db, collectionName, docId);
     await setDoc(docRef, payload, { merge: true });
   } catch (err) {
-    console.warn(`[Online Cloud Write Note] ${collectionName}/${docId}:`, err);
+    // Handled by local persistence
   }
 
-  // Also backup to local REST API / SQLite
-  try {
-    await fetch(`${API_BASE}/${collectionName}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-  } catch {
-    // Ignore
-  }
+  // Non-blocking local API backup
+  fastFetch(`${API_BASE}/${collectionName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
 }
 
 /**
@@ -173,17 +182,13 @@ export async function syncDeleteDocument(collectionName: string, docId: string) 
   try {
     const docRef = doc(db, collectionName, docId);
     await deleteDoc(docRef);
-  } catch (err) {
-    console.warn(`[Online Cloud Delete Note] ${collectionName}/${docId}:`, err);
+  } catch {
+    // Handled by local persistence
   }
 
-  try {
-    await fetch(`${API_BASE}/${collectionName}/${docId}`, {
-      method: 'DELETE'
-    });
-  } catch {
-    // Ignore
-  }
+  fastFetch(`${API_BASE}/${collectionName}/${docId}`, {
+    method: 'DELETE'
+  }).catch(() => {});
 }
 
 /**
@@ -215,6 +220,6 @@ export async function syncBulkWriteCollection<T extends { id?: string }>(
       await batch.commit();
     }
   } catch (err) {
-    console.warn(`[Online Cloud Bulk Write Note] ${collectionName}:`, err);
+    // Handled by local persistence
   }
 }

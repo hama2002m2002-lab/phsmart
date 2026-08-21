@@ -1,5 +1,12 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, enableIndexedDbPersistence, doc, getDocFromServer } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager, 
+  doc, 
+  getDocFromServer 
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import localConfig from '../../firebase-applet-config.json';
 
@@ -17,24 +24,21 @@ const firebaseConfig = {
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore DB with exact configured database ID
+// Initialize Firestore DB with persistent IndexedDB multi-tab local cache for instant offline startup
 const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || localConfig.firestoreDatabaseId || '').trim();
-export const db = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
 
-// Enable IndexedDB Local Persistence for Hybrid Offline-First Storage
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err: any) => {
-    if (err?.code === 'failed-precondition') {
-      // Multiple tabs open, persistence can only be enabled in one tab at a time.
-      console.warn('Firestore persistence notice: Multiple tabs open');
-    } else if (err?.code === 'unimplemented') {
-      // The current browser does not support all of the features required to enable persistence
-      console.warn('Firestore persistence not supported by browser');
-    } else {
-      console.warn('Firestore persistence notice:', err);
-    }
-  });
+let firestoreInstance;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  }, firestoreDbId || undefined);
+} catch {
+  firestoreInstance = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
 }
+
+export const db = firestoreInstance;
 
 export const auth = getAuth(app);
 
