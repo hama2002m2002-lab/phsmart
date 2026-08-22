@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { 
-  Printer, Tag, Barcode, Search, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, RefreshCw, Layers
+  Printer, Tag, Barcode, Search, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, RefreshCw, Layers, Zap, Download, Laptop
 } from 'lucide-react';
 import { Product, StoreSettings } from '../types';
 import { BarcodePrintModal } from './BarcodePrintModal';
+import { KioskPrintModal } from './KioskPrintModal';
+import { downloadKioskPrintingBatchFile } from '../lib/thermalPrinter';
 
 interface PrintCenterTabProps {
   products: Product[];
@@ -25,6 +27,7 @@ export const PrintCenterTab: React.FC<PrintCenterTabProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'price' | 'barcode' | 'no_barcode'>('barcode');
   const [selectedProductForModal, setSelectedProductForModal] = useState<Product | null>(null);
+  const [showKioskModal, setShowKioskModal] = useState(false);
 
   // Products without barcodes
   const productsWithoutBarcode = products.filter(p => !p.barcode || p.barcode.trim() === '');
@@ -100,16 +103,74 @@ export const PrintCenterTab: React.FC<PrintCenterTabProps> = ({
           </div>
         </div>
 
-        {onBackToDashboard && (
+        <div className="flex items-center gap-2">
+          {/* Direct Silent Print Guide Launcher Button */}
           <button
             type="button"
-            onClick={onBackToDashboard}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+            onClick={() => setShowKioskModal(true)}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 hover:brightness-110 text-white text-xs font-bold transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(6,182,212,0.3)] cursor-pointer"
           >
-            {isAr || isKu ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-            <span>{isKu ? 'گەڕانەوە' : isAr ? 'رجوع' : 'Back'}</span>
+            <Zap className="w-4 h-4 text-cyan-200 animate-pulse" />
+            <span>{isKu ? 'چاپی صامت (لابردنی پەنجەرە)' : isAr ? '⚡ دليل الطباعة الصامتة (إلغاء نافذة المتصفح)' : '⚡ Silent POS Printing Guide'}</span>
           </button>
-        )}
+
+          {onBackToDashboard && (
+            <button
+              type="button"
+              onClick={onBackToDashboard}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+            >
+              {isAr || isKu ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+              <span>{isKu ? 'گەڕانەوە' : isAr ? 'رجوع' : 'Back'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* DIRECT INSTANT SILENT PRINTING PROMINENT HERO BANNER */}
+      <div className="cyber-card p-4 sm:p-5 rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-r from-[#071328] via-[#0B1B38] to-[#082032] shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="p-3 rounded-2xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+            <Zap className="w-6 h-6 animate-pulse text-cyan-300" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm sm:text-base font-black text-white">
+                {isKu ? '⚡ چارەسەری چاپی ڕاستەوخۆ و لابردنی پەنجەرەی گۆگڵ کرۆم' : isAr ? '⚡ تفعيل الطباعة الصامتة الفورية وإلغاء نافذة معاينة Google Chrome نهائياً' : '⚡ Instant Silent POS Printing (Eliminate Chrome Dialog)'}
+              </h3>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold">
+                0.1s Fast Print
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-3xl">
+              {isKu
+                ? 'پەڕگەی مشغلی (.bat) دابەزێنە بۆ لابتۆپەکەت یان پرنتەرەکە لە ڕێگەی کێبڵی USB ببەستەرەوە تا وەسڵەکان دەستبەجێ بەبێ کردنەوەی هیچ پەنجەرەیەک چاپ ببن.'
+                : isAr
+                ? 'قم بتحميل ملف مشغل POS الصامت (.bat) لسطح المكتب أو قم بربط الطابعة عبر كابل USB مباشرة ليتم إرسال الفواتير فوراً للطابعة الحرارية بدون ظهور أي نافذة منبثقة.'
+                : 'Download the 1-click silent launcher .bat file or connect via Web Serial USB to print receipts directly in 0.1s.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => downloadKioskPrintingBatchFile()}
+            className="flex-1 md:flex-none py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:brightness-110 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer active:scale-95 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>{isKu ? 'داگرتنی پەڕگەی (.bat)' : isAr ? 'تحميل المشغل (.bat)' : 'Download .bat'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowKioskModal(true)}
+            className="flex-1 md:flex-none py-2.5 px-4 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400/60 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+          >
+            <Laptop className="w-4 h-4" />
+            <span>{isKu ? 'ڕێبەری تەواو' : isAr ? 'عرض الدليل والخيارات' : 'View Guide'}</span>
+          </button>
+        </div>
       </div>
 
       {/* THREE PRIMARY ACTION CARDS */}
@@ -353,6 +414,14 @@ export const PrintCenterTab: React.FC<PrintCenterTabProps> = ({
         products={modalMode === 'no_barcode' && productsWithoutBarcode.length > 0 ? productsWithoutBarcode : products}
         settings={settings}
         mode={modalMode === 'price' ? 'price' : 'barcode'}
+      />
+
+      {/* Kiosk / Silent Print Modal */}
+      <KioskPrintModal
+        isOpen={showKioskModal}
+        onClose={() => setShowKioskModal(false)}
+        lang={settings.language}
+        settings={settings}
       />
 
     </div>

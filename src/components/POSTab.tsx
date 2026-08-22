@@ -46,7 +46,9 @@ import {
   Cast,
   PanelRightClose,
   PanelRightOpen,
-  Monitor
+  Monitor,
+  Zap,
+  Usb
 } from 'lucide-react';
 import { Product, CartItem, Category, SaleTransaction, Customer, StoreSettings, SaleUnitType, PrescriptionInfo, UserAccount, CustomerDisplayPayload, CustomerDisplayItem } from '../types';
 import { getTranslation, getProductName, getCategoryName } from '../lib/translations';
@@ -55,6 +57,7 @@ import { printSaleReceiptDirect } from '../lib/thermalPrinter';
 import { formatNumber } from '../lib/formatUtils';
 import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../lib/dateUtils';
 import { DamagedItemsModal } from './DamagedItemsModal';
+import { KioskPrintModal } from './KioskPrintModal';
 import { broadcastCustomerDisplay, openCustomerDisplayWindow } from '../lib/customerDisplayBroadcast';
 import { CustomerDisplayScreen } from './CustomerDisplayScreen';
 
@@ -425,6 +428,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   const [alternativeSearch, setAlternativeSearch] = useState('');
   const [selectedProdForAlternative, setSelectedProdForAlternative] = useState<Product | null>(null);
   const [isDamagedModalOpen, setIsDamagedModalOpen] = useState(false);
+  const [showKioskModal, setShowKioskModal] = useState(false);
 
   const isBarcodeDisabled = Boolean(
     isAnyModalOpen ||
@@ -432,7 +436,8 @@ export const POSTab: React.FC<POSTabProps> = ({
     isBarcodePaused ||
     showPrescriptionModal ||
     showAlternativesModal ||
-    isDamagedModalOpen
+    isDamagedModalOpen ||
+    showKioskModal
   );
 
   const focusBarcodeIfEnabled = (delay = 50) => {
@@ -1708,6 +1713,17 @@ export const POSTab: React.FC<POSTabProps> = ({
                     [{posShortcuts.clearCart}]
                   </span>
                 </button>
+
+                {/* Silent POS Printing Guide Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowKioskModal(true)}
+                  className="py-1 px-2.5 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  title={isAr ? 'إعداد وتفعيل الطباعة الصامتة الفورية وإلغاء نافذة المتصفح' : isKu ? 'ڕێکخستنی چاپی خێرا و بێ پەنجەرە' : 'Instant Silent Printing Setup'}
+                >
+                  <Zap className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+                  <span>{isAr ? 'الطباعة الصامتة' : isKu ? 'چاپی صامت' : 'Silent Print'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1934,6 +1950,17 @@ export const POSTab: React.FC<POSTabProps> = ({
                 <span className="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-mono border" style={{ borderColor: '#ff05b8' }}>
                   {products?.length ?? 0}
                 </span>
+              </button>
+
+              {/* DIRECT SILENT PRINT SETUP BUTTON */}
+              <button
+                type="button"
+                onClick={() => setShowKioskModal(true)}
+                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400/60 text-cyan-300 font-bold text-xs shrink-0 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                title={isAr ? 'إعداد الطباعة الصامتة الفورية وإلغاء نافذة المتصفح' : isKu ? 'ڕێکخستنی چاپی صامت' : 'Silent Printing Setup'}
+              >
+                <Zap className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+                <span className="hidden md:inline">{isAr ? 'الطباعة الفورية' : isKu ? 'چاپی خێرا' : 'Silent Print'}</span>
               </button>
 
             </div>
@@ -2883,6 +2910,14 @@ export const POSTab: React.FC<POSTabProps> = ({
           <span>{isAr ? 'تم نسخ رابط شاشة الزبون بنجاح! يمكنك فتحه على شاشة ثانية، آيباد أو هاتف محمول.' : 'Customer display link copied! Open on secondary monitor or tablet.'}</span>
         </div>
       )}
+
+      {/* KIOSK / SILENT PRINTING CONFIGURATION MODAL */}
+      <KioskPrintModal
+        isOpen={showKioskModal}
+        onClose={() => setShowKioskModal(false)}
+        lang={lang}
+        settings={settings}
+      />
 
     </div>
   );

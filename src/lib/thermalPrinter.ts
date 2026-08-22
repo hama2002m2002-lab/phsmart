@@ -13,6 +13,105 @@ export function isWebSerialSupported(): boolean {
   return typeof navigator !== 'undefined' && 'serial' in navigator;
 }
 
+export function isSerialConnected(): boolean {
+  return Boolean(activeSerialPort);
+}
+
+/**
+ * Send a test print command to the active serial printer
+ */
+export async function testPrintSerial(settings: StoreSettings): Promise<void> {
+  const dummySale: SaleTransaction = {
+    id: 'test-' + Date.now(),
+    invoiceNumber: 'TEST-001',
+    cashierName: 'System Test',
+    timestamp: new Date().toLocaleString(),
+    items: [
+      {
+        product: {
+          id: 'test-item',
+          name: 'Test Item',
+          nameAr: 'مادة اختبار',
+          barcode: '123456',
+          price: 1000,
+          cost: 800,
+          stock: 10,
+          category: 'Test',
+          unit: 'pcs',
+          updatedAt: Date.now()
+        },
+        quantity: 1,
+        saleType: 'retail',
+        price: 1000,
+        total: 1000,
+      }
+    ],
+    subtotal: 1000,
+    discount: 0,
+    tax: 0,
+    total: 1000,
+    paymentMethod: 'cash',
+    status: 'completed'
+  };
+
+  const buffer = buildEscPosBuffer(dummySale, settings);
+  await sendRawToWebSerialPrinter(buffer);
+}
+
+/**
+ * Download 1-Click Windows Batch Launcher for Chrome/Edge with --kiosk-printing flag
+ * This eliminates the print preview window completely when printing.
+ */
+export function downloadKioskPrintingBatchFile(): void {
+  const currentUrl = window.location.href;
+  const batContent = `@echo off
+chcp 65001 >nul
+title 7amo.pos - Direct Silent Printing POS Launcher
+echo ========================================================
+echo   7amo.pos - مشغل نقاط البيع بالطباعة الصامتة الفورية
+echo ========================================================
+echo   جاري تشغيل النظام بوضع Kiosk Printing لإلغاء نافذة المتصفح...
+echo.
+
+:: Try Google Chrome 64-bit
+if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (
+    start "" "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --app="${currentUrl}"
+    exit
+)
+
+:: Try Google Chrome 32-bit
+if exist "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" (
+    start "" "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --app="${currentUrl}"
+    exit
+)
+
+:: Try Microsoft Edge
+if exist "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" (
+    start "" "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" --kiosk-printing --app="${currentUrl}"
+    exit
+)
+if exist "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe" (
+    start "" "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe" --kiosk-printing --app="${currentUrl}"
+    exit
+)
+
+:: Fallback generic start
+start chrome --kiosk-printing --app="${currentUrl}"
+exit
+`;
+
+  const blob = new Blob([batContent], { type: 'application/x-bat;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '7amo-POS-Silent-Print.bat';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+
 /**
  * Request user to pick a Web Serial device (USB / Serial Thermal POS Printer)
  */

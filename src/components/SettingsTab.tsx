@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck } from 'lucide-react';
+import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop } from 'lucide-react';
 import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount } from '../types';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { DatabaseStorageModal } from './DatabaseStorageModal';
+import { KioskPrintModal } from './KioskPrintModal';
+import { downloadKioskPrintingBatchFile } from '../lib/thermalPrinter';
 import { getTranslation } from '../lib/translations';
 import { exportStoreToExcel, exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
@@ -48,6 +50,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   // POS Keyboard Shortcuts Modal State
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isDbStorageModalOpen, setIsDbStorageModalOpen] = useState(false);
+  const [isKioskModalOpen, setIsKioskModalOpen] = useState(false);
 
   const handleChange = (field: keyof StoreSettings, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -378,6 +381,48 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               />
             </div>
           </div>
+
+          {/* Direct Silent Printing Setup Block */}
+          <div className="mt-4 p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
+                <Zap className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>{isKu ? 'تایبەتمەندی چاپی بێ دەنگ و دەستبەجێ (بێ پەنجەرەی گۆگڵ کرۆم)' : isAr ? 'إلغاء نافذة المتصفح والطباعة الفورية الصامتة (0-Click Silent Print)' : 'Instant Silent Thermal Receipt Printing'}</span>
+                  <span className="px-2 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">0.1s Fast</span>
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {isKu 
+                    ? 'پەڕگەی مشغل (.bat) یان بەستنەوەی پرنتەر لە ڕێگەی کێبڵی راستەوخۆی USB' 
+                    : isAr 
+                    ? 'شغّل المنظومة عبر ملف الاختصار (.bat) أو قم بربط الطابعة الحرارية مباشرة عبر كابل USB Serial.' 
+                    : 'Run via silent .bat launcher or direct USB Web Serial connection.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => downloadKioskPrintingBatchFile()}
+                className="flex-1 sm:flex-none px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{isKu ? 'داگرتنی مشغل (.bat)' : isAr ? 'تحميل المشغل (.bat)' : 'Download .bat'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsKioskModalOpen(true)}
+                className="flex-1 sm:flex-none px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+              >
+                <Laptop className="w-3.5 h-3.5" />
+                <span>{isKu ? 'ڕێبەری تەواو' : isAr ? 'خيارات الربط والدليل' : 'Setup Guide'}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Data Security & Automatic Persistence Banner */}
@@ -674,6 +719,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         onDataRestored={() => {
           window.location.reload();
         }}
+      />
+
+      {/* Kiosk / Silent POS Printing Modal */}
+      <KioskPrintModal
+        isOpen={isKioskModalOpen}
+        onClose={() => setIsKioskModalOpen(false)}
+        lang={settings.language}
+        settings={settings}
       />
 
     </div>
