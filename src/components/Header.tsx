@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv } from 'lucide-react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, Lock } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -37,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   settings,
   setSettings,
   currentUser,
+  onLogout,
   isPOSMode = false,
   onExitPOS,
   onOpenCompletedReceipts,
@@ -182,6 +183,19 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
           </div>
+
+          {/* Quick Lock Screen / Logout Button */}
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-2 sm:px-2.5 py-1 rounded-xl bg-gradient-to-r from-rose-950/80 to-slate-900 border border-rose-500/40 hover:border-rose-400 text-rose-300 hover:text-white text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+              title={isAr ? 'قفل الشاشة وتسجيل الخروج (يطلب الرمز عند الفتح)' : isKu ? 'داخستنی شاشە و چوونەدەرەوە' : 'Lock Screen & Logout'}
+            >
+              <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span className="hidden sm:inline">{isAr ? 'قفل' : isKu ? 'داخستن' : 'Lock'}</span>
+            </button>
+          )}
 
           {/* Right: Actions when in POS mode */}
           {isPOSMode && (

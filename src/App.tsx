@@ -61,7 +61,8 @@ import {
   localDbBulkPut,
   localDbSetKV,
   localDbGetKV,
-  localDbGetAll
+  localDbGetAll,
+  localDbFactoryReset
 } from './lib/localDb';
 
 // Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
@@ -137,8 +138,36 @@ const initialUserAccounts: UserAccount[] = [
 ];
 
 export function App() {
-  // Current logged in user is persisted so updates and reloads never revert to the PIN login screen
-  const [currentUser, setCurrentUser] = usePersistentState<UserAccount | null>('supermarket_current_user_v1', initialUserAccounts[0]);
+  // Session-based user authentication: Closing and reopening the program prompts for the login PIN
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    try {
+      // Clear old legacy persistent user tokens
+      localStorage.removeItem('supermarket_current_user_v1');
+      localStorage.removeItem('supermarket_current_user');
+
+      const activeSession = sessionStorage.getItem('pos_session_active_user_v1');
+      if (activeSession) {
+        return JSON.parse(activeSession);
+      }
+    } catch {
+      // ignore
+    }
+    return null; // Always require login on fresh launch / window reopen
+  });
+
+  // Sync active user to sessionStorage
+  useEffect(() => {
+    try {
+      if (currentUser) {
+        sessionStorage.setItem('pos_session_active_user_v1', JSON.stringify(currentUser));
+      } else {
+        sessionStorage.removeItem('pos_session_active_user_v1');
+      }
+    } catch {
+      // ignore
+    }
+  }, [currentUser]);
+
   const [userAccounts, setUserAccounts] = usePersistentState<UserAccount[]>('supermarket_user_accounts_v3', initialUserAccounts);
 
   // Ensure legacy fake accounts (like user-cashier-2002) are removed
@@ -561,6 +590,90 @@ export function App() {
     }
 
     return restoredCount;
+  };
+
+  // Factory Reset & Wipe Entire Database for a New Client / New Store
+  const handleFactoryResetAllData = async () => {
+    // 1. Reset React States to clean empty arrays
+    setProducts([]);
+    setSalesHistory([]);
+    setSuppliers([]);
+    setCustomers([]);
+    setOrders([]);
+    setNotifications([]);
+    setPurchaseInvoices([]);
+    setUserAccounts(initialUserAccounts);
+    setSettingsState(defaultSettings);
+
+    // 2. Remove all persistence keys from localStorage
+    const keysToRemove = [
+      'supermarket_products_v1',
+      'supermarket_sales_v1',
+      'supermarket_suppliers_v1',
+      'supermarket_customers_v1',
+      'supermarket_orders_v1',
+      'supermarket_notifications_v1',
+      'supermarket_purchases_v1',
+      'pos_damaged_items_logs',
+      'pos_delegate_returns_logs',
+      'pos_custom_operating_expenses',
+      'pos_custom_expense_types',
+      'pos_cash_adjustments',
+      'pos_inventory_audits_v1',
+      'pos_cash_drawer_history',
+      'pos_shift_reports',
+      'supermarket_current_user_v1',
+      'supermarket_current_user',
+      'pos_session_active_user_v1',
+      'pos_session_active_user'
+    ];
+    keysToRemove.forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+      } catch {
+        // ignore
+      }
+    });
+
+    // Save clean initial defaults
+    try {
+      localStorage.setItem('supermarket_settings_v3', JSON.stringify(defaultSettings));
+      localStorage.setItem('supermarket_user_accounts_v3', JSON.stringify(initialUserAccounts));
+    } catch {
+      // ignore
+    }
+
+    // 3. Clear IndexedDB High-Capacity Local Database
+    await localDbFactoryReset();
+
+    // 4. Clear Session Storage
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+
+    // 5. Reset Firestore collections if connected
+    syncBulkWriteCollection('products', []);
+    syncBulkWriteCollection('sales', []);
+    syncBulkWriteCollection('suppliers', []);
+    syncBulkWriteCollection('customers', []);
+    syncBulkWriteCollection('purchases', []);
+    syncBulkWriteCollection('orders', []);
+    syncBulkWriteCollection('notifications', []);
+    syncWriteDocument('settings', 'store', defaultSettings);
+    syncBulkWriteCollection('users', initialUserAccounts);
+
+    // 6. Trigger storage update event
+    try {
+      window.dispatchEvent(new Event('storage'));
+    } catch {
+      // ignore
+    }
+
+    // 7. Lock screen / return to login PIN screen
+    setCurrentUser(null);
+    setActiveTab('dashboard');
   };
 
   const [isCustomerDisplayRoute, setIsCustomerDisplayRoute] = useState(() => {
@@ -1089,6 +1202,7 @@ export function App() {
             notifications={notifications}
             purchaseInvoices={purchaseInvoices}
             onImportBackup={handleImportBackup}
+            onFactoryReset={handleFactoryResetAllData}
           />
         );
 

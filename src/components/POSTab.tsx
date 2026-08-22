@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import { 
   ShoppingCart, 
   Search, 
@@ -48,7 +48,9 @@ import {
   PanelRightOpen,
   Monitor,
   Zap,
-  Usb
+  Usb,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Product, CartItem, Category, SaleTransaction, Customer, StoreSettings, SaleUnitType, PrescriptionInfo, UserAccount, CustomerDisplayPayload, CustomerDisplayItem } from '../types';
 import { getTranslation, getProductName, getCategoryName } from '../lib/translations';
@@ -401,6 +403,47 @@ export const POSTab: React.FC<POSTabProps> = ({
 
   const [selectedCat, setSelectedCat] = useState<Category | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
+  const [alternativeSearch, setAlternativeSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const deferredAltSearch = useDeferredValue(alternativeSearch);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const INVENTORY_PAGE_SIZE = 40;
+
+  // Reset inventory page when filters change
+  useEffect(() => {
+    setInventoryPage(1);
+  }, [deferredSearch, selectedCat]);
+
+  // Pre-indexed products for ultra-fast POS search and O(1) Barcode lookup
+  const { barcodeMap, posIndexedProducts } = useMemo(() => {
+    const bMap = new Map<string, Product>();
+    const len = products.length;
+    const indexed = new Array(len);
+
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      const barcodeClean = (p.barcode || '').trim().toLowerCase();
+      const idClean = (p.id || '').trim().toLowerCase();
+      const nameClean = (p.name || '').trim().toLowerCase();
+      const nameArClean = (p.nameAr || '').trim().toLowerCase();
+      const nameKuClean = (p.nameKu || '').trim().toLowerCase();
+      const sciClean = (p.scientificName || '').trim().toLowerCase();
+
+      if (barcodeClean) bMap.set(barcodeClean, p);
+      if (idClean) bMap.set(idClean, p);
+
+      indexed[i] = {
+        product: p,
+        barcode: barcodeClean,
+        category: p.category,
+        categoryAr: p.categoryAr,
+        fullSearchStr: `${barcodeClean} ${nameClean} ${nameArClean} ${nameKuClean} ${sciClean}`,
+        altSearchStr: `${sciClean} ${nameClean} ${nameArClean} ${nameKuClean}`
+      };
+    }
+
+    return { barcodeMap: bMap, posIndexedProducts: indexed };
+  }, [products]);
 
   // Barcode scanner input state & auto focus
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -425,7 +468,6 @@ export const POSTab: React.FC<POSTabProps> = ({
   });
 
   const [showAlternativesModal, setShowAlternativesModal] = useState(false);
-  const [alternativeSearch, setAlternativeSearch] = useState('');
   const [selectedProdForAlternative, setSelectedProdForAlternative] = useState<Product | null>(null);
   const [isDamagedModalOpen, setIsDamagedModalOpen] = useState(false);
   const [showKioskModal, setShowKioskModal] = useState(false);
@@ -702,7 +744,8 @@ export const POSTab: React.FC<POSTabProps> = ({
       }
     }
 
-    const found = products.find(p => p.barcode === cleanCode || p.id === cleanCode);
+    const cleanKey = cleanCode.trim().toLowerCase();
+    const found = barcodeMap.get(cleanKey) || products.find(p => p.barcode === cleanCode || p.id === cleanCode);
     if (found) {
       addToCart(found, 'retail', parsedQty > 0 ? parsedQty : 1);
     } else {
@@ -1188,13 +1231,53 @@ export const POSTab: React.FC<POSTabProps> = ({
     focusBarcodeIfEnabled(50);
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                          p.nameAr.includes(search) || 
-                          p.barcode.includes(search);
-    const matchesCat = selectedCat === 'ALL' || p.category === selectedCat;
-    return matchesSearch && matchesCat;
-  });
+  const filteredProducts = useMemo(() => {
+    const searchLower = deferredSearch.trim().toLowerCase();
+    const isDigitsOnly = /^\d+$/.test(searchLower);
+
+    const result: Product[] = [];
+    const len = posIndexedProducts.length;
+
+    for (let i = 0; i < len; i++) {
+      const item = posIndexedProducts[i];
+      if (selectedCat !== 'ALL' && item.category !== selectedCat && item.categoryAr !== selectedCat) {
+        continue;
+      }
+      if (searchLower) {
+        if (isDigitsOnly) {
+          if (!item.barcode.includes(searchLower)) continue;
+        } else {
+          if (!item.fullSearchStr.includes(searchLower)) continue;
+        }
+      }
+      result.push(item.product);
+    }
+    return result;
+  }, [posIndexedProducts, deferredSearch, selectedCat]);
+
+  const totalInventoryPages = Math.max(1, Math.ceil(filteredProducts.length / INVENTORY_PAGE_SIZE));
+  const safeInventoryPage = Math.min(Math.max(1, inventoryPage), totalInventoryPages);
+
+  const paginatedInventoryProducts = useMemo(() => {
+    const start = (safeInventoryPage - 1) * INVENTORY_PAGE_SIZE;
+    return filteredProducts.slice(start, start + INVENTORY_PAGE_SIZE);
+  }, [filteredProducts, safeInventoryPage]);
+
+  // Fast Memoized Drug Alternatives search limited to top 30 items
+  const filteredAlternatives = useMemo(() => {
+    const query = deferredAltSearch.trim().toLowerCase();
+    if (!query) return products.slice(0, 30);
+    const result: Product[] = [];
+    const len = posIndexedProducts.length;
+    for (let i = 0; i < len; i++) {
+      const item = posIndexedProducts[i];
+      if (item.altSearchStr.includes(query)) {
+        result.push(item.product);
+        if (result.length >= 30) break;
+      }
+    }
+    return result;
+  }, [products, posIndexedProducts, deferredAltSearch]);
 
   return (
     <div 
@@ -1277,8 +1360,17 @@ export const POSTab: React.FC<POSTabProps> = ({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={isAr ? 'ابحث باسم المادة أو الباركود...' : isKu ? 'گەڕان بەپێی ناو یان بارکۆد...' : 'Search item name or barcode...'}
-                className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-9 rtl:pl-3 rtl:pr-9 pr-3 py-2 rounded-xl border border-amber-500/30 focus:outline-none focus:border-amber-400"
+                className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-9 rtl:pl-8 rtl:pr-9 pr-8 py-2 rounded-xl border border-amber-500/30 focus:outline-none focus:border-amber-400"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 rtl:right-auto rtl:left-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="flex gap-1.5 overflow-x-auto pb-1 text-[11px] custom-scrollbar">
@@ -1313,7 +1405,7 @@ export const POSTab: React.FC<POSTabProps> = ({
 
           {/* Product Cards Grid on Mobile */}
           <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2 custom-scrollbar pr-0.5">
-            {filteredProducts.map(p => {
+            {paginatedInventoryProducts.map(p => {
               const retailP = p.singleRetailPrice || p.price;
               const inCartCount = cart
                 .filter(c => c.product.id === p.id)
@@ -1371,6 +1463,33 @@ export const POSTab: React.FC<POSTabProps> = ({
               );
             })}
           </div>
+
+          {/* Mobile Inventory Pagination Controls */}
+          {totalInventoryPages > 1 && (
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
+              <button
+                type="button"
+                disabled={safeInventoryPage <= 1}
+                onClick={() => setInventoryPage(prev => Math.max(1, prev - 1))}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-700 flex items-center gap-1"
+              >
+                <ChevronRight className="w-3.5 h-3.5 rtl:rotate-0 rotate-180" />
+                <span>{isAr ? 'السابق' : isKu ? 'پێشوو' : 'Prev'}</span>
+              </button>
+              <span className="text-[11px] text-slate-400 font-mono font-bold">
+                {safeInventoryPage} / {totalInventoryPages}
+              </span>
+              <button
+                type="button"
+                disabled={safeInventoryPage >= totalInventoryPages}
+                onClick={() => setInventoryPage(prev => Math.min(totalInventoryPages, prev + 1))}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-700 flex items-center gap-1"
+              >
+                <span>{isAr ? 'التالي' : isKu ? 'دواتر' : 'Next'}</span>
+                <ChevronLeft className="w-3.5 h-3.5 rtl:rotate-0 rotate-180" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -2277,9 +2396,18 @@ export const POSTab: React.FC<POSTabProps> = ({
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={isAr ? 'بحث باسم المنتج، الفئة، أو رقم الباركود...' : isKu ? 'گەڕان بە ناوی دەرمان، بەش، یان بارکۆد...' : 'Search product name, category, or barcode...'}
-                  className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-2.5 rounded-xl border border-blue-500/20 focus:outline-none focus:border-emerald-500"
+                  placeholder={isAr ? 'بحث فوري باسم المنتج، الفئة، أو رقم الباركود...' : isKu ? 'گەڕانی خێرا بە ناوی دەرمان، بەش، یان بارکۆد...' : 'Fast search product name, category, or barcode...'}
+                  className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-10 rtl:pl-8 rtl:pr-10 pr-8 py-2.5 rounded-xl border border-blue-500/20 focus:outline-none focus:border-emerald-500"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 rtl:right-auto rtl:left-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
@@ -2312,7 +2440,7 @@ export const POSTab: React.FC<POSTabProps> = ({
 
             {/* Inventory Grid List (Compact & Responsive Grid) */}
             <div className="p-3 sm:p-4 overflow-y-auto max-h-[60vh] grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-2.5">
-              {filteredProducts.map(p => {
+              {paginatedInventoryProducts.map(p => {
                 const totalUnitsInCart = cart
                   .filter(c => c.product.id === p.id)
                   .reduce((sum, item) => {
@@ -2414,15 +2542,48 @@ export const POSTab: React.FC<POSTabProps> = ({
               })}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-800 bg-[#070D1C] flex items-center justify-between">
-              <div className="text-xs text-slate-400 font-semibold">
-                {isAr ? `إجمالي المنتجات المعروضة: ${filteredProducts.length}` : isKu ? `کۆی کاڵا بەردەستەکان: ${filteredProducts.length}` : `Displaying ${filteredProducts.length} items`}
+            {/* Modal Footer with Pagination Controls */}
+            <div className="p-4 border-t border-slate-800 bg-[#070D1C] flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400 font-semibold">
+                  {isAr ? `إجمالي المواد المطابقة: ${filteredProducts.length}` : isKu ? `کۆی گشتی کاڵاکان: ${filteredProducts.length}` : `Total items: ${filteredProducts.length}`}
+                </span>
+                <span className="text-xs text-slate-500 font-mono">
+                  ({(safeInventoryPage - 1) * INVENTORY_PAGE_SIZE + 1} - {Math.min(safeInventoryPage * INVENTORY_PAGE_SIZE, filteredProducts.length)})
+                </span>
               </div>
+
+              {totalInventoryPages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={safeInventoryPage <= 1}
+                    onClick={() => setInventoryPage(prev => Math.max(1, prev - 1))}
+                    className="p-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4 rtl:rotate-0 rotate-180" />
+                    <span>{isAr ? 'السابق' : isKu ? 'پێشوو' : 'Prev'}</span>
+                  </button>
+
+                  <span className="px-3 py-1 bg-slate-900 border border-slate-700/60 rounded-xl text-xs font-mono font-bold text-emerald-400">
+                    {safeInventoryPage} / {totalInventoryPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={safeInventoryPage >= totalInventoryPages}
+                    onClick={() => setInventoryPage(prev => Math.min(totalInventoryPages, prev + 1))}
+                    className="p-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{isAr ? 'التالي' : isKu ? 'دواتر' : 'Next'}</span>
+                    <ChevronLeft className="w-4 h-4 rtl:rotate-0 rotate-180" />
+                  </button>
+                </div>
+              )}
 
               <button
                 onClick={() => setShowInventory(false)}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:brightness-110 transition-all flex items-center gap-1.5"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:brightness-110 transition-all flex items-center gap-1.5"
               >
                 <span>{isAr ? 'العودة إلى سلة المبيعات' : isKu ? 'گەڕانەوە بۆ سەبەتەی فرۆشتن' : 'Return to Sales Cart'}</span>
                 <ArrowRight className="w-4 h-4 rtl:rotate-180" />
@@ -2556,8 +2717,17 @@ export const POSTab: React.FC<POSTabProps> = ({
                 value={alternativeSearch}
                 onChange={(e) => setAlternativeSearch(e.target.value)}
                 placeholder={isAr ? 'اكتب المادة الفعالة (مثلاً: Paracetamol, Ibuprofen, Amoxicillin)...' : isKu ? 'ناوی مادەی چالاک بنووسە (وەک: Paracetamol, Ibuprofen, Amoxicillin)...' : 'Search active ingredient (e.g. Paracetamol, Amoxicillin)...'}
-                className="w-full bg-[#070D1C] text-xs font-mono text-cyan-200 placeholder-slate-500 px-9 py-2.5 rounded-xl border border-cyan-500/40 focus:border-cyan-300 focus:outline-none"
+                className="w-full bg-[#070D1C] text-xs font-mono text-cyan-200 placeholder-slate-500 pl-9 rtl:pl-8 rtl:pr-9 pr-8 py-2.5 rounded-xl border border-cyan-500/40 focus:border-cyan-300 focus:outline-none"
               />
+              {alternativeSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAlternativeSearch('')}
+                  className="absolute right-2.5 rtl:right-auto rtl:left-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Quick Active Ingredient Pills */}
@@ -2577,18 +2747,8 @@ export const POSTab: React.FC<POSTabProps> = ({
 
             {/* Results Grid */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-              {products
-                .filter(p => {
-                  if (!alternativeSearch) return true;
-                  const query = alternativeSearch.toLowerCase();
-                  return (
-                    p.scientificName?.toLowerCase().includes(query) ||
-                    p.name.toLowerCase().includes(query) ||
-                    p.nameAr.includes(query)
-                  );
-                })
-                .map(p => {
-                  const retailP = p.singleRetailPrice || p.price;
+              {filteredAlternatives.map(p => {
+                const retailP = p.singleRetailPrice || p.price;
                   const inCartCount = cart
                     .filter(c => c.product.id === p.id)
                     .reduce((sum, item) => {

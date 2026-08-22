@@ -446,3 +446,25 @@ export async function importLocalDatabaseBackup(jsonString: string): Promise<boo
     return false;
   }
 }
+
+/**
+ * Factory Reset & Wipe All Local Database Tables (IndexedDB + KV Store)
+ */
+export async function localDbFactoryReset(): Promise<void> {
+  const stores: StoreName[] = [
+    'products',
+    'sales',
+    'suppliers',
+    'customers',
+    'orders',
+    'notifications',
+    'purchases',
+    'users',
+    'settings',
+    'inventory_audits',
+    'pending_sync_queue',
+    'kv_store'
+  ];
+
+  await Promise.all(stores.map(s => localDbClear(s)));
+}

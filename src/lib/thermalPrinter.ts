@@ -28,18 +28,9 @@ export async function testPrintSerial(settings: StoreSettings): Promise<void> {
     timestamp: new Date().toLocaleString(),
     items: [
       {
-        product: {
-          id: 'test-item',
-          name: 'Test Item',
-          nameAr: 'مادة اختبار',
-          barcode: '123456',
-          price: 1000,
-          cost: 800,
-          stock: 10,
-          category: 'Test',
-          unit: 'pcs',
-          updatedAt: Date.now()
-        },
+        productId: 'test-item',
+        productName: 'Test Item',
+        productNameAr: 'مادة اختبار',
         quantity: 1,
         saleType: 'retail',
         price: 1000,

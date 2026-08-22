@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { 
   AlertTriangle, 
   X, 
@@ -85,15 +85,51 @@ export const DamagedItemsModal: React.FC<DamagedItemsModalProps> = ({
     }
   }, [damagedLogs]);
 
-  // Filter products for dropdown/search
-  const filteredProducts = search.trim()
-    ? products.filter(
-        p =>
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          (p.nameAr && p.nameAr.toLowerCase().includes(search.toLowerCase())) ||
-          (p.barcode && p.barcode.includes(search))
-      )
-    : products.slice(0, 10);
+  const deferredSearch = useDeferredValue(search);
+
+  // Pre-indexed products cache
+  const indexedProducts = useMemo(() => {
+    const len = products.length;
+    const list = new Array(len);
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      const barcodeClean = (p.barcode || '').trim().toLowerCase();
+      const nameClean = (p.name || '').trim().toLowerCase();
+      const nameArClean = (p.nameAr || '').trim().toLowerCase();
+      const nameKuClean = (p.nameKu || '').trim().toLowerCase();
+      list[i] = {
+        product: p,
+        barcode: barcodeClean,
+        searchStr: `${barcodeClean} ${nameClean} ${nameArClean} ${nameKuClean}`
+      };
+    }
+    return list;
+  }, [products]);
+
+  // Filter products for dropdown/search with high performance loop and cap
+  const filteredProducts = useMemo(() => {
+    const q = deferredSearch.trim().toLowerCase();
+    if (!q) return products.slice(0, 10);
+    const isDigits = /^\d+$/.test(q);
+    const results: Product[] = [];
+    const len = indexedProducts.length;
+
+    for (let i = 0; i < len; i++) {
+      const item = indexedProducts[i];
+      if (isDigits) {
+        if (item.barcode.includes(q)) {
+          results.push(item.product);
+          if (results.length >= 15) break;
+        }
+      } else {
+        if (item.searchStr.includes(q)) {
+          results.push(item.product);
+          if (results.length >= 15) break;
+        }
+      }
+    }
+    return results;
+  }, [products, indexedProducts, deferredSearch]);
 
   const handleSelectProduct = (p: Product) => {
     setSelectedProduct(p);
@@ -302,9 +338,18 @@ export const DamagedItemsModal: React.FC<DamagedItemsModalProps> = ({
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder={t('ابحث عن المادة بالاسم أو اكتب/امسح الباركود...', 'گەڕان بەپێی ناوی کاڵا یان نووسین/سکانکردنی بارکۆد...', 'Search product by name or barcode...')}
-                        className="w-full bg-[#070D1C] text-xs text-white placeholder-slate-500 pl-9 rtl:pl-3 rtl:pr-9 pr-3 py-3 rounded-2xl border border-cyan-500/30 focus:border-cyan-400 focus:outline-none font-bold"
+                        className="w-full bg-[#070D1C] text-xs text-white placeholder-slate-500 pl-9 rtl:pl-8 rtl:pr-9 pr-8 py-3 rounded-2xl border border-cyan-500/30 focus:border-cyan-400 focus:outline-none font-bold"
                         autoFocus
                       />
+                      {search && (
+                        <button
+                          type="button"
+                          onClick={() => setSearch('')}
+                          className="absolute right-3 rtl:right-auto rtl:left-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
 
                     <div className="max-h-48 overflow-y-auto space-y-1 bg-[#070D1C] p-2 rounded-2xl border border-slate-800 custom-scrollbar">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useDeferredValue } from 'react';
 import { 
   ClipboardCheck, 
   Search, 
@@ -23,7 +23,11 @@ import {
   ArrowRight,
   HelpCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { Product, StoreSettings, UserAccount, InventoryAuditSession, InventoryAuditItem } from '../types';
 import { exportDataToExcel } from '../lib/excelExport';
@@ -141,19 +145,55 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
     setScannedProductIds(prev => new Set(prev).add(p.id));
   };
 
+  // Pre-indexed products and fast O(1) barcode map for 10k+ items
+  const { auditBarcodeMap, auditIndexedProducts } = useMemo(() => {
+    const bMap = new Map<string, Product>();
+    const len = products.length;
+    const list = new Array(len);
+
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      const barcodeClean = (p.barcode || '').trim().toLowerCase();
+      const skuClean = (p.sku || '').trim().toLowerCase();
+      const idClean = (p.id || '').trim().toLowerCase();
+      const nameClean = (p.name || '').trim().toLowerCase();
+      const nameArClean = (p.nameAr || '').trim().toLowerCase();
+
+      if (barcodeClean) bMap.set(barcodeClean, p);
+      if (skuClean) bMap.set(skuClean, p);
+      if (idClean) bMap.set(idClean, p);
+      if (nameClean) bMap.set(nameClean, p);
+      if (nameArClean) bMap.set(nameArClean, p);
+
+      list[i] = {
+        product: p,
+        id: p.id,
+        category: p.category,
+        categoryAr: p.categoryAr,
+        barcode: barcodeClean,
+        searchStr: `${barcodeClean} ${skuClean} ${nameClean} ${nameArClean}`
+      };
+    }
+
+    return { auditBarcodeMap: bMap, auditIndexedProducts: list };
+  }, [products]);
+
+  const deferredBarcodeInput = useDeferredValue(barcodeInput);
+
   // Barcode Scanning Handler
   const handleBarcodeSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const code = barcodeInput.trim();
     if (!code) return;
 
-    // Lookup product by exact barcode or name
-    const found = products.find(p => 
+    // Instant O(1) lookup
+    const codeLower = code.toLowerCase();
+    const found = auditBarcodeMap.get(codeLower) || products.find(p => 
       p.barcode === code || 
-      p.barcode.toLowerCase() === code.toLowerCase() ||
+      p.barcode.toLowerCase() === codeLower ||
       (p.sku && p.sku === code) ||
-      p.name.toLowerCase() === code.toLowerCase() ||
-      (p.nameAr && p.nameAr.toLowerCase() === code.toLowerCase())
+      p.name.toLowerCase() === codeLower ||
+      (p.nameAr && p.nameAr.toLowerCase() === codeLower)
     );
 
     if (found) {
@@ -212,25 +252,33 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
   // If showAllProductsTable is false: ONLY show products that have been scanned or manually counted!
   // If showAllProductsTable is true: show all products filtered by search/category.
   const auditActiveProducts = useMemo(() => {
-    return products.filter(p => {
+    const q = deferredBarcodeInput.toLowerCase().trim();
+    const isDigits = /^\d+$/.test(q);
+    const result: Product[] = [];
+    const len = auditIndexedProducts.length;
+
+    for (let i = 0; i < len; i++) {
+      const item = auditIndexedProducts[i];
+      const p = item.product;
+
       // If we are in scan-only mode, only show scanned products
-      if (!showAllProductsTable && !scannedProductIds.has(p.id)) {
-        return false;
+      if (!showAllProductsTable && !scannedProductIds.has(item.id)) {
+        continue;
       }
 
       // Search
-      const q = barcodeInput.toLowerCase().trim();
-      const matchesSearch = !barcodeInput || (
-        p.name.toLowerCase().includes(q) ||
-        (p.nameAr && p.nameAr.includes(barcodeInput)) ||
-        p.barcode.includes(barcodeInput)
-      );
-      if (!matchesSearch) return false;
+      if (q) {
+        if (isDigits) {
+          if (!item.barcode.includes(q)) continue;
+        } else {
+          if (!item.searchStr.includes(q)) continue;
+        }
+      }
 
       // Category
       if (selectedCategory !== 'ALL') {
-        const cat = p.categoryAr || p.category;
-        if (cat !== selectedCategory) return false;
+        const cat = item.categoryAr || item.category;
+        if (cat !== selectedCategory) continue;
       }
 
       // Discrepancy status
@@ -238,14 +286,30 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
       const actUnits = actualUnits[p.id] !== undefined ? actualUnits[p.id] : (scannedProductIds.has(p.id) ? 0 : systemUnits);
       const diff = actUnits - systemUnits;
 
-      if (filterDiscrepancy === 'DIFF_ONLY' && diff === 0) return false;
-      if (filterDiscrepancy === 'MATCH_ONLY' && diff !== 0) return false;
-      if (filterDiscrepancy === 'DEFICIT_ONLY' && diff >= 0) return false;
-      if (filterDiscrepancy === 'SURPLUS_ONLY' && diff <= 0) return false;
+      if (filterDiscrepancy === 'DIFF_ONLY' && diff === 0) continue;
+      if (filterDiscrepancy === 'MATCH_ONLY' && diff !== 0) continue;
+      if (filterDiscrepancy === 'DEFICIT_ONLY' && diff >= 0) continue;
+      if (filterDiscrepancy === 'SURPLUS_ONLY' && diff <= 0) continue;
 
-      return true;
-    });
-  }, [products, showAllProductsTable, scannedProductIds, barcodeInput, selectedCategory, filterDiscrepancy, actualUnits]);
+      result.push(p);
+    }
+    return result;
+  }, [auditIndexedProducts, showAllProductsTable, scannedProductIds, deferredBarcodeInput, selectedCategory, filterDiscrepancy, actualUnits]);
+
+  const [auditCurrentPage, setAuditCurrentPage] = useState(1);
+  const auditPageSize = 50;
+  const auditTotalPages = Math.max(1, Math.ceil(auditActiveProducts.length / auditPageSize));
+  const safeAuditPage = Math.min(Math.max(1, auditCurrentPage), auditTotalPages);
+
+  // Reset page on filter changes
+  useEffect(() => {
+    setAuditCurrentPage(1);
+  }, [barcodeInput, selectedCategory, filterDiscrepancy, showAllProductsTable]);
+
+  const paginatedAuditProducts = useMemo(() => {
+    const start = (safeAuditPage - 1) * auditPageSize;
+    return auditActiveProducts.slice(start, start + auditPageSize);
+  }, [auditActiveProducts, safeAuditPage, auditPageSize]);
 
   // Live Statistics for Audited Products
   const stats = useMemo(() => {
@@ -1155,7 +1219,8 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                auditActiveProducts.map((p, idx) => {
+                paginatedAuditProducts.map((p, idx) => {
+                  const globalIdx = (safeAuditPage - 1) * auditPageSize + idx;
                   const uPerC = Math.max(1, p.unitsPerCarton || 1);
                   const sysUnits = getSystemRecordedUnits(p);
                   const sysCartons = Math.floor(sysUnits / uPerC);
@@ -1180,7 +1245,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                     >
                       {/* Index */}
                       <td className="py-3 px-3 text-center text-slate-500 font-mono text-[10px]">
-                        {idx + 1}
+                        {globalIdx + 1}
                       </td>
 
                       {/* Product Name & Barcode */}
@@ -1305,6 +1370,63 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
 
           </table>
         </div>
+
+        {/* Audit Table Pagination Bar */}
+        {auditActiveProducts.length > auditPageSize && (
+          <div className="p-3 bg-slate-900/90 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="text-slate-400">
+              {t(
+                `عرض ${(safeAuditPage - 1) * auditPageSize + 1} - ${Math.min(safeAuditPage * auditPageSize, auditActiveProducts.length)} من أصل ${auditActiveProducts.length} صنف`,
+                `پیشاندانی ${(safeAuditPage - 1) * auditPageSize + 1} - ${Math.min(safeAuditPage * auditPageSize, auditActiveProducts.length)} لە کۆی ${auditActiveProducts.length} کاڵا`,
+                `Showing ${(safeAuditPage - 1) * auditPageSize + 1} - ${Math.min(safeAuditPage * auditPageSize, auditActiveProducts.length)} of ${auditActiveProducts.length} items`
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAuditCurrentPage(1)}
+                disabled={safeAuditPage === 1}
+                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5 rtl:rotate-180" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAuditCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safeAuditPage === 1}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs font-bold"
+              >
+                <ChevronLeft className="w-3.5 h-3.5 rtl:rotate-180 inline" />
+                <span>{t('السابق', 'پێشوو', 'Prev')}</span>
+              </button>
+
+              <span className="font-mono text-cyan-300 font-bold px-1.5">
+                {safeAuditPage} / {auditTotalPages}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setAuditCurrentPage(p => Math.min(auditTotalPages, p + 1))}
+                disabled={safeAuditPage === auditTotalPages}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs font-bold"
+              >
+                <span>{t('التالي', 'دواتر', 'Next')}</span>
+                <ChevronRight className="w-3.5 h-3.5 rtl:rotate-180 inline" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAuditCurrentPage(auditTotalPages)}
+                disabled={safeAuditPage === auditTotalPages}
+                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronsRight className="w-3.5 h-3.5 rtl:rotate-180" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Sticky Action Bar */}

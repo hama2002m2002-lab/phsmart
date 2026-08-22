@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop } from 'lucide-react';
+import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop, Trash2, AlertTriangle, Lock } from 'lucide-react';
 import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount } from '../types';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { DatabaseStorageModal } from './DatabaseStorageModal';
@@ -22,6 +22,7 @@ interface SettingsTabProps {
   notifications?: MarketNotification[];
   purchaseInvoices?: PurchaseInvoice[];
   onImportBackup?: (backupData: any) => number | void;
+  onFactoryReset?: () => Promise<void> | void;
   onlyPermissionsAndAccounts?: boolean;
   initialSubTab?: 'general';
 }
@@ -38,7 +39,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   orders,
   notifications,
   purchaseInvoices,
-  onImportBackup
+  onImportBackup,
+  onFactoryReset
 }) => {
   const isAr = settings.language === 'ar';
   const isKu = settings.language === 'ku';
@@ -51,6 +53,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isDbStorageModalOpen, setIsDbStorageModalOpen] = useState(false);
   const [isKioskModalOpen, setIsKioskModalOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleChange = (field: keyof StoreSettings, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -699,10 +703,112 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
 
             </div>
+
+            {/* Factory Reset & Clean Store Preparation for New Client (تهيئة المنظومة لعميل جديد) */}
+            <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-rose-950/60 via-red-950/40 to-slate-900/80 border border-rose-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+              <div className="flex items-start gap-3">
+                <div className="p-3 rounded-2xl bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0">
+                  <Trash2 className="w-6 h-6 text-rose-400" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white flex items-center gap-2">
+                    <span>{isKu ? 'ئامادەکردنی سیستم بۆ کڕیاری نوێ (تەسفیرکردنی داتا)' : isAr ? 'تهيئة المنظومة لعميل جديد (تصفير شامل لكافة البيانات)' : 'Factory Reset for New Client'}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-mono font-bold border border-rose-500/30">
+                      {isKu ? 'پاککردنەوەی گشتی' : isAr ? 'تصفير فوري' : 'Clean Slate'}
+                    </span>
+                  </h4>
+                  <p className="text-xs text-rose-200/80 mt-1 max-w-xl leading-relaxed">
+                    {isKu
+                      ? 'سڕینەوەی تەواوی کاڵاکان، فرۆشتنەکان، کڕینەکان، قەرزەکان، و مێژووی سندوق و ئامادەکردنی وەک بەرنامەیەکی نوێ بە تەواوی بۆ کڕیار بە هەژماری Admin (PIN: 123).'
+                      : isAr
+                      ? 'مسح كامل سجلات المواد، المبيعات، الفواتير، المشتريات، ديون العملاء، حركات الصندوق، والمصاريف لتسليم البرنامج نظيفاً وجديداً تماماً للعميل مع حساب المدير الافتراضي (رمز الدخول: 123).'
+                      : 'Wipes all products, sales, purchases, debts, expenses, and cash drawer history to deliver a pristine clean system to a new client with default Admin (PIN: 123).'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmOpen(true)}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white font-black text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(225,29,72,0.4)] active:scale-95 transition-all cursor-pointer shrink-0 border border-rose-400/40"
+              >
+                <Trash2 className="w-4 h-4 text-rose-100" />
+                <span>{isKu ? 'تەسفیرکردنی گشتی و دەستپێکی نوێ' : isAr ? 'تصفير المنظومة لعميل جديد' : 'Factory Reset System'}</span>
+              </button>
+            </div>
+
           </div>
         </div>
 
       </div>
+
+      {/* Factory Reset Confirmation Modal */}
+      {isResetConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn select-none">
+          <div className="relative w-full max-w-lg bg-[#090F1E] border-2 border-rose-500/60 rounded-3xl p-6 sm:p-7 shadow-[0_0_50px_rgba(225,29,72,0.4)] space-y-5 text-center">
+            
+            <div className="w-16 h-16 mx-auto rounded-3xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center shadow-lg animate-bounce">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg sm:text-xl font-black text-white">
+                {isKu ? 'ئایا دڵنیایت لە تەسفیرکردنی تەواوی سیستم؟' : isAr ? 'هل أنت متأكد من تصفير وتهيئة المنظومة بالكامل؟' : 'Confirm Complete Factory Reset?'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed px-2">
+                {isKu
+                  ? 'ئەم کارە هەموو کاڵاکان، نرخەکان، مێژووی فرۆشتنەکان، کڕین، قەرز، و هەموو ڕاپۆرتەکان دەسڕێتەوە و سیستم دەکاتە خاڵی و نوێ بۆ کڕیار. هەژماری چوونەژوورەوەی پێشوەختە دەبێتە: admin بە ڕەمزی (123).'
+                  : isAr
+                  ? 'سيتم مسح كافة المواد، الأسعار، المبيعات السابقة، فواتير الشراء، ديون العملاء، وحركات الصندوق بالكامل، لتصبح المنظومة خالية وجديدة 100% وجاهزة لبدء العمل من قِبل العميل. الحساب الافتراضي للدخول سيكون: admin برمز (123).'
+                  : 'This will delete all products, transactions, debts, purchases, and cash history to leave the app 100% empty and ready for a new client. Default login credentials will be: admin with PIN (123).'}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center justify-center gap-2">
+              <Lock className="w-4 h-4 shrink-0" />
+              <span>{isKu ? 'دوای تەسفیرکردن، پەڕەی چوونەژوورەوە دەکرێتەوە و داوای PIN دەکات' : isAr ? 'بعد التصفير، سيطلب البرنامج رمز الدخول فوراً' : 'After reset, the program will prompt for login PIN'}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmOpen(false)}
+                disabled={isResetting}
+                className="py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold transition-all cursor-pointer"
+              >
+                {isKu ? 'پاشگەزبوونەوە' : isAr ? 'إلغاء والتراجع' : 'Cancel'}
+              </button>
+
+              <button
+                type="button"
+                disabled={isResetting}
+                onClick={async () => {
+                  setIsResetting(true);
+                  if (onFactoryReset) {
+                    await onFactoryReset();
+                  }
+                  setIsResetting(false);
+                  setIsResetConfirmOpen(false);
+                }}
+                className="py-3 px-4 rounded-2xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white text-xs sm:text-sm font-black transition-all shadow-lg shadow-rose-600/40 cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+              >
+                {isResetting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>{isKu ? 'سڕینەوە...' : isAr ? 'جاري التصفير...' : 'Resetting...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>{isKu ? 'بەڵێ، تەسفیری بکە' : isAr ? 'نعم، تصفير شامل الآن' : 'Yes, Factory Reset'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* POS Keyboard Shortcuts Modal */}
       <KeyboardShortcutsModal

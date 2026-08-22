@@ -20,7 +20,8 @@ import {
   StorageDiagnostics, 
   exportLocalDatabaseBackup, 
   importLocalDatabaseBackup,
-  localDbClear
+  localDbClear,
+  localDbFactoryReset
 } from '../lib/localDb';
 import { formatNumber } from '../lib/formatUtils';
 import { StoreSettings } from '../types';
@@ -290,7 +291,7 @@ export const DatabaseStorageModal: React.FC<DatabaseStorageModalProps> = ({
               <span>{isKu ? 'ئامرازەکانی بەڕێوەبردنی داتابەیس' : isAr ? 'أدوات الصيانة والنسخ الاحتياطي لقاعدة البيانات' : 'Database Maintenance & Backup Tools'}</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {/* 1. Export JSON Snapshot */}
               <button
                 type="button"
@@ -331,6 +332,33 @@ export const DatabaseStorageModal: React.FC<DatabaseStorageModalProps> = ({
                 </div>
                 <span className="text-xs font-black text-white">{isKu ? 'ڕێکخستن و خێراکردنی داتابەیس' : isAr ? 'صيانة وضغط قاعدة البيانات' : 'Optimize & Vacuum DB'}</span>
                 <span className="text-[10px] text-slate-400">{isKu ? 'نوێکردنەوەی فەهرەسەکان و خێرایی' : isAr ? 'إعادة بناء الفهارس وتسريع القراءة' : 'Rebuild indexes & clean cache'}</span>
+              </button>
+
+              {/* 4. Factory Reset & Wipe for New Client */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const confirmed = window.confirm(
+                    isKu
+                      ? 'ئایا دڵنیایت لە تەسفیرکردنی داتابەیس بە تەواوی بۆ کڕیاری نوێ؟ هەموو کاڵا و فرۆشتنەکان دەسڕدرێنەوە.'
+                      : isAr
+                      ? 'هل أنت متأكد من تصفير ومسح قاعدة البيانات بالكامل لعميل جديد؟ سيتم تصفير كافة المواد والمبيعات والمشتريات.'
+                      : 'Are you sure you want to perform a factory reset for a new client?'
+                  );
+                  if (confirmed) {
+                    await localDbFactoryReset();
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }
+                }}
+                className="p-4 rounded-2xl bg-gradient-to-br from-rose-950/60 to-red-950/60 border border-rose-500/30 hover:border-rose-400 flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer hover:scale-[1.02] active:scale-95 group"
+              >
+                <div className="p-3 rounded-full bg-rose-500/20 text-rose-300 group-hover:scale-110 transition-transform">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-black text-rose-300">{isKu ? 'تەسفیر بۆ کڕیاری نوێ' : isAr ? 'تصفير شامل لعميل جديد' : 'Factory Reset'}</span>
+                <span className="text-[10px] text-rose-300/70">{isKu ? 'سڕینەوەی گشتی داتاکان' : isAr ? 'مسح كافة السجلات لبدء نظيف' : 'Wipe all data for clean slate'}</span>
               </button>
             </div>
           </div>

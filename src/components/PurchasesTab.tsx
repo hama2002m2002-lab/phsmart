@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   PackagePlus, 
   Search, 
@@ -423,15 +423,31 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     handleResetForm();
   };
 
-  const filteredSearchResults = products.filter(p => {
+  const filteredSearchResults = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return false;
-    return (
-      p.name.toLowerCase().includes(q) ||
-      p.nameAr.toLowerCase().includes(q) ||
-      p.barcode.includes(q)
-    );
-  }).slice(0, 6);
+    if (!q) return [];
+    const isDigits = /^\d+$/.test(q);
+    const results: Product[] = [];
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      if (isDigits) {
+        if (p.barcode.includes(q)) {
+          results.push(p);
+          if (results.length >= 8) break;
+        }
+      } else {
+        if (
+          p.name.toLowerCase().includes(q) ||
+          (p.nameAr && p.nameAr.toLowerCase().includes(q)) ||
+          p.barcode.includes(q)
+        ) {
+          results.push(p);
+          if (results.length >= 8) break;
+        }
+      }
+    }
+    return results;
+  }, [products, searchQuery]);
 
   return (
     <div className="space-y-3 text-slate-100 max-w-full dir-rtl animate-fadeIn">
@@ -590,8 +606,20 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   setIsSearchFocused(true);
                 }}
                 placeholder={t('ابحث عن مادة أو اكتب اسمها...', 'بگەڕێ بۆ کاڵا یان ناوی بنووسە...', 'Search product or enter name...')}
-                className="w-full bg-[#060b14] text-cyan-300 font-bold text-xs py-1.5 pr-8 pl-2.5 rounded-xl border border-cyan-500/40 focus:outline-none focus:border-cyan-400"
+                className="w-full bg-[#060b14] text-cyan-300 font-bold text-xs py-1.5 pr-8 pl-7 rounded-xl border border-cyan-500/40 focus:outline-none focus:border-cyan-400"
               />
+              {productNameInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductNameInput('');
+                    setSearchQuery('');
+                  }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
 
             {/* SEARCH DROPDOWN */}

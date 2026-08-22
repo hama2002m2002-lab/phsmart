@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import {
   X, Printer, Sliders, Tag, Palette, Type, Check, RefreshCw, Barcode as BarcodeIcon,
-  Layers, FileText, CheckCircle2, BookmarkCheck, Save, Sparkles, Grid, Eye, AlertCircle
+  Layers, FileText, CheckCircle2, BookmarkCheck, Save, Sparkles, Grid, Eye, AlertCircle,
+  Search
 } from 'lucide-react';
 import { Product, StoreSettings } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -90,6 +91,56 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   // Feedback states
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  // Pre-indexed products cache
+  const printIndexedProducts = useMemo(() => {
+    if (!products || products.length === 0) return [];
+    const len = products.length;
+    const list = new Array(len);
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      const barcodeClean = (p.barcode || '').trim().toLowerCase();
+      const nameClean = (p.name || '').trim().toLowerCase();
+      const nameArClean = (p.nameAr || '').trim().toLowerCase();
+      const nameKuClean = (p.nameKu || '').trim().toLowerCase();
+      const sciClean = (p.scientificName || '').trim().toLowerCase();
+      list[i] = {
+        product: p,
+        barcode: barcodeClean,
+        searchStr: `${barcodeClean} ${nameClean} ${nameArClean} ${nameKuClean} ${sciClean}`
+      };
+    }
+    return list;
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    if (!products || products.length === 0) return [];
+    const q = deferredSearchQuery.trim().toLowerCase();
+    if (!q) {
+      // Return first 100 products for super fast select rendering
+      return products.slice(0, 100);
+    }
+    const isDigits = /^\d+$/.test(q);
+    const matched = [];
+    const len = printIndexedProducts.length;
+
+    for (let i = 0; i < len; i++) {
+      const item = printIndexedProducts[i];
+      if (isDigits) {
+        if (item.barcode.includes(q)) {
+          matched.push(item.product);
+          if (matched.length >= 100) break;
+        }
+      } else {
+        if (item.searchStr.includes(q)) {
+          matched.push(item.product);
+          if (matched.length >= 100) break;
+        }
+      }
+    }
+    return matched;
+  }, [products, printIndexedProducts, deferredSearchQuery]);
 
   // Sync selected product whenever modal opens or props change
   useEffect(() => {
@@ -264,17 +315,6 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
     return `<svg viewBox="0 0 ${totalWidth} ${height}" style="width: 88%; max-width: 100%; height: ${height}px; display: block; margin: 0 auto;" preserveAspectRatio="none"><rect width="${totalWidth}" height="${height}" fill="white" />${rectsHTML}</svg>`;
   };
-
-  const filteredProducts = products.filter(p => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (p.nameAr && p.nameAr.toLowerCase().includes(q)) ||
-      (p.name && p.name.toLowerCase().includes(q)) ||
-      (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-      (p.scientificName && p.scientificName.toLowerCase().includes(q))
-    );
-  });
 
   // Generate single label HTML block
   const buildSingleLabelHTML = () => {
@@ -613,13 +653,24 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={isKu ? '🔍 گەڕان بەپێی ناو، بارکۆد...' : isAr ? '🔍 بحث بالاسم، الباركود، التركيبة...' : '🔍 Search name, barcode...'}
-                  className="w-full bg-[#0B1120] text-xs text-slate-200 placeholder-slate-500 p-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-500/60 font-semibold"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={isKu ? '🔍 گەڕانی خێرا بەپێی ناو، بارکۆد...' : isAr ? '🔍 بحث فوري بالاسم، الباركود، التركيبة...' : '🔍 Fast search name, barcode...'}
+                    className="w-full bg-[#0B1120] text-xs text-slate-200 placeholder-slate-500 p-2.5 pl-3 rtl:pl-8 rtl:pr-3 pr-8 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-500/60 font-semibold"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 rtl:right-auto rtl:left-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
                 <select
                   value={activeProduct.id}
