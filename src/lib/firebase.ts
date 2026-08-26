@@ -25,7 +25,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Firestore DB with persistent IndexedDB multi-tab local cache for instant offline startup
-const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || localConfig.firestoreDatabaseId || '').trim();
+const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || (localConfig as any).firestoreDatabaseId || '').trim();
 
 let firestoreInstance;
 try {

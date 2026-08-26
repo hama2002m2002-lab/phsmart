@@ -35,6 +35,7 @@ import { PriceHistoryTooltip } from './PriceHistoryTooltip';
 import { InventoryAuditView } from './InventoryAuditView';
 import { exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
+import { FastSearchInput } from './FastSearchInput';
 
 interface ProductsTabProps {
   products: Product[];
@@ -49,6 +50,7 @@ interface ProductsTabProps {
   onOpenDamagedItems?: () => void;
   onOpenInvoices?: () => void;
   onNavigateToReports?: () => void;
+  onOpenAIInvoiceScanner?: () => void;
 }
 
 const CATEGORIES = [
@@ -76,6 +78,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   onOpenDamagedItems,
   onOpenInvoices,
   onNavigateToReports,
+  onOpenAIInvoiceScanner,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -125,18 +128,20 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(50);
+  const [pageSize, setPageSize] = useState<number>(100);
+
+  const safeProducts = useMemo(() => Array.isArray(products) ? products.filter(Boolean) : [], [products]);
 
   const categoriesList = useMemo(() => {
     const saved = getSavedCategories();
     const catsSet = new Set<string>(CATEGORIES);
     for (let i = 0; i < saved.length; i++) catsSet.add(saved[i]);
-    for (let i = 0; i < products.length; i++) {
-      const cat = products[i].categoryAr || products[i].category;
+    for (let i = 0; i < safeProducts.length; i++) {
+      const cat = safeProducts[i]?.categoryAr || safeProducts[i]?.category;
       if (cat) catsSet.add(cat);
     }
     return Array.from(catsSet);
-  }, [products]);
+  }, [safeProducts]);
 
   // Stats calculation memoized for high performance with 10k+ products
   const { totalProductsCount, inStockCount, lowStockProducts, outOfStockProducts, debtStockProducts } = useMemo(() => {
@@ -145,54 +150,64 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
     const outOfStock: Product[] = [];
     const debtStock: Product[] = [];
 
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-      if (p.stock > p.minStock) {
+    for (let i = 0; i < safeProducts.length; i++) {
+      const p = safeProducts[i];
+      if (!p) continue;
+      const minStock = p.minStock ?? 5;
+      const currentStock = p.stock ?? 0;
+      if (currentStock > minStock) {
         inStock++;
-      } else if (p.stock <= p.minStock && p.stock > 0) {
+      } else if (currentStock <= minStock && currentStock > 0) {
         lowStock.push(p);
-      } else if (p.stock === 0) {
+      } else if (currentStock === 0) {
         outOfStock.push(p);
-      } else if (p.stock < 0) {
+      } else if (currentStock < 0) {
         debtStock.push(p);
       }
     }
 
     return {
-      totalProductsCount: products.length,
+      totalProductsCount: safeProducts.length,
       inStockCount: inStock,
       lowStockProducts: lowStock,
       outOfStockProducts: outOfStock,
       debtStockProducts: debtStock,
     };
-  }, [products]);
+  }, [safeProducts]);
 
   const deferredSearch = useDeferredValue(search);
 
-  // Pre-indexed products for ultra-fast (1-2ms) search across 10,000+ items
-  const indexedProducts = useMemo(() => {
-    const len = products.length;
-    const list = new Array(len);
+  // Pre-indexed products & exact barcode map for ultra-fast (<1ms) search across 10,000+ items
+  const { indexedProducts, barcodeMap } = useMemo(() => {
+    const bMap = new Map<string, Product>();
+    const len = safeProducts.length;
+    const list = [];
     for (let i = 0; i < len; i++) {
-      const p = products[i];
+      const p = safeProducts[i];
+      if (!p) continue;
       const barcodeClean = (p.barcode || '').trim().toLowerCase();
       const nameClean = (p.name || '').trim().toLowerCase();
       const nameArClean = (p.nameAr || '').trim().toLowerCase();
       const nameKuClean = (p.nameKu || '').trim().toLowerCase();
       const sciClean = (p.scientificName || '').trim().toLowerCase();
       const suppClean = (p.supplierDelegate || '').trim().toLowerCase();
-      list[i] = {
+
+      if (barcodeClean) {
+        bMap.set(barcodeClean, p);
+      }
+
+      list.push({
         product: p,
         fullSearchStr: `${barcodeClean} ${nameClean} ${nameArClean} ${nameKuClean} ${sciClean} ${suppClean}`,
         barcode: barcodeClean,
         categoryAr: p.categoryAr,
         category: p.category,
-        stock: p.stock,
-        minStock: p.minStock
-      };
+        stock: p.stock ?? 0,
+        minStock: p.minStock ?? 5
+      });
     }
-    return list;
-  }, [products]);
+    return { indexedProducts: list, barcodeMap: bMap };
+  }, [safeProducts]);
 
   // Reset to page 1 whenever filters change
   useEffect(() => {
@@ -201,7 +216,27 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
 
   const filteredProducts = useMemo(() => {
     const searchLower = deferredSearch.trim().toLowerCase();
+    if (!searchLower && selectedCat === 'ALL' && stockFilter === 'ALL') {
+      return products;
+    }
+
     const isDigitsOnly = /^\d+$/.test(searchLower);
+
+    // Exact barcode match optimization for instant single-product retrieval
+    if (isDigitsOnly && searchLower.length >= 3 && selectedCat === 'ALL' && stockFilter === 'ALL') {
+      const exactMatch = barcodeMap.get(searchLower);
+      if (exactMatch) {
+        const result: Product[] = [exactMatch];
+        const len = indexedProducts.length;
+        for (let i = 0; i < len; i++) {
+          const item = indexedProducts[i];
+          if (item.product.id !== exactMatch.id && item.barcode.includes(searchLower)) {
+            result.push(item.product);
+          }
+        }
+        return result;
+      }
+    }
 
     const result: Product[] = [];
     const len = indexedProducts.length;
@@ -232,7 +267,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       result.push(item.product);
     }
     return result;
-  }, [indexedProducts, deferredSearch, selectedCat, stockFilter]);
+  }, [products, indexedProducts, barcodeMap, deferredSearch, selectedCat, stockFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
@@ -453,6 +488,42 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         {/* Dedicated Navigation Buttons / Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pt-1">
           
+          {/* Button: مسح وإدخال المواد بالذكاء الاصطناعي (AI Invoice Scanner) */}
+          {canEditProducts && onOpenAIInvoiceScanner && (
+            <button
+              type="button"
+              onClick={onOpenAIInvoiceScanner}
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] sm:col-span-2 lg:col-span-3 ${
+                isLight
+                  ? 'bg-gradient-to-r from-purple-50 via-fuchsia-50 to-indigo-50 border-purple-300 hover:border-purple-600 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-r from-[#1E0E35] via-[#2A1348] to-[#140827] border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_30px_rgba(168,85,247,0.35)]'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-600 via-fuchsia-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg group-hover:scale-105 transition-transform animate-pulse">
+                <Sparkles className="w-6 h-6 text-white stroke-[2.5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm sm:text-base font-black transition-colors ${
+                    isLight ? 'text-purple-950 group-hover:text-purple-700' : 'text-white group-hover:text-purple-300'
+                  }`}>
+                    {t('إدخال المواد عبر صورة الوصل بالذكاء الاصطناعي (AI OCR Scanner)', 'خوێندنەوە و زیادکردنی مادەکان بە وێنەی پسوولە بە AI', 'AI Invoice Image Scanner & Auto-Importer')}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold border border-purple-500/30">
+                    Gemini Vision
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate sm:whitespace-normal">
+                  {t(
+                    'التقط أو ارفع صورة وصل الشراء؛ يقوم النظام بقراءة أسماء الأدوية والمواد، التواريخ، الباتش، وأسعار الشراء والبيع وإدخالها فورياً إلى المخزن وحسابات الموردين',
+                    'وێنەی پسوولەکە دابنێ؛ ناوەکان، بەرواری بەسەرچوون، باچ، و نرخەکان بە تەواوی و خۆکار دەخرێنە کۆگاوە',
+                    'Snap or upload invoice photo: extracts items, batches, expiries, quantities & wholesale costs directly to warehouse'
+                  )}
+                </p>
+              </div>
+            </button>
+          )}
+
           {/* Button 1: إدخال مادة جديدة (زیادکردنی کاڵای نوێ) - Only for Admins / Managers with edit rights */}
           {canEditProducts && (
             <button
@@ -779,6 +850,17 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
               }}
             />
 
+            {canEditProducts && onOpenAIInvoiceScanner && (
+              <button
+                onClick={onOpenAIInvoiceScanner}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_15px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border border-purple-400/40"
+                title={t('إدخال المواد عبر صورة الوصل بالذكاء الاصطناعي', 'خوێندنەوەی پسوولە بە وێنە و زیرەکی دەستکرد', 'AI Invoice Image Scanner')}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-200 animate-pulse" />
+                <span>{t('مسح صورة الوصل (AI)', 'خوێندنەوەی پسوولە (AI)', 'AI Invoice Scan')}</span>
+              </button>
+            )}
+
             {canEditProducts && (
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -856,30 +938,13 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           
           {/* Search Box */}
           <div className="relative flex-1 min-w-[220px]">
-            <Search className={`w-4 h-4 absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 ${
-              isLight ? 'text-slate-400' : 'text-slate-400'
-            }`} />
-            <input
-              type="text"
+            <FastSearchInput
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
               placeholder={t('بحث فوري بالباركود، اسم المادة، أو اسم المندوب...', 'گەڕانی خێرا بە بارکۆد، ناوی کاڵا، یان ناوی مەندوب...', 'Fast search barcode, product name, or delegate...')}
-              className={`w-full text-xs pl-9 rtl:pl-8 rtl:pr-9 pr-8 py-2 rounded-xl border font-semibold focus:outline-none transition-all ${
-                isLight
-                  ? 'bg-slate-50 text-slate-900 placeholder-slate-400 border-slate-300 focus:border-blue-500 focus:bg-white'
-                  : 'bg-[#0B1120] text-slate-200 placeholder-slate-500 border-blue-500/20 focus:border-cyan-500/60'
-              }`}
+              isLight={isLight}
+              debounceMs={80}
             />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-2.5 rtl:right-auto rtl:left-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all cursor-pointer"
-                title={t('مسح البحث', 'سڕینەوەی گەڕان', 'Clear search')}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
 
           {/* OPTIONAL CATEGORY TOGGLE BUTTON */}

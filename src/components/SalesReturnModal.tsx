@@ -366,7 +366,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       discount: 0,
       tax: 0,
       total: -directTotalAmount,
-      paymentMethod: refundMethod,
+      paymentMethod: refundMethod === 'credit' ? 'debt' : 'cash',
       customerName: customerName || t('عميل عام / زبون خارجي', 'کڕیاری گشتی', 'General Customer'),
       cashierName: t('الكاشير الرئيسية', 'کاشێری سەرەکی', 'Main Cashier'),
       status: 'refunded',

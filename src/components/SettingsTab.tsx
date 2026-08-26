@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop, Trash2, AlertTriangle, Lock } from 'lucide-react';
+import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop, Trash2, AlertTriangle, Lock, Cloud } from 'lucide-react';
 import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount } from '../types';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { DatabaseStorageModal } from './DatabaseStorageModal';
+import { StressTestDataModal } from './StressTestDataModal';
 import { KioskPrintModal } from './KioskPrintModal';
+import { GoogleDriveBackupModal } from './GoogleDriveBackupModal';
 import { downloadKioskPrintingBatchFile } from '../lib/thermalPrinter';
 import { getTranslation } from '../lib/translations';
 import { exportStoreToExcel, exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
@@ -52,7 +54,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   // POS Keyboard Shortcuts Modal State
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isDbStorageModalOpen, setIsDbStorageModalOpen] = useState(false);
+  const [isStressTestModalOpen, setIsStressTestModalOpen] = useState(false);
   const [isKioskModalOpen, setIsKioskModalOpen] = useState(false);
+  const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -439,6 +443,24 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setIsGoogleDriveModalOpen(true)}
+                className="text-xs px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-emerald-500 text-slate-950 font-black flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-cyan-300/40 animate-pulse"
+              >
+                <Cloud className="w-3.5 h-3.5 text-slate-950 fill-current" />
+                <span>{isKu ? '☁️ پاشەکەوتی Google Drive' : isAr ? '☁️ النسخ السحابي (Google Drive)' : '☁️ Google Drive Backup'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsStressTestModalOpen(true)}
+                className="text-xs px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-500 text-slate-950 font-black flex items-center gap-1.5 shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-amber-400/40"
+              >
+                <Zap className="w-3.5 h-3.5 text-slate-950 fill-current" />
+                <span>{isKu ? '⚡ تاقیکردنەوەی 100 هەزار+ داتا' : isAr ? '⚡ توليد 100 ألف مادة للتجربة' : '⚡ 100k+ Stress Test Data'}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsDbStorageModalOpen(true)}
                 className="text-xs px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-cyan-400/40"
               >
@@ -815,6 +837,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         isOpen={isShortcutsModalOpen}
         onClose={() => setIsShortcutsModalOpen(false)}
         settings={settings}
+        setSettings={setSettings}
       />
 
       {/* High-Capacity Local Database & Storage Engine Modal */}
@@ -825,6 +848,36 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         onDataRestored={() => {
           window.location.reload();
         }}
+      />
+
+      {/* Stress Testing & Mass Data Generator Modal */}
+      <StressTestDataModal
+        isOpen={isStressTestModalOpen}
+        onClose={() => setIsStressTestModalOpen(false)}
+        settings={settings}
+        onDataLoaded={(data) => {
+          if (onImportBackup) {
+            onImportBackup(data);
+          }
+          setImportStatus(isKu ? `✅ بە سەرکەوتوویی داتاکان (${data.products.length} کاڵا، ${data.salesHistory.length} فرۆشتن) بارکران!` : isAr ? `✅ تم توليد وشحن البيانات بنجاح (${data.products.length.toLocaleString()} مادة، ${data.salesHistory.length.toLocaleString()} حركة بيع)!` : 'Stress test data loaded successfully!');
+          setIsStressTestModalOpen(false);
+        }}
+      />
+
+      {/* Google Drive Cloud Backup Modal */}
+      <GoogleDriveBackupModal
+        isOpen={isGoogleDriveModalOpen}
+        onClose={() => setIsGoogleDriveModalOpen(false)}
+        settings={settings}
+        products={products}
+        salesHistory={salesHistory}
+        suppliers={suppliers}
+        customers={customers}
+        orders={orders}
+        notifications={notifications}
+        purchaseInvoices={purchaseInvoices}
+        userAccounts={userAccounts}
+        onImportBackup={onImportBackup}
       />
 
       {/* Kiosk / Silent POS Printing Modal */}

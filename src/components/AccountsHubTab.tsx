@@ -49,12 +49,14 @@ interface AccountsHubTabProps {
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   salesHistory: SaleTransaction[];
+  setSalesHistory?: React.Dispatch<React.SetStateAction<SaleTransaction[]>>;
   purchaseInvoices: PurchaseInvoice[];
   setPurchaseInvoices: React.Dispatch<React.SetStateAction<PurchaseInvoice[]>>;
   notifications?: MarketNotification[];
   onImportBackup?: (backupData: any) => number | void;
   onOpenPOS: () => void;
-  onOpenAddProductForSupplier?: (supplierId: string, supplierName: string) => void;
+  onOpenAddProductForSupplier?: (supplierName: string) => void;
+  onOpenAIInvoiceScanner?: () => void;
   onViewReceipt?: (sale: SaleTransaction) => void;
   onBackToDashboard?: () => void;
 }
@@ -73,9 +75,11 @@ export const AccountsHubTab: React.FC<AccountsHubTabProps> = ({
   products,
   setProducts,
   salesHistory,
+  setSalesHistory,
   purchaseInvoices,
   setPurchaseInvoices,
   onOpenAddProductForSupplier,
+  onOpenAIInvoiceScanner,
   onViewReceipt,
   onBackToDashboard,
 }) => {
@@ -294,6 +298,7 @@ export const AccountsHubTab: React.FC<AccountsHubTabProps> = ({
               setPurchaseInvoices={setPurchaseInvoices}
               settings={settings}
               onOpenAddProductForSupplier={onOpenAddProductForSupplier}
+              onOpenAIInvoiceScanner={onOpenAIInvoiceScanner}
             />
           </div>
         )}
@@ -305,6 +310,10 @@ export const AccountsHubTab: React.FC<AccountsHubTabProps> = ({
               customers={customers}
               setCustomers={setCustomers}
               settings={settings}
+              salesHistory={salesHistory}
+              setSalesHistory={setSalesHistory}
+              onViewReceipt={onViewReceipt}
+              onOpenPOS={() => setActiveSubTab('hub')}
             />
           </div>
         )}

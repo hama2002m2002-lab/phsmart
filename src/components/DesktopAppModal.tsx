@@ -98,16 +98,36 @@ start "" "${window.location.href}" --app="${window.location.href}"
 
     setDriveSyncStatus(isAr ? 'جاري رفع النسخة إلى Google Drive...' : 'Uploading backup to Google Drive...');
 
-    const backupContent = JSON.stringify({
-      appName: '7amo.pos',
-      exportedAt: new Date().toISOString(),
-      storeSettings: settings,
-      products: JSON.parse(localStorage.getItem('products') || '[]'),
-      sales: JSON.parse(localStorage.getItem('salesHistory') || '[]')
-    }, null, 2);
+    const products = JSON.parse(localStorage.getItem('supermarket_products_v1') || localStorage.getItem('products') || '[]');
+    const sales = JSON.parse(localStorage.getItem('supermarket_sales_v1') || localStorage.getItem('salesHistory') || '[]');
 
-    const filename = `7amo_pos_backup_${new Date().toISOString().slice(0, 10)}.json`;
-    const res = await uploadBackupToGoogleDrive(driveToken || '', filename, backupContent);
+    const backupPayload = {
+      version: '7amo-pos-v3.0',
+      exportedAt: new Date().toISOString(),
+      storeName: settings.storeName || 'المتجر الرئيسي',
+      totalProducts: products.length,
+      totalSales: sales.length,
+      data: {
+        products,
+        salesHistory: sales,
+        suppliers: JSON.parse(localStorage.getItem('supermarket_suppliers_v1') || '[]'),
+        customers: JSON.parse(localStorage.getItem('supermarket_customers_v1') || '[]'),
+        purchaseInvoices: JSON.parse(localStorage.getItem('supermarket_purchases_v1') || '[]'),
+        userAccounts: JSON.parse(localStorage.getItem('supermarket_user_accounts_v3') || '[]'),
+        orders: JSON.parse(localStorage.getItem('supermarket_orders_v1') || '[]'),
+        notifications: JSON.parse(localStorage.getItem('supermarket_notifications_v1') || '[]'),
+        damagedLogs: JSON.parse(localStorage.getItem('pos_damaged_items_logs') || '[]'),
+        delegateReturns: JSON.parse(localStorage.getItem('pos_delegate_returns_logs') || '[]'),
+        operatingExpenses: JSON.parse(localStorage.getItem('pos_custom_operating_expenses') || '[]'),
+        customExpenseTypes: JSON.parse(localStorage.getItem('pos_custom_expense_types') || '[]'),
+        cashAdjustments: JSON.parse(localStorage.getItem('pos_cash_adjustments') || '[]'),
+        inventoryAudits: JSON.parse(localStorage.getItem('pos_inventory_audits_v1') || '[]'),
+        settings: settings
+      }
+    };
+
+    const filename = `hama_pos_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    const res = await uploadBackupToGoogleDrive(driveToken || '', filename, backupPayload);
 
     if (res.success) {
       setDriveSyncStatus(isAr ? 'تم رفع نسخة خياطية جافة بـ بنجاح إلى Google Drive 📁!' : 'Backup successfully saved to Google Drive 📁!');

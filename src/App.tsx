@@ -37,6 +37,7 @@ import { CashierAccountsModal } from './components/CashierAccountsModal';
 import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAvatarSelector';
 import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
+import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
 
 import {
   initialProducts,
@@ -223,6 +224,8 @@ export function App() {
   const [isYellowLineModalOpen, setIsYellowLineModalOpen] = useState(false);
   const [isReportsFullscreen, setIsReportsFullscreen] = useState(false);
   const [isInventoryAuditOpen, setIsInventoryAuditOpen] = useState(false);
+  const [isAIInvoiceScannerOpen, setIsAIInvoiceScannerOpen] = useState(false);
+  const [aiDraftImportData, setAiDraftImportData] = useState<any | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
@@ -453,23 +456,27 @@ export function App() {
   };
 
   const handleOpenAddProduct = () => {
+    console.log('[App:productToEdit] handleOpenAddProduct -> setProductToEdit(null), open modal');
     setProductToEdit(null);
     setInitialSupplierForNewProduct('');
     setIsProductModalOpen(true);
   };
 
   const handleOpenAddProductForSupplier = (supplierName: string) => {
+    console.log('[App:productToEdit] handleOpenAddProductForSupplier -> supplier:', supplierName);
     setProductToEdit(null);
     setInitialSupplierForNewProduct(supplierName);
     setIsProductModalOpen(true);
   };
 
   const handleEditProduct = (prod: Product) => {
+    console.log('[App:productToEdit] handleEditProduct -> editing product ID:', prod.id, prod.nameAr || prod.name);
     setProductToEdit(prod);
     setIsProductModalOpen(true);
   };
 
   const handleSaveProduct = (prod: Product) => {
+    console.log('[App:productToEdit] handleSaveProduct -> saving product:', prod.id, prod.nameAr || prod.name);
     setProducts(prev => {
       const exists = prev.some(p => p.id === prod.id);
       if (exists) {
@@ -483,6 +490,82 @@ export function App() {
   const handleDeleteProduct = (prodId: string) => {
     setProducts(prev => prev.filter(p => p.id !== prodId));
     syncDeleteDocument('products', prodId);
+  };
+
+  const handleConfirmAIInvoiceImport = (data: {
+    newProducts: Product[];
+    updatedProducts: Product[];
+    newSupplier?: Supplier;
+    newPurchaseInvoice?: PurchaseInvoice;
+  }) => {
+    // 1. Update & Add products in local state and Firestore
+    setProducts(prev => {
+      let updatedList = [...prev];
+      // Update existing products with new stock, prices, expiries
+      data.updatedProducts.forEach(up => {
+        const idx = updatedList.findIndex(p => p.id === up.id);
+        if (idx !== -1) {
+          updatedList[idx] = up;
+        }
+      });
+      // Prepend brand new products
+      if (data.newProducts.length > 0) {
+        updatedList = [...data.newProducts, ...updatedList];
+      }
+      try { localStorage.setItem('supermarket_products_v1', JSON.stringify(updatedList)); } catch {}
+      localDbBulkPut('products', updatedList);
+      syncBulkWriteCollection('products', updatedList);
+      return updatedList;
+    });
+
+    // 2. Add or update supplier
+    if (data.newSupplier) {
+      setSuppliers(prev => {
+        const existingIdx = prev.findIndex(s => s.id === data.newSupplier?.id || s.name.toLowerCase() === data.newSupplier?.name.toLowerCase() || (data.newSupplier?.nameAr && s.nameAr === data.newSupplier?.nameAr));
+        let nextSuppliers: Supplier[];
+        if (existingIdx !== -1) {
+          nextSuppliers = prev.map((s, idx) => idx === existingIdx ? {
+            ...s,
+            balanceDue: (s.balanceDue || 0) + (data.newSupplier?.balanceDue || 0),
+            totalInvoicesCount: (s.totalInvoicesCount || 0) + 1,
+            lastSupplyDate: new Date().toISOString().split('T')[0],
+          } : s);
+        } else {
+          nextSuppliers = [data.newSupplier!, ...prev];
+        }
+        try { localStorage.setItem('supermarket_suppliers_v1', JSON.stringify(nextSuppliers)); } catch {}
+        localDbBulkPut('suppliers', nextSuppliers);
+        syncBulkWriteCollection('suppliers', nextSuppliers);
+        return nextSuppliers;
+      });
+    }
+
+    // 3. Add purchase invoice
+    if (data.newPurchaseInvoice) {
+      setPurchaseInvoices(prev => {
+        const nextInvoices = [data.newPurchaseInvoice!, ...prev];
+        try { localStorage.setItem('supermarket_purchases_v1', JSON.stringify(nextInvoices)); } catch {}
+        localDbBulkPut('purchases', nextInvoices);
+        syncBulkWriteCollection('purchases', nextInvoices);
+        return nextInvoices;
+      });
+    }
+
+    // 4. Create notification
+    const totalCount = data.newProducts.length + data.updatedProducts.length;
+    const newNotif: MarketNotification = {
+      id: `notif-${Date.now()}`,
+      title: 'AI Invoice Scanned & Imported',
+      titleAr: 'تم مسح وإدراج مواد الوصل بالذكاء الاصطناعي',
+      message: `Successfully processed ${totalCount} items from invoice ${data.newPurchaseInvoice?.invoiceNumber || ''}.`,
+      messageAr: `تم بنجاح إدراج وتحديث ${totalCount} مادة من الوصل ${data.newPurchaseInvoice?.invoiceNumber || ''} في المخزن وحساب المورد.`,
+      time: 'Just now',
+      priority: 'high',
+      category: 'inventory',
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+    syncWriteDocument('notifications', newNotif.id, newNotif);
   };
 
   const handleImportBackup = (rawBackup: any) => {
@@ -830,8 +913,8 @@ export function App() {
             onSaleCompleted={handleSaleCompleted}
             showPOSInventory={showPOSInventory}
             setShowPOSInventory={setShowPOSInventory}
-            showYellowLineModal={isYellowLineModalOpen}
-            setShowYellowLineModal={setIsYellowLineModalOpen}
+            isYellowLineModalOpen={isYellowLineModalOpen}
+            setIsYellowLineModalOpen={setIsYellowLineModalOpen}
             isAnyModalOpen={isAnyModalOpen}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onOpenMobileSync={() => setIsMobileSyncOpen(true)}
@@ -885,6 +968,7 @@ export function App() {
             products={products}
             setProducts={setProducts}
             customers={customers}
+            setCustomers={setCustomers}
             settings={settings}
             setSettings={setSettings}
             onSaleCompleted={handleSaleCompleted}
@@ -928,6 +1012,7 @@ export function App() {
             onOpenDamagedItems={() => setActiveTab('damagedItems')}
             onOpenInvoices={() => setActiveTab('invoices')}
             onNavigateToReports={() => setActiveTopTab('reports')}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
           />
         );
 
@@ -980,6 +1065,9 @@ export function App() {
             settings={settings}
             onOpenAddProduct={handleOpenAddProduct}
             onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+            initialDraftData={aiDraftImportData}
+            onClearInitialDraftData={() => setAiDraftImportData(null)}
           />
         );
 
@@ -1001,12 +1089,14 @@ export function App() {
             products={products}
             setProducts={setProducts}
             salesHistory={salesHistory}
+            setSalesHistory={setSalesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
             notifications={notifications}
             onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
@@ -1029,12 +1119,14 @@ export function App() {
             products={products}
             setProducts={setProducts}
             salesHistory={salesHistory}
+            setSalesHistory={setSalesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
             notifications={notifications}
             onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
@@ -1057,12 +1149,14 @@ export function App() {
             products={products}
             setProducts={setProducts}
             salesHistory={salesHistory}
+            setSalesHistory={setSalesHistory}
             purchaseInvoices={purchaseInvoices}
             setPurchaseInvoices={setPurchaseInvoices}
             notifications={notifications}
             onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
@@ -1091,6 +1185,7 @@ export function App() {
             onImportBackup={handleImportBackup}
             onOpenPOS={() => setActiveTab('pos')}
             onOpenAddProductForSupplier={handleOpenAddProductForSupplier}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
           />
@@ -1552,6 +1647,19 @@ export function App() {
         products={products}
         setProducts={setProducts}
         settings={settings}
+      />
+
+      <AIInvoiceScannerModal
+        isOpen={isAIInvoiceScannerOpen}
+        onClose={() => setIsAIInvoiceScannerOpen(false)}
+        settings={settings}
+        existingProducts={products}
+        existingSuppliers={suppliers}
+        onConfirmImport={handleConfirmAIInvoiceImport}
+        onTransferToDraft={(draftData) => {
+          setAiDraftImportData(draftData);
+          setActiveTab('purchases');
+        }}
       />
 
     </div>

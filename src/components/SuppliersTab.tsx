@@ -4,7 +4,7 @@ import {
   Bookmark, CheckCircle2, FileText, Search, Eye, CreditCard, X, MapPin, Receipt,
   Building2, ArrowDownLeft, ArrowUpRight, ShieldCheck, Wallet, RefreshCw,
   RotateCcw, AlertTriangle, Printer, Layers, ChevronDown, ChevronUp, Clock, Tag, UserCheck,
-  TrendingUp, TrendingDown, ArrowDownRight, Percent, BarChart3, Activity, Info
+  TrendingUp, TrendingDown, ArrowDownRight, Percent, BarChart3, Activity, Info, Sparkles
 } from 'lucide-react';
 import { Supplier, StoreSettings, Product, SupplierPayment, PurchaseInvoice, PurchaseInvoiceItem } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -19,6 +19,7 @@ interface SuppliersTabProps {
   setPurchaseInvoices?: React.Dispatch<React.SetStateAction<PurchaseInvoice[]>>;
   settings: StoreSettings;
   onOpenAddProductForSupplier?: (supplierName: string) => void;
+  onOpenAIInvoiceScanner?: () => void;
 }
 
 export const SuppliersTab: React.FC<SuppliersTabProps> = ({
@@ -30,6 +31,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
   setPurchaseInvoices,
   settings,
   onOpenAddProductForSupplier,
+  onOpenAIInvoiceScanner,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -69,6 +71,10 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
   const [returnDeductStock, setReturnDeductStock] = useState<boolean>(true);
   const [returnSuccessMsg, setReturnSuccessMsg] = useState<string>('');
   const [printingReturnRecord, setPrintingReturnRecord] = useState<DelegateReturnRecord | null>(null);
+
+  // Pagination for massive suppliers directory (100 per page)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(60);
 
   // Delegate Returns Logs (shared from localStorage)
   const [delegateLogs, setDelegateLogs] = useState<DelegateReturnRecord[]>(() => {
@@ -406,9 +412,9 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
     const diffCarton = latestCartonPrice - oldCartonPrice;
     const percentChange = oldPiecePrice > 0 ? ((diffPiece / oldPiecePrice) * 100) : 0;
 
-    let trend: 'up' | 'down' | 'same' = 'same';
-    if (diffPiece > 0.001) trend = 'up';
-    else if (diffPiece < -0.001) trend = 'down';
+    let trend: 'increased' | 'decreased' | 'stable' = 'stable';
+    if (diffPiece > 0.001) trend = 'increased';
+    else if (diffPiece < -0.001) trend = 'decreased';
 
     return {
       latestPiecePrice,
@@ -433,8 +439,8 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
 
     matchedSupplierProducts.forEach(p => {
       const pricing = getProductPurchasePricing(p);
-      if (pricing.trend === 'up') increasedCount++;
-      else if (pricing.trend === 'down') decreasedCount++;
+      if (pricing.trend === 'increased') increasedCount++;
+      else if (pricing.trend === 'decreased') decreasedCount++;
       else stableCount++;
     });
 
@@ -602,13 +608,25 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white text-xs font-bold shadow-md hover:brightness-110 active:scale-95 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{t('إضافة مندوب / شركة توريد', 'زیادکردنی مەندووب / کۆمپانیای دابینکەر', 'Add Supplier / Delegate')}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenAIInvoiceScanner && (
+            <button
+              onClick={onOpenAIInvoiceScanner}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_15px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-purple-400/40"
+            >
+              <Sparkles className="w-4 h-4 text-purple-200 animate-pulse" />
+              <span>{t('مسح صورة وصل شراء بالذكاء الاصطناعي (AI)', 'خوێندنەوەی پسوولە بە وێنە (AI)', 'AI Scan Invoice')}</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white text-xs font-bold shadow-md hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{t('إضافة مندوب / شركة توريد', 'زیادکردنی مەندووب / کۆمپانیای دابینکەر', 'Add Supplier / Delegate')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Top Financial Stats & Quick Action Bar (Compact) */}
@@ -1605,12 +1623,12 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                                   </span>
 
                                   {/* Price Trend Badge */}
-                                  {pricing.trend === 'up' ? (
+                                  {pricing.trend === 'increased' ? (
                                     <span className="px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-bold flex items-center gap-0.5 font-mono" title={t('ارتفع سعر الشراء في آخر وصل', 'نرخی کڕین لە دوایین پسوولە بەرزبووەوە', 'Price increased')}>
                                       <TrendingUp className="w-2.5 h-2.5" />
                                       <span>+{pricing.percentChange}%</span>
                                     </span>
-                                  ) : pricing.trend === 'down' ? (
+                                  ) : pricing.trend === 'decreased' ? (
                                     <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-bold flex items-center gap-0.5 font-mono" title={t('انخفض سعر الشراء في آخر وصل', 'نرخی کڕین لە دوایین پسوولە دابەزی', 'Price decreased')}>
                                       <TrendingDown className="w-2.5 h-2.5" />
                                       <span>{pricing.percentChange}%</span>
@@ -1936,12 +1954,12 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {currentReturnPricing.trend === 'up' ? (
+                          {currentReturnPricing.trend === 'increased' ? (
                             <span className="px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold flex items-center gap-1 font-mono">
                               <TrendingUp className="w-3.5 h-3.5" />
                               <span>{t('ارتفع السعر بمقدار', 'نرخ بەرزبووەتەوە بە', 'Price increased by')} +{settings.currencySymbol}{formatNumber(returnUnitType === 'carton' ? currentReturnPricing.diffCarton : currentReturnPricing.diffPiece)} (+{currentReturnPricing.percentChange}%)</span>
                             </span>
-                          ) : currentReturnPricing.trend === 'down' ? (
+                          ) : currentReturnPricing.trend === 'decreased' ? (
                             <span className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1 font-mono">
                               <TrendingDown className="w-3.5 h-3.5" />
                               <span>{t('انخفض السعر بمقدار', 'نرخ دابەزیوە بە', 'Price decreased by')} {settings.currencySymbol}{formatNumber(returnUnitType === 'carton' ? currentReturnPricing.diffCarton : currentReturnPricing.diffPiece)} ({currentReturnPricing.percentChange}%)</span>

@@ -21,11 +21,19 @@ import {
   DollarSign,
   Tag,
   SlidersHorizontal,
-  Info
+  Info,
+  Calendar,
+  AlertTriangle,
+  Clock,
+  Boxes,
+  Camera,
+  Sparkles,
+  Upload
 } from 'lucide-react';
-import { Product, Supplier, StoreSettings, PurchaseInvoice, PurchaseInvoiceItem } from '../types';
+import { Product, Supplier, StoreSettings, PurchaseInvoice, PurchaseInvoiceItem, ProductBatch } from '../types';
 import { formatDateDDMMYYYY, formatTime12Hour } from '../lib/dateUtils';
 import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
+import { generateUniqueBarcode200245 } from '../lib/barcodeUtils';
 
 interface PurchasesTabProps {
   products: Product[];
@@ -37,6 +45,41 @@ interface PurchasesTabProps {
   settings: StoreSettings;
   onOpenAddProduct?: () => void;
   onBackToDashboard?: () => void;
+  onOpenAIInvoiceScanner?: () => void;
+  initialDraftData?: {
+    items: Array<{
+      productId: string;
+      productName: string;
+      barcode: string;
+      purchaseUnitMode: 'carton' | 'piece';
+      cartonsCount: number;
+      piecesPerCarton: number;
+      cartonPurchasePrice: number;
+      totalPieces: number;
+      oldPurchasePrice: number;
+      newPiecePurchaseCost: number;
+      costUpdateMethod: 'weighted_average' | 'direct_new_price';
+      finalPieceCost: number;
+      retailSellingPrice: number;
+      pieceProfit: number;
+      profitMarginPercent: number;
+      totalItemCost: number;
+      totalItemExpectedProfit: number;
+      oldStockQty: number;
+      expiryDate?: string;
+      productionDate?: string;
+      batchNumber?: string;
+      oldExpiryDate?: string;
+      discountAmount?: number;
+      discountPercent?: number;
+    }>;
+    supplierName?: string;
+    supplierPhone?: string;
+    invoiceNumber?: string;
+    invoiceDate?: string;
+    discountAmount?: number;
+  } | null;
+  onClearInitialDraftData?: () => void;
 }
 
 export const PurchasesTab: React.FC<PurchasesTabProps> = ({
@@ -49,6 +92,9 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
   settings,
   onOpenAddProduct,
   onBackToDashboard,
+  onOpenAIInvoiceScanner,
+  initialDraftData,
+  onClearInitialDraftData
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -88,6 +134,18 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
   const [barcodeInput, setBarcodeInput] = useState<string>('');
   const [purchaseUnitMode, setPurchaseUnitMode] = useState<'carton' | 'piece'>('carton');
 
+  // Expiry Date & Batch Tracking
+  const [expiryDateInput, setExpiryDateInput] = useState<string>('');
+  const [productionDateInput, setProductionDateInput] = useState<string>('');
+  const [batchNumberInput, setBatchNumberInput] = useState<string>('');
+  const [expiryAlertBanner, setExpiryAlertBanner] = useState<{
+    show: boolean;
+    productName: string;
+    existingExpiry: string;
+    existingStock: number;
+    existingBatches?: ProductBatch[];
+  } | null>(null);
+
   // Quantity inputs
   const [cartonsCount, setCartonsCount] = useState<number>(1);
   const [piecesPerCarton, setPiecesPerCarton] = useState<number>(24);
@@ -126,9 +184,60 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     totalItemCost: number;
     totalItemExpectedProfit: number;
     oldStockQty: number;
+    expiryDate?: string;
+    productionDate?: string;
+    batchNumber?: string;
+    oldExpiryDate?: string;
+    discountAmount?: number;
+    discountPercent?: number;
   }
 
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
+
+  // Listen to Transferred Scanned Items from AI Scanner Modal
+  useEffect(() => {
+    if (initialDraftData) {
+      if (initialDraftData.supplierName) setSelectedSupplierName(initialDraftData.supplierName);
+      if (initialDraftData.supplierPhone) setDelegatePhone(initialDraftData.supplierPhone);
+      if (initialDraftData.invoiceNumber) setInvoiceNumber(`PUR-${initialDraftData.invoiceNumber}`);
+      if (initialDraftData.invoiceDate) setInvoiceDate(initialDraftData.invoiceDate);
+      if (initialDraftData.discountAmount) setInvoiceDiscount(initialDraftData.discountAmount);
+
+      if (initialDraftData.items && initialDraftData.items.length > 0) {
+        const formattedItems: DraftItem[] = initialDraftData.items.map((i, idx) => ({
+          id: `draft-ai-${Date.now()}-${idx}`,
+          productId: i.productId,
+          productName: i.productName,
+          barcode: i.barcode,
+          purchaseUnitMode: i.purchaseUnitMode || 'carton',
+          cartonsCount: i.cartonsCount || 0,
+          piecesPerCarton: i.piecesPerCarton || 1,
+          cartonPurchasePrice: i.cartonPurchasePrice || 0,
+          totalPieces: i.totalPieces || 1,
+          oldPurchasePrice: i.oldPurchasePrice || 0,
+          newPiecePurchaseCost: i.newPiecePurchaseCost || 0,
+          costUpdateMethod: i.costUpdateMethod || 'weighted_average',
+          finalPieceCost: i.finalPieceCost || i.newPiecePurchaseCost || 0,
+          retailSellingPrice: i.retailSellingPrice || 0,
+          pieceProfit: i.pieceProfit || 0,
+          profitMarginPercent: i.profitMarginPercent || 0,
+          totalItemCost: i.totalItemCost || 0,
+          totalItemExpectedProfit: i.totalItemExpectedProfit || 0,
+          oldStockQty: i.oldStockQty || 0,
+          expiryDate: i.expiryDate,
+          productionDate: i.productionDate,
+          batchNumber: i.batchNumber,
+          oldExpiryDate: i.oldExpiryDate,
+          discountAmount: i.discountAmount,
+          discountPercent: i.discountPercent
+        }));
+
+        setDraftItems(formattedItems);
+      }
+
+      onClearInitialDraftData?.();
+    }
+  }, [initialDraftData]);
 
   // ------------------------------------------------------------------
   // CALCULATIONS FOR CURRENT ITEM IN FORM
@@ -203,6 +312,24 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     const retail = prod.singleRetailPrice || prod.price || 750;
     setRetailSellingPrice(retail);
 
+    // Expiry Date & Batch check & alert for worker
+    if (prod.expiryDate || (prod.stock > 0)) {
+      setExpiryAlertBanner({
+        show: true,
+        productName: prod.nameAr || prod.name,
+        existingExpiry: prod.expiryDate || t('غير محدد', 'دیاری نەکراوە', 'Not set'),
+        existingStock: prod.stock || 0,
+        existingBatches: prod.batches || []
+      });
+    } else {
+      setExpiryAlertBanner(null);
+    }
+
+    // Pre-fill expiry with product's current expiry or keep empty for new batch
+    setExpiryDateInput(prod.expiryDate || '');
+    setProductionDateInput(prod.productionDate || '');
+    setBatchNumberInput(prod.batchNumber || `B-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
+
     setSearchQuery('');
     setIsSearchFocused(false);
   };
@@ -270,7 +397,11 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       profitMarginPercent: currentProfitMarginPercent,
       totalItemCost: currentTotalItemPurchaseAmount,
       totalItemExpectedProfit: currentTotalItemExpectedProfit,
-      oldStockQty
+      oldStockQty,
+      expiryDate: expiryDateInput.trim() || undefined,
+      productionDate: productionDateInput.trim() || undefined,
+      batchNumber: batchNumberInput.trim() || undefined,
+      oldExpiryDate: selectedProduct?.expiryDate || undefined
     };
 
     setDraftItems(prev => [...prev, newDraftItem]);
@@ -281,10 +412,23 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     setBarcodeInput('');
     setCartonsCount(1);
     setSinglePieceQty(12);
+    setExpiryDateInput('');
+    setProductionDateInput('');
+    setBatchNumberInput('');
+    setExpiryAlertBanner(null);
   };
 
   const handleRemoveItemFromGrid = (id: string) => {
     setDraftItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleUpdateDraftItemBarcode = (id: string, newBarcode: string) => {
+    setDraftItems(prev => prev.map(item => item.id === id ? { ...item, barcode: newBarcode } : item));
+  };
+
+  const handleGenerateDraftItemBarcode = (id: string) => {
+    const newBar = generateUniqueBarcode200245(products);
+    setDraftItems(prev => prev.map(item => item.id === id ? { ...item, barcode: newBar } : item));
   };
 
   const handleResetForm = () => {
@@ -297,6 +441,10 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     setSelectedProduct(null);
     setProductNameInput('');
     setBarcodeInput('');
+    setExpiryDateInput('');
+    setProductionDateInput('');
+    setBatchNumberInput('');
+    setExpiryAlertBanner(null);
   };
 
   const handleSaveInvoice = () => {
@@ -320,7 +468,14 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       newPurchasePrice: item.newPiecePurchaseCost,
       oldRetailPrice: item.retailSellingPrice,
       newRetailPrice: item.retailSellingPrice,
-      unitsPerCarton: item.piecesPerCarton
+      unitsPerCarton: item.piecesPerCarton,
+      expiryDate: item.expiryDate,
+      productionDate: item.productionDate,
+      batchNumber: item.batchNumber,
+      oldExpiryDate: item.oldExpiryDate,
+      discountAmount: item.discountAmount,
+      discountPercent: item.discountPercent,
+      totalCost: item.totalItemCost
     }));
 
     const newInvoiceRecord: PurchaseInvoice = {
@@ -334,6 +489,9 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       paidAmount: paidAmountCash,
       remainingAmount: remainingDebtAmount,
       totalInvoiceAmount: netTotalPayable,
+      grossInvoiceAmount: totalInvoiceAmount,
+      discountAmount: invoiceDiscount,
+      discountPercent: totalInvoiceAmount > 0 ? Math.round((invoiceDiscount / totalInvoiceAmount) * 100) : 0,
       items: invoiceItemsToSave,
       status: 'completed',
       notes: invoiceNotes
@@ -342,8 +500,8 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     setPurchaseInvoices(prev => [newInvoiceRecord, ...prev]);
 
     setProducts(prevProducts => {
-      return prevProducts.map(prod => {
-        const matchedItem = draftItems.find(item => item.productId === prod.id || item.barcode === prod.barcode);
+      const updatedExisting = prevProducts.map(prod => {
+        const matchedItem = draftItems.find(item => item.productId === prod.id || (item.barcode && prod.barcode && item.barcode.trim() === prod.barcode.trim()));
         if (!matchedItem) return prod;
 
         const oldStock = prod.stock || 0;
@@ -356,15 +514,53 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           ? matchedItem.cartonPurchasePrice
           : matchedItem.newPiecePurchaseCost * upc;
 
+        // Manage Batches (الدفعات وتواريخ الصلاحية)
+        let updatedBatches: ProductBatch[] = Array.isArray(prod.batches) ? [...prod.batches] : [];
+        
+        // If product already had stock and an old expiry date but no batches registered yet, convert existing stock to first batch
+        if (updatedBatches.length === 0 && oldStock > 0) {
+          updatedBatches.push({
+            id: `batch-initial-${prod.id}`,
+            batchNumber: prod.batchNumber || `BATCH-OLD`,
+            expiryDate: prod.expiryDate || 'N/A',
+            productionDate: prod.productionDate || '',
+            quantity: oldStock,
+            purchasePrice: prod.costPerUnit || prod.cost,
+            supplierName: prod.supplierDelegate || prod.supplierName || 'قديم',
+            addedDate: prod.initialAddDate || invoiceDate
+          });
+        }
+
+        // Add the new purchased batch
+        const newBatchItem: ProductBatch = {
+          id: `batch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          batchNumber: matchedItem.batchNumber || `BATCH-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+          expiryDate: matchedItem.expiryDate || prod.expiryDate || '',
+          productionDate: matchedItem.productionDate || '',
+          quantity: matchedItem.totalPieces,
+          purchasePrice: actualNewPurchasePiece,
+          supplierName: selectedSupplierName || prod.supplierName,
+          addedDate: invoiceDate
+        };
+        updatedBatches.push(newBatchItem);
+
+        // Determine effective primary expiry date (Earliest non-empty expiry date among active batches)
+        const validExpiries = updatedBatches
+          .filter(b => b.quantity > 0 && b.expiryDate && b.expiryDate !== 'N/A' && b.expiryDate !== '')
+          .map(b => b.expiryDate)
+          .sort();
+        
+        const effectiveExpiry = validExpiries.length > 0 
+          ? validExpiries[0] 
+          : (matchedItem.expiryDate || prod.expiryDate || '');
+
         return {
           ...prod,
           stock: newTotalStock,
           totalUnits: newTotalStock,
           cartonsCount: Math.floor(newTotalStock / upc),
-          // Cost is set to weighted cost (old + new) for reports, analytics, and sales profit calculations
           cost: matchedItem.finalPieceCost,
           costPerUnit: matchedItem.finalPieceCost,
-          // Purchase price preserves the actual new purchase price that the user entered!
           lastPurchasePrice: actualNewPurchasePiece,
           lastCartonPurchasePrice: actualNewCartonPurchase,
           cartonPurchasePrice: actualNewCartonPurchase,
@@ -372,9 +568,77 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           price: matchedItem.retailSellingPrice,
           lastEditDate: invoiceDate,
           supplierName: selectedSupplierName || prod.supplierName,
-          status: newTotalStock === 0 ? 'out_of_stock' : newTotalStock <= prod.minStock ? 'low_stock' : 'in_stock'
+          expiryDate: effectiveExpiry,
+          productionDate: matchedItem.productionDate || prod.productionDate,
+          batchNumber: matchedItem.batchNumber || prod.batchNumber,
+          batches: updatedBatches,
+          status: (newTotalStock === 0 ? 'out_of_stock' : newTotalStock <= prod.minStock ? 'low_stock' : 'in_stock') as 'in_stock' | 'low_stock' | 'out_of_stock'
         };
       });
+
+      // Find any draft items that didn't exist in warehouse products and create them
+      const brandNewItems = draftItems.filter(item => 
+        !prevProducts.some(prod => prod.id === item.productId || (item.barcode && prod.barcode && item.barcode.trim() === prod.barcode.trim()))
+      );
+
+      const createdProducts: Product[] = brandNewItems.map(item => {
+        const upc = item.piecesPerCarton || 24;
+        const pieceCost = item.finalPieceCost || item.newPiecePurchaseCost || 1000;
+        const retailPrice = item.retailSellingPrice || Math.round(pieceCost * 1.3);
+        const cartonCost = item.cartonPurchasePrice > 0 ? item.cartonPurchasePrice : (pieceCost * upc);
+        const wholesalePrice = Math.round(pieceCost * 1.15);
+        const cartonSellingPrice = Math.round(retailPrice * upc * 0.95);
+
+        const initialBatch: ProductBatch = {
+          id: `batch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          batchNumber: item.batchNumber || `BATCH-${new Date().getFullYear()}-001`,
+          expiryDate: item.expiryDate || '',
+          productionDate: item.productionDate || '',
+          quantity: item.totalPieces,
+          purchasePrice: pieceCost,
+          supplierName: selectedSupplierName || 'مورد جديد',
+          addedDate: invoiceDate
+        };
+
+        return {
+          id: item.productId.startsWith('prod-') ? item.productId : `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          name: item.productName,
+          nameAr: item.productName,
+          category: 'عام',
+          categoryAr: 'عام',
+          price: retailPrice,
+          singleRetailPrice: retailPrice,
+          wholesalePrice,
+          cartonSellingPrice,
+          singleProfit: retailPrice - pieceCost,
+          wholesaleProfit: wholesalePrice - pieceCost,
+          cartonProfit: cartonSellingPrice - cartonCost,
+          cost: pieceCost,
+          costPerUnit: pieceCost,
+          lastPurchasePrice: pieceCost,
+          cartonPurchasePrice: cartonCost,
+          lastCartonPurchasePrice: cartonCost,
+          stock: item.totalPieces,
+          totalUnits: item.totalPieces,
+          unitsPerCarton: upc,
+          cartonsCount: Math.floor(item.totalPieces / upc),
+          minStock: 5,
+          unit: 'قطعة',
+          supplierId: 'sup-general',
+          imageIcon: '📦',
+          barcode: item.barcode || `2002${Date.now().toString().slice(-6)}`,
+          status: item.totalPieces > 5 ? 'in_stock' : item.totalPieces > 0 ? 'low_stock' : 'out_of_stock',
+          supplierName: selectedSupplierName || 'مورد الوصل',
+          expiryDate: item.expiryDate || '',
+          productionDate: item.productionDate || '',
+          batchNumber: item.batchNumber || '',
+          batches: [initialBatch],
+          initialAddDate: invoiceDate,
+          lastEditDate: invoiceDate
+        };
+      });
+
+      return [...createdProducts, ...updatedExisting];
     });
 
     if (selectedSupplierName.trim()) {
@@ -482,6 +746,16 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {onOpenAIInvoiceScanner && (
+            <button
+              onClick={onOpenAIInvoiceScanner}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white font-black text-xs border border-purple-400/40 flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-95 cursor-pointer"
+            >
+              <PackagePlus className="w-3.5 h-3.5 text-purple-200 animate-pulse" />
+              <span>{t('مسح صورة الوصل (AI OCR)', 'خوێندنەوەی پسوولە (AI)', 'Scan Invoice (AI)')}</span>
+            </button>
+          )}
+
           <button
             onClick={handleResetForm}
             className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
@@ -497,6 +771,47 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             <History className="w-3.5 h-3.5 text-cyan-400" />
             <span>{t(`السجل (${purchaseInvoices.length})`, `مێژوو (${purchaseInvoices.length})`, `History (${purchaseInvoices.length})`)}</span>
           </button>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* AI PHOTO & INVOICE FAST IMPORTER BANNER                           */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="p-3 rounded-2xl bg-gradient-to-r from-purple-950/60 via-indigo-950/50 to-[#0a1329] border border-purple-500/40 shadow-lg flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 via-fuchsia-500 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 shrink-0">
+            <Camera className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-black text-xs text-purple-200">
+                {t('إضافة مواد الشراء عبر تصوير الوصل بالذكاء الاصطناعي', 'زیادکردنی کڕین بە وێنەگرتنی پسوڵە بە AI', 'AI Invoice & Camera Smart Fast Importer')}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-400/40 text-[10px] font-bold text-purple-300 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-purple-300 animate-spin" />
+                {t('تعرف تلقائي فوري', 'خوێندنەوەی خێرا', 'Auto-Detection')}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {t(
+                'التقط صورة للوصل لحساب الأسعار القديمة والجديدة والخصومات وتواريخ الصلاحية وتحديث المخزون بنقرة واحدة.',
+                'وێنەی پسوڵەکە بگرە بۆ حیسابکردنی نرخی کۆن و نوێ، داشکاندن، بەسەرچوون و نوێکردنەوەی کۆگا.',
+                'Capture or upload an invoice photo to auto-extract items, expiry dates, compare old/new prices, and update stock.'
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onOpenAIInvoiceScanner && (
+            <button
+              onClick={onOpenAIInvoiceScanner}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs border border-purple-300/40 flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.4)] active:scale-95 transition-all cursor-pointer"
+            >
+              <Camera className="w-4 h-4 text-purple-100" />
+              <span>{t('📸 فتح كاميرا / رفع صورة الوصل', '📸 وێنەگرتن / بەرزکردنەوەی پسوڵە', '📸 Open Camera / Upload Photo')}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -586,11 +901,48 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       {/* ------------------------------------------------------------------ */}
       <div className="p-3 rounded-2xl bg-[#0a1120] border border-cyan-500/40 shadow-md space-y-2.5">
         
+        {/* EXPIRY & EXISTING STOCK WARNING NOTIFICATION BANNER (تنبيه المخزون القديم وتاريخ الصلاحية السابق) */}
+        {expiryAlertBanner && expiryAlertBanner.show && (
+          <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/80 via-amber-900/50 to-orange-950/80 border border-amber-500/50 text-amber-200 text-xs shadow-lg flex items-start gap-2.5 animate-fadeIn">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-amber-300 text-xs flex items-center gap-1">
+                  <span>{t('تنبيه المخزون وتاريخ الصلاحية:', 'ئاگاداری کۆگا و بەرواری بەسەرچوون:', 'Stock & Expiry Alert:')}</span>
+                  <span className="text-white underline">{expiryAlertBanner.productName}</span>
+                </span>
+                <button 
+                  onClick={() => setExpiryAlertBanner(null)} 
+                  className="text-slate-400 hover:text-white p-0.5 rounded-lg"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11.5px] leading-relaxed text-amber-100 font-medium">
+                {t(
+                  `يوجد في المخزن حالياً كمية قديمة (${expiryAlertBanner.existingStock} قطعة) بتاريخ انتهاء صلاحية (${expiryAlertBanner.existingExpiry}). سيتم إضافة الشحنة الجديدة كدفعة إضافية مع الاحتفاظ بتواريخ كل دفعة وتنبيهك قبل انتهاء أي منها.`,
+                  `لە کۆگادا ئێستا بڕی کۆن هەیە (${expiryAlertBanner.existingStock} دانە) بە بەرواری بەسەرچوونی (${expiryAlertBanner.existingExpiry}). باری نوێ زیاد دەکرێت بە جیاکردنەوەی بەرواری هەردووکیان.`,
+                  `Warehouse currently has ${expiryAlertBanner.existingStock} pcs with expiry date (${expiryAlertBanner.existingExpiry}). New purchase will be tracked as a new batch.`
+                )}
+              </p>
+              {expiryAlertBanner.existingBatches && expiryAlertBanner.existingBatches.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {expiryAlertBanner.existingBatches.map((b, idx) => (
+                    <span key={b.id || idx} className="text-[10px] bg-black/40 border border-amber-500/30 px-2 py-0.5 rounded-md font-mono text-amber-300">
+                      📦 {t('دفعة', 'دەستە', 'Batch')} #{b.batchNumber || idx + 1}: {b.quantity} {t('قطعة', 'دانە', 'pcs')} (📅 {b.expiryDate || 'N/A'})
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* COMPACT INPUTS GRID */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
           
           {/* 1. اسم المادة / البحث */}
-          <div className="md:col-span-4 relative">
+          <div className="md:col-span-3 relative">
             <label className="text-[10.5px] font-bold text-slate-300 block mb-1">
               • {t('اسم المادة:', 'ناوی کاڵا:', 'Item Name:')}
             </label>
@@ -645,7 +997,12 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                     >
                       <div>
                         <h4 className="font-bold text-white">{prod.nameAr || prod.name}</h4>
-                        <span className="text-[9.5px] text-slate-400 font-mono">{prod.barcode}</span>
+                        <div className="flex items-center gap-1.5 text-[9.5px] text-slate-400 font-mono">
+                          <span>{prod.barcode}</span>
+                          {prod.expiryDate && (
+                            <span className="text-amber-400 font-bold">• 📅 {prod.expiryDate}</span>
+                          )}
+                        </div>
                       </div>
                       <span className="text-[10px] text-amber-300 font-mono font-bold shrink-0">
                         {t('الرصيد:', 'باڵانس:', 'Stock:')} {prod.stock}
@@ -704,10 +1061,23 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             )}
           </div>
 
-          {/* 3. سعر الشراء القديم */}
+          {/* 3. تاريخ انتهاء الصلاحية للمادة الجديدة (Expiry Date for the Batch) */}
+          <div className="md:col-span-2">
+            <label className="text-[10.5px] font-bold text-amber-300 block mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-amber-400" />
+              <span>{t('تاريخ الإنتهاء (للشحنة):', 'بەرواری بەسەرچوون:', 'Expiry Date:')}</span>
+            </label>
+            <DatePickerDDMMYYYY
+              value={expiryDateInput}
+              onChange={(d) => setExpiryDateInput(d)}
+              lang={lang}
+            />
+          </div>
+
+          {/* 4. سعر الشراء القديم */}
           <div className="md:col-span-2">
             <label className="text-[10.5px] font-bold text-slate-400 block mb-1">
-              • {t(`الشراء القديم (${purchaseUnitMode === 'carton' ? 'للكرتون' : 'للفرادي'}):`, `کڕینی پێشوو (${purchaseUnitMode === 'carton' ? 'کارتۆن' : 'دانە'}):`, `Old Cost (${purchaseUnitMode === 'carton' ? 'Carton' : 'Piece'}):`)}
+              • {t(`الشراء القديم:`, `کڕینی پێشوو:`, `Old Cost:`)}
             </label>
             <div className="w-full bg-[#060b14] text-slate-300 font-mono font-bold text-xs py-1.5 px-2 rounded-xl border border-slate-800 text-center flex items-center justify-between">
               <span>{displayOldPurchasePrice.toLocaleString()}</span>
@@ -715,10 +1085,10 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             </div>
           </div>
 
-          {/* 4. سعر الشراء الجديد */}
-          <div className="md:col-span-3">
+          {/* 5. سعر الشراء الجديد */}
+          <div className="md:col-span-2">
             <label className="text-[10.5px] font-bold text-emerald-300 block mb-1">
-              • {t(`سعر الشراء الجديد (${purchaseUnitMode === 'carton' ? 'للكرتون' : 'للفرادي'}):`, `نرخی کڕینی نوێ (${purchaseUnitMode === 'carton' ? 'کارتۆن' : 'دانە'}):`, `New Cost (${purchaseUnitMode === 'carton' ? 'Carton' : 'Piece'}):`)}
+              • {t(`الشراء الجديد:`, `کڕینی نوێ:`, `New Cost:`)}
             </label>
             <div className="flex items-center gap-1">
               {purchaseUnitMode === 'carton' ? (
@@ -838,6 +1208,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
               <tr className="border-b border-slate-800 text-slate-400 text-[10.5px] bg-[#0a1120]">
                 <th className="py-2 px-3">#</th>
                 <th className="py-2 px-3">{t('اسم المادة', 'ناوی کاڵا', 'Product Name')}</th>
+                <th className="py-2 px-3 text-center">{t('تاريخ الصلاحية', 'بەرواری بەسەرچوون', 'Expiry Date')}</th>
                 <th className="py-2 px-3 text-center">{t('نوع ووحدة الشراء', 'جۆر و یەکەی کڕین', 'Unit Type')}</th>
                 <th className="py-2 px-3 text-center">{t('الربط والكمية بالقطع', 'بڕ بە دانە', 'Total Qty (Pcs)')}</th>
                 <th className="py-2 px-3 text-center">{t('التكلفة (قديم / جديد)', 'تێچوو (کۆن / نوێ)', 'Cost (Old / New)')}</th>
@@ -852,8 +1223,38 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 <tr key={item.id} className="hover:bg-cyan-500/5 transition-all">
                   <td className="py-2 px-3 font-mono text-slate-500">{idx + 1}</td>
                   <td className="py-2 px-3 font-bold text-white">
-                    <div>{item.productName}</div>
-                    <div className="text-[9.5px] text-slate-500 font-mono">{item.barcode}</div>
+                    <div className="text-xs">{item.productName}</div>
+                    <div className="flex items-center gap-1 mt-1">
+                      <input
+                        type="text"
+                        value={item.barcode || ''}
+                        placeholder={t('أدخل الباركود...', 'بارکۆد بنووسە...', 'Enter barcode...')}
+                        onChange={(e) => handleUpdateDraftItemBarcode(item.id, e.target.value)}
+                        className="bg-[#050B17] border border-cyan-500/40 focus:border-cyan-400 rounded px-1.5 py-0.5 text-center font-mono text-[10px] text-cyan-300 font-bold focus:outline-none w-28 placeholder:text-slate-600"
+                        title={t('حقل إدخال أو تعديل الباركود يدوياً', 'دەستکاری بارکۆد', 'Manual Barcode Entry/Edit')}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateDraftItemBarcode(item.id)}
+                        className="p-1 px-1.5 rounded bg-cyan-950 hover:bg-cyan-900 text-cyan-300 text-[9.5px] font-bold border border-cyan-500/40 flex items-center gap-0.5 shrink-0 transition-all active:scale-95 cursor-pointer shadow-sm"
+                        title={t('توليد باركود فريد يبدأ بـ 200245', 'دروستکردنی بارکۆدی نوێ', 'Generate unique barcode')}
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
+                        <span>{t('توليد', 'دروستکردن', 'Gen')}</span>
+                      </button>
+                    </div>
+                  </td>
+                  <td className="py-2 px-3 text-center font-mono">
+                    {item.expiryDate ? (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-950/80 text-amber-300 font-bold border border-amber-500/40 text-[10.5px] flex items-center justify-center gap-1">
+                        <Calendar className="w-3 h-3 text-amber-400" />
+                        <span>{item.expiryDate}</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 text-[10px]">
+                        {t('غير محدد', 'دیاری نەکراوە', 'Not set')}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 px-3 text-center font-mono">
                     {item.purchaseUnitMode === 'carton' ? (
@@ -1074,6 +1475,28 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                   onChange={(e) => setPiecesPerCarton(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-full bg-[#060b14] text-cyan-300 font-mono font-bold py-1.5 px-3 rounded-xl border border-slate-700 focus:outline-none focus:border-cyan-400"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">{t('رقم الوجبة / الدفعة (Batch #):', 'ژمارەی دەستە:', 'Batch Number:')}</label>
+                  <input
+                    type="text"
+                    value={batchNumberInput}
+                    onChange={(e) => setBatchNumberInput(e.target.value)}
+                    placeholder="BATCH-2025-01"
+                    className="w-full bg-[#060b14] text-amber-300 font-mono py-1.5 px-2.5 rounded-xl border border-slate-700 text-xs focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">{t('تاريخ الإنتاج (اختياري):', 'بەرواری دروستکردن:', 'Production Date:')}</label>
+                  <DatePickerDDMMYYYY
+                    value={productionDateInput}
+                    onChange={(d) => setProductionDateInput(d)}
+                    lang={lang}
+                  />
+                </div>
               </div>
             </div>
 

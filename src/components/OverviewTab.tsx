@@ -888,7 +888,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 {[...outOfStockItems, ...lowStockItems].slice(0, 8).map((prod) => (
                   <tr key={prod.id} className={isLight ? 'hover:bg-slate-50 transition-colors' : 'hover:bg-slate-800/50 transition-colors'}>
                     <td className={`py-3 px-4 font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {isKu ? (prod.productNameKu || prod.productNameAr || prod.name) : (prod.productNameAr || prod.name)}
+                      {isKu ? (prod.nameKu || prod.nameAr || prod.name) : (prod.nameAr || prod.name)}
                     </td>
                     <td className={`py-3 px-4 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                       {prod.category}

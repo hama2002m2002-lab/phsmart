@@ -389,7 +389,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     // Collect names from userAccounts (ONLY real created user accounts)
     if (userAccounts && userAccounts.length > 0) {
       userAccounts.forEach(u => {
-        const displayName = u.fullName || u.username || u.name;
+        const displayName = u.fullName || u.username;
         if (displayName && displayName.trim()) {
           namesSet.add(displayName.trim());
         }
@@ -5064,15 +5064,15 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                             <td className="p-2.5 text-center font-mono text-slate-300">{(inv.items || []).length}</td>
                             <td className="p-2.5 text-center">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                inv.paymentStatus === 'paid' ? 'bg-emerald-500/20 text-emerald-300' :
-                                inv.paymentStatus === 'partial' ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'
+                                inv.paymentType === 'cash' ? 'bg-emerald-500/20 text-emerald-300' :
+                                inv.paymentType === 'part' ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'
                               }`}>
-                                {inv.paymentStatus === 'paid' ? t('مسدد نقداً', 'دراو', 'Paid') :
-                                 inv.paymentStatus === 'partial' ? t('مسدد جزئياً', 'بەشێکی دراوە', 'Partial') : t('آجل / دين', 'قەرز', 'Credit')}
+                                {inv.paymentType === 'cash' ? t('مسدد نقداً', 'دراو', 'Paid') :
+                                 inv.paymentType === 'part' ? t('مسدد جزئياً', 'بەشێکی دراوە', 'Partial') : t('آجل / دين', 'قەرز', 'Credit')}
                               </span>
                             </td>
                             <td className="p-2.5 text-center font-mono font-bold text-emerald-400 text-sm">
-                              {currency} {inv.totalAmount.toLocaleString('en-US')}
+                              {currency} {(inv.totalInvoiceAmount || 0).toLocaleString('en-US')}
                             </td>
                           </tr>
                         ))

@@ -73,7 +73,7 @@ export const CashierAccountsModal: React.FC<CashierAccountsModalProps> = ({
 
     if (userAccounts && userAccounts.length > 0) {
       userAccounts.forEach(u => {
-        const displayName = u.fullName || u.username || u.name;
+        const displayName = u.fullName || u.username;
         if (displayName && displayName.trim()) {
           namesSet.add(displayName.trim());
         }

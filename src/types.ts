@@ -11,6 +11,17 @@ export type Category =
   | 'Canned Goods'
   | 'Household & Care';
 
+export interface ProductBatch {
+  id: string;
+  batchNumber?: string; // رقم التشغيلة أو الدفعة
+  expiryDate: string; // تاريخ انتهاء الصلاحية
+  productionDate?: string; // تاريخ الإنتاج
+  quantity: number; // الكمية المتبقية من هذا التاريخ
+  purchasePrice?: number; // سعر الشراء لهذه الدفعة
+  supplierName?: string; // المورد
+  addedDate?: string; // تاريخ الإدخال
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -20,6 +31,7 @@ export interface Product {
   categoryAr: string;
   categoryKu?: string;
   barcode: string;
+  sku?: string;
   supplierDelegate?: string; // اسم المندوب
   cartonsCount: number; // عدد الكراتين
   unitsPerCarton: number; // عدد المواد داخل الكرتونة
@@ -45,7 +57,9 @@ export interface Product {
     newCost?: number;
     updatedBy?: string;
   }>;
-  expiryDate: string; // تاريخ انتهاء صلاحية المواد
+  expiryDate: string; // تاريخ انتهاء صلاحية المواد (أقرب تاريخ انتهاء)
+  productionDate?: string;
+  batches?: ProductBatch[]; // دفعات وتواريخ انتهاء الصلاحية المتعددة
   price: number; // standard single retail price for POS compatibility
   cost: number; // standard cost per unit
   stock: number; // total units in stock
@@ -59,6 +73,8 @@ export interface Product {
   // 🏥 Pharmacy Specific Fields (البيانات الدوائية والصيدلانية)
   scientificName?: string; // الاسم العلمي (Active Ingredient)
   dosageForm?: string; // التركيز والشكل الدوائي (e.g. 500mg - أقراص)
+  countryOfOrigin?: string; // الدولة المصنعة للدواء
+  manufacturer?: string; // اسم الشركة المصنعة
   pharmaCategory?: string; // الفئة والترميز (OTC / Rx / أدوية مراقبة / مستلزمات)
   batchNumber?: string; // رقم التشغيلة (Batch/Lot No)
   expiryAlertMonths?: number; // الأشهر المتبقية للتنبيه (Default 6)
@@ -66,6 +82,19 @@ export interface Product {
   blisterPrice?: number; // سعر بيع الشريط / القطعة التجزئة
   storageCondition?: string; // ظروف الحفظ (ثلاجة / حرارة الغرفة / بعيداً عن الضوء)
   storageLocation?: string; // مكان التخزين والرف
+}
+
+export interface CashierAttendanceRecord {
+  id: string;
+  cashierId?: string;
+  cashierName: string;
+  date: string; // YYYY-MM-DD
+  checkInTime?: string; // HH:mm
+  checkOutTime?: string; // HH:mm
+  status: 'present' | 'absent' | 'late' | 'leave'; // حاضر / غائب / متأخر / إجازة
+  hoursWorked?: number;
+  notes?: string;
+  createdAt: string;
 }
 
 export type SaleUnitType = 'retail' | 'wholesale' | 'carton' | 'blister';
@@ -90,6 +119,7 @@ export interface ReturnedSaleItem {
   productId: string;
   productName: string;
   productNameAr?: string;
+  productNameKu?: string;
   price: number;
   quantity: number;
   saleType?: SaleUnitType;
@@ -102,12 +132,16 @@ export interface SaleTransaction {
   invoiceNumber: string;
   timestamp: string;
   customerName?: string;
+  customerId?: string;
+  debtAmount?: number;
+  paidAmount?: number;
   prescriptionInfo?: PrescriptionInfo;
   items: {
     productId: string;
     productName: string;
     productNameAr: string;
     productNameKu?: string;
+    barcode?: string;
     price: number;
     quantity: number;
     saleType?: SaleUnitType;
@@ -125,6 +159,7 @@ export interface SaleTransaction {
   changeDue?: number;
   cashierName: string;
   status: 'completed' | 'refunded' | 'pending';
+  notes?: string;
 }
 
 export interface SupplierPayment {
@@ -140,12 +175,14 @@ export interface Supplier {
   id: string;
   name: string;
   nameAr: string;
+  nameKu?: string;
   contactPerson: string;
   phone: string;
   email: string;
   categorySupplied: string;
   activeOrders: number;
   totalInvoiced?: number; // إجمالي قيمة الشحنات والتوريدات
+  totalInvoicesCount?: number;
   totalPaid?: number;     // إجمالي المبلغ المدفوع
   balanceDue: number;     // الباقي / المتبقي
   rating: number;
@@ -154,6 +191,16 @@ export interface Supplier {
   address?: string;
   isSaved?: boolean;      // الشركات المحفوظة / المفضلة
   payments?: SupplierPayment[];
+}
+
+export interface CustomerDebtSettlement {
+  id: string;
+  date: string;
+  amount: number;
+  paymentMethod: 'cash' | 'card' | 'transfer';
+  invoiceNumber?: string;
+  notes?: string;
+  cashierName?: string;
 }
 
 export interface Customer {
@@ -166,6 +213,10 @@ export interface Customer {
   visitsCount: number;
   tier: 'Bronze' | 'Silver' | 'Gold' | 'VIP';
   joinedDate: string;
+  debtBalance?: number;        // إجمالي رصيد الدين المستحق على العميل
+  debtLimit?: number;          // الحد الأقصى للدين المسموح به
+  notes?: string;              // ملاحظات العميل
+  settlements?: CustomerDebtSettlement[]; // سجل دفعات وسداد الديون
 }
 
 export interface MarketOrder {
@@ -185,8 +236,10 @@ export interface MarketNotification {
   id: string;
   title: string;
   titleAr: string;
+  titleKu?: string;
   message: string;
   messageAr: string;
+  messageKu?: string;
   time: string;
   priority: 'critical' | 'high' | 'medium' | 'low';
   category: 'inventory' | 'sales' | 'system' | 'supplier';
@@ -309,6 +362,7 @@ export interface UserAccount {
   email: string;
   username: string;
   password?: string;
+  pinCode?: string;
   role: 'Admin' | 'Manager' | 'Cashier';
   active: boolean;
   createdAt: string;
@@ -337,6 +391,13 @@ export interface PurchaseInvoiceItem {
   oldRetailPrice: number; // سعر البيع القديم
   newRetailPrice: number; // سعر البيع الجديد
   unitsPerCarton?: number;
+  discountAmount?: number; // قيمة الخصم على المادة إن وجد
+  discountPercent?: number; // نسبة الخصم
+  totalCost?: number; // إجمالي تكلفة الشراء للسطر
+  expiryDate?: string; // تاريخ انتهاء صلاحية الدفعة الجديدة المشتراة
+  productionDate?: string; // تاريخ إنتاج الدفعة الجديدة
+  batchNumber?: string; // رقم التشغيلة / الدفعة
+  oldExpiryDate?: string; // تاريخ الصلاحية للكمية القديمة في المخزن
 }
 
 export interface PurchaseInvoice {
@@ -349,6 +410,9 @@ export interface PurchaseInvoice {
   paymentType: 'cash' | 'credit' | 'part'; // نقداً / آجل / جزئي
   paidAmount: number;
   remainingAmount: number;
+  grossInvoiceAmount?: number; // إجمالي الفاتورة قبل الخصم
+  discountAmount?: number; // إجمالي الخصم
+  discountPercent?: number; // نسبة الخصم
   totalInvoiceAmount: number;
   items: PurchaseInvoiceItem[];
   status: 'completed' | 'draft';

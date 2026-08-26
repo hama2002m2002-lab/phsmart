@@ -299,7 +299,7 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
       });
 
       if (actUnits !== recUnits) {
-        const prodStatus = actUnits === 0 ? 'out_of_stock' : actUnits <= p.minStock ? 'low_stock' : 'in_stock';
+        const prodStatus: 'in_stock' | 'low_stock' | 'out_of_stock' = actUnits === 0 ? 'out_of_stock' : actUnits <= p.minStock ? 'low_stock' : 'in_stock';
         return {
           ...p,
           cartonsCount: actCartons,

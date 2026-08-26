@@ -84,54 +84,60 @@ export const PermissionsManagerTab: React.FC<PermissionsManagerTabProps> = ({
         return {
           ...u,
           permissions: {
-            pos: true,
-            products: true,
-            reports: true,
-            settings: true,
-            suppliers: true,
-            customers: true,
-            purchases: true,
-            invoices: true,
-            inventory: true,
-            shifts: true,
-            priceTagPrinting: true,
-            barcodePrinting: true
+            canAccessDashboard: true,
+            canAccessPOS: true,
+            canManageProducts: true,
+            canViewWarehouse: true,
+            canManageInventoryAudit: true,
+            canManagePurchases: true,
+            canManageSuppliers: true,
+            canManageCustomers: true,
+            canManageOrders: true,
+            canViewInvoices: true,
+            canViewAnalytics: true,
+            canViewReports: true,
+            canManageSettings: true,
+            canViewPurchasePriceInPOS: true,
           }
         };
       } else if (preset === 'cashier') {
         return {
           ...u,
           permissions: {
-            pos: true,
-            products: false,
-            reports: false,
-            settings: false,
-            suppliers: false,
-            customers: true,
-            purchases: false,
-            invoices: true,
-            inventory: false,
-            shifts: true,
-            priceTagPrinting: false,
-            barcodePrinting: false
+            canAccessDashboard: false,
+            canAccessPOS: true,
+            canManageProducts: false,
+            canViewWarehouse: true,
+            canManageInventoryAudit: false,
+            canManagePurchases: false,
+            canManageSuppliers: false,
+            canManageCustomers: true,
+            canManageOrders: false,
+            canViewInvoices: true,
+            canViewAnalytics: false,
+            canViewReports: false,
+            canManageSettings: false,
+            canViewPurchasePriceInPOS: false,
           }
         };
       } else {
         return {
           ...u,
           permissions: {
-            pos: false,
-            products: false,
-            reports: false,
-            settings: false,
-            suppliers: false,
-            customers: false,
-            purchases: false,
-            invoices: false,
-            inventory: false,
-            shifts: false,
-            priceTagPrinting: false,
-            barcodePrinting: false
+            canAccessDashboard: false,
+            canAccessPOS: false,
+            canManageProducts: false,
+            canViewWarehouse: false,
+            canManageInventoryAudit: false,
+            canManagePurchases: false,
+            canManageSuppliers: false,
+            canManageCustomers: false,
+            canManageOrders: false,
+            canViewInvoices: false,
+            canViewAnalytics: false,
+            canViewReports: false,
+            canManageSettings: false,
+            canViewPurchasePriceInPOS: false,
           }
         };
       }

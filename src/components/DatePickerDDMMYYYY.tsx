@@ -65,34 +65,41 @@ export const DatePickerDDMMYYYY: React.FC<DatePickerDDMMYYYYProps> = ({
 
   const updatePosition = useCallback(() => {
     if (!buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    const popoverWidth = Math.min(330, window.innerWidth - 20);
-    const popoverHeight = 410; // Approx popover max height
+    try {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const winWidth = typeof window !== 'undefined' ? (window.innerWidth || 360) : 360;
+      const winHeight = typeof window !== 'undefined' ? (window.innerHeight || 640) : 640;
+      const popoverWidth = Math.min(330, Math.max(280, winWidth - 20));
+      const popoverHeight = 410; // Approx popover max height
 
-    let top = rect.bottom + 6;
-    // If not enough room below, but enough room above, flip to top
-    if (top + popoverHeight > window.innerHeight && rect.top > popoverHeight) {
-      top = Math.max(10, rect.top - popoverHeight - 6);
+      let top = rect.bottom + 6;
+      // If not enough room below, but enough room above, flip to top
+      if (top + popoverHeight > winHeight && rect.top > popoverHeight) {
+        top = Math.max(10, rect.top - popoverHeight - 6);
+      }
+
+      // Determine horizontal alignment based on screen room and RTL
+      let left = rect.left;
+      const isRtl = (typeof document !== 'undefined' && document?.dir === 'rtl') || lang === 'ar' || lang === 'ku';
+
+      if (isRtl) {
+        // In RTL, prefer aligning right edge of popover with right edge of button
+        left = rect.right - popoverWidth;
+      }
+
+      // Clamp horizontal coordinates to stay comfortably inside the viewport
+      const minLeft = 10;
+      const maxLeft = Math.max(minLeft, winWidth - popoverWidth - 10);
+      left = Math.min(Math.max(left, minLeft), maxLeft);
+
+      // Clamp top as well
+      top = Math.min(Math.max(top, 10), Math.max(10, winHeight - popoverHeight - 10));
+
+      setCoords({ top, left, width: popoverWidth });
+    } catch {
+      // Fallback in case getBoundingClientRect fails
+      setCoords({ top: 100, left: 20, width: 300 });
     }
-
-    // Determine horizontal alignment based on screen room and RTL
-    let left = rect.left;
-    const isRtl = document.dir === 'rtl' || lang === 'ar' || lang === 'ku';
-
-    if (isRtl) {
-      // In RTL, prefer aligning right edge of popover with right edge of button
-      left = rect.right - popoverWidth;
-    }
-
-    // Clamp horizontal coordinates to stay comfortably inside the viewport
-    const minLeft = 10;
-    const maxLeft = Math.max(minLeft, window.innerWidth - popoverWidth - 10);
-    left = Math.min(Math.max(left, minLeft), maxLeft);
-
-    // Clamp top as well
-    top = Math.min(Math.max(top, 10), Math.max(10, window.innerHeight - popoverHeight - 10));
-
-    setCoords({ top, left, width: popoverWidth });
   }, [lang]);
 
   useEffect(() => {

@@ -1,35 +1,36 @@
-import * as React from 'react';
+import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  errorMessage?: string;
 }
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public props: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public state: any;
-
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.props = props;
     this.state = {
-      hasError: false
+      hasError: false,
+      errorMessage: ''
     };
   }
 
-  static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
+    const msg = error instanceof Error ? error.message : String(error || '');
+    return { hasError: true, errorMessage: msg };
   }
 
-  componentDidCatch(error: unknown, errorInfo: unknown) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('App ErrorBoundary caught:', error, errorInfo);
   }
+
+  handleReset = () => {
+    this.setState({ hasError: false, errorMessage: '' });
+  };
 
   render() {
     if (this.state.hasError) {
@@ -45,16 +46,29 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               <p className="text-xs text-slate-400">
                 يرجى الضغط على الزر أدناه لتحديث الصفحة ومتابعة العمل.
               </p>
+              {this.state.errorMessage && (
+                <div className="mt-2 p-2 bg-rose-950/40 border border-rose-500/30 rounded-xl text-rose-300 font-mono text-[11px] text-right break-words select-all">
+                  {this.state.errorMessage}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs transition-all shadow-lg cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs transition-all shadow-lg cursor-pointer active:scale-98"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>إعادة تحميل (Refresh)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={this.handleReset}
+                className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs transition-all cursor-pointer border border-cyan-500/20"
+              >
+                متابعة العمل دون إعادة التحميل
               </button>
 
               <button
@@ -67,7 +81,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                     window.location.reload();
                   }
                 }}
-                className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs transition-all cursor-pointer"
+                className="w-full py-2 px-4 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-slate-400 font-bold text-xs transition-all cursor-pointer"
               >
                 تحديث ومسح الذاكرة المؤقتة
               </button>

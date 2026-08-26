@@ -13,16 +13,18 @@ export const generateUniqueBarcode200245 = (
   existingProducts: Product[] = [],
   currentBarcode?: string
 ): string => {
+  const safeProducts = Array.isArray(existingProducts) ? existingProducts : [];
   const existingBarcodes = new Set<string>(
-    existingProducts
-      .map(p => (p.barcode || '').trim().toLowerCase())
+    safeProducts
+      .filter(Boolean)
+      .map(p => (p?.barcode || '').trim().toLowerCase())
       .filter(Boolean)
   );
 
   // Add all previously generated session barcodes
   sessionGeneratedBarcodes.forEach(b => existingBarcodes.add(b.toLowerCase()));
 
-  if (currentBarcode && currentBarcode.trim()) {
+  if (currentBarcode && typeof currentBarcode === 'string' && currentBarcode.trim()) {
     existingBarcodes.add(currentBarcode.trim().toLowerCase());
   }
 
@@ -55,10 +57,13 @@ export const findDuplicateBarcodeProduct = (
   existingProducts: Product[] = [],
   excludeProductId?: string
 ): Product | undefined => {
+  if (!barcode || typeof barcode !== 'string') return undefined;
   const cleanBarcode = barcode.trim().toLowerCase();
   if (!cleanBarcode) return undefined;
 
-  return existingProducts.find(p => {
+  const safeProducts = Array.isArray(existingProducts) ? existingProducts : [];
+  return safeProducts.find(p => {
+    if (!p) return false;
     if (excludeProductId && p.id === excludeProductId) return false;
     return (p.barcode || '').trim().toLowerCase() === cleanBarcode;
   });

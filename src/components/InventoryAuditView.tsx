@@ -429,6 +429,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
           diffUnits,
           diffCartons,
           unitCost,
+          unitPrice: p.price || p.singleRetailPrice || 0,
           financialVariance,
           status
         };

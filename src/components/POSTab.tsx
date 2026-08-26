@@ -13,6 +13,7 @@ import {
   Package,
   X,
   Sparkles,
+  Receipt,
   Layers,
   ArrowRight,
   Box,
@@ -50,18 +51,22 @@ import {
   Zap,
   Usb,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Calendar
 } from 'lucide-react';
-import { Product, CartItem, Category, SaleTransaction, Customer, StoreSettings, SaleUnitType, PrescriptionInfo, UserAccount, CustomerDisplayPayload, CustomerDisplayItem } from '../types';
+import { Product, CartItem, Category, SaleTransaction, Customer, StoreSettings, SaleUnitType, PrescriptionInfo, UserAccount, CustomerDisplayPayload, CustomerDisplayItem, ProductBatch } from '../types';
 import { getTranslation, getProductName, getCategoryName } from '../lib/translations';
 import { defaultPOSShortcuts } from '../data/mockData';
 import { printSaleReceiptDirect } from '../lib/thermalPrinter';
 import { formatNumber } from '../lib/formatUtils';
 import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../lib/dateUtils';
+import { getProductExpirySummary, calculateBatchAllocations, deductProductBatchesFEFO } from '../lib/expiryUtils';
 import { DamagedItemsModal } from './DamagedItemsModal';
 import { KioskPrintModal } from './KioskPrintModal';
 import { broadcastCustomerDisplay, openCustomerDisplayWindow } from '../lib/customerDisplayBroadcast';
 import { CustomerDisplayScreen } from './CustomerDisplayScreen';
+import { FastSearchInput } from './FastSearchInput';
+import { syncWriteDocument } from '../lib/firestoreSync';
 
 interface POSWindowTab {
   id: string;
@@ -73,13 +78,18 @@ interface POSWindowTab {
   lastAddedId: string | null;
   prescriptionInfo?: PrescriptionInfo;
   isReturnMode?: boolean;
+  debtCustomerName?: string;
+  debtCustomerPhone?: string;
+  debtAmount?: number;
 }
 
 interface POSTabProps {
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   customers: Customer[];
+  setCustomers?: React.Dispatch<React.SetStateAction<Customer[]>>;
   settings: StoreSettings;
+  setSettings?: React.Dispatch<React.SetStateAction<StoreSettings>>;
   onSaleCompleted: (sale: SaleTransaction) => void;
   showInventory?: boolean;
   setShowInventory?: (show: boolean) => void;
@@ -195,6 +205,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   products,
   setProducts,
   customers,
+  setCustomers,
   settings,
   onSaleCompleted,
   showInventory: externalShowInventory,
@@ -268,6 +279,9 @@ export const POSTab: React.FC<POSTabProps> = ({
   const cashTendered = activeWindow.cashTendered;
   const lastAddedId = activeWindow.lastAddedId;
   const isReturnMode = Boolean(activeWindow.isReturnMode);
+  const debtCustomerName = activeWindow.debtCustomerName || '';
+  const debtCustomerPhone = activeWindow.debtCustomerPhone || '';
+  const debtAmount = activeWindow.debtAmount;
 
   // Window cart & control state setters
   const setCart = (action: CartItem[] | ((prev: CartItem[]) => CartItem[])) => {
@@ -329,6 +343,42 @@ export const POSTab: React.FC<POSTabProps> = ({
       return prevWindows.map(w => {
         if (w.id === targetId) {
           return { ...w, paymentMethod: method };
+        }
+        return w;
+      });
+    });
+  };
+
+  const setDebtCustomerName = (name: string) => {
+    setWindows(prevWindows => {
+      const targetId = activeWindowId;
+      return prevWindows.map(w => {
+        if (w.id === targetId) {
+          return { ...w, debtCustomerName: name };
+        }
+        return w;
+      });
+    });
+  };
+
+  const setDebtCustomerPhone = (phone: string) => {
+    setWindows(prevWindows => {
+      const targetId = activeWindowId;
+      return prevWindows.map(w => {
+        if (w.id === targetId) {
+          return { ...w, debtCustomerPhone: phone };
+        }
+        return w;
+      });
+    });
+  };
+
+  const setDebtAmount = (amount: number | undefined) => {
+    setWindows(prevWindows => {
+      const targetId = activeWindowId;
+      return prevWindows.map(w => {
+        if (w.id === targetId) {
+          return { ...w, debtAmount: amount };
         }
         return w;
       });
@@ -401,9 +451,10 @@ export const POSTab: React.FC<POSTabProps> = ({
     }
   };
 
-  const [selectedCat, setSelectedCat] = useState<Category | 'ALL'>('ALL');
+  const [selectedCat, setSelectedCat] = useState<Category | 'ALL' | string>('ALL');
   const [search, setSearch] = useState('');
   const [alternativeSearch, setAlternativeSearch] = useState('');
+  const [isDebtCustDropdownOpen, setIsDebtCustDropdownOpen] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const deferredAltSearch = useDeferredValue(alternativeSearch);
   const [inventoryPage, setInventoryPage] = useState(1);
@@ -790,13 +841,29 @@ export const POSTab: React.FC<POSTabProps> = ({
     });
 
     const itemName = isAr ? (product.nameAr || product.name) : isKu ? (product.nameAr || product.name) : product.name;
+    const expirySummary = getProductExpirySummary(product);
+    let expiryNoteSuffix = '';
+
+    if (expirySummary.hasMultipleBatches && expirySummary.earliestExpiryDate) {
+      expiryNoteSuffix = isKu
+        ? ` ⚡ (فرۆشتنی بەرواری کۆن سەرەتا: ${expirySummary.earliestExpiryDate} - ${expirySummary.earliestBatch?.quantity || 0} دانە ماوە)`
+        : isAr
+        ? ` ⚡ (يُباع تاريخ الصلاحية الأقرب أولاً: ${expirySummary.earliestExpiryDate} - متبقي منه ${expirySummary.earliestBatch?.quantity || 0} قطعة)`
+        : ` ⚡ (Selling earliest batch first: ${expirySummary.earliestExpiryDate} - ${expirySummary.earliestBatch?.quantity || 0} pcs left)`;
+    } else if (expirySummary.isNearExpiry && expirySummary.earliestExpiryDate) {
+      expiryNoteSuffix = isKu
+        ? ` ⚠️ (بەرواری نزیکە: ${expirySummary.earliestExpiryDate} - سەرەتا بیفرۆشە)`
+        : isAr
+        ? ` ⚠️ (تاريخ انتهاء قريب: ${expirySummary.earliestExpiryDate} - يُرجى بيعه أولاً)`
+        : ` ⚠️ (Near expiry: ${expirySummary.earliestExpiryDate} - Sell first)`;
+    }
 
     setScanAlert({
-      msg: isKu 
+      msg: (isKu 
         ? `✅ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە` 
         : isAr 
         ? `✅ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة` 
-        : `✅ Added [ ${quantityToAdd} ] of (${itemName}) to cart`,
+        : `✅ Added [ ${quantityToAdd} ] of (${itemName}) to cart`) + expiryNoteSuffix,
       type: 'success'
     });
   };
@@ -877,6 +944,9 @@ export const POSTab: React.FC<POSTabProps> = ({
     setCustomTaxAmount(null);
     setCashTendered(0);
     setLastAddedId(null);
+    setDebtCustomerName('');
+    setDebtCustomerPhone('');
+    setDebtAmount(undefined);
     setIsBarcodePaused(false);
     focusBarcodeIfEnabled(50);
   };
@@ -1133,7 +1203,18 @@ export const POSTab: React.FC<POSTabProps> = ({
           });
           const newStock = prod.stock - totalDeduction;
           const status = newStock < 0 ? 'out_of_stock' : newStock === 0 ? 'out_of_stock' : newStock <= prod.minStock ? 'low_stock' : 'in_stock';
-          return { ...prod, stock: newStock, totalUnits: newStock, status };
+          
+          // FEFO Batch Deduction: Deduct from earliest expiring batches first
+          const { updatedBatches, newEffectiveExpiry } = deductProductBatchesFEFO(prod, totalDeduction);
+
+          return {
+            ...prod,
+            stock: newStock,
+            totalUnits: newStock,
+            status,
+            batches: updatedBatches.length > 0 ? updatedBatches : prod.batches,
+            expiryDate: newEffectiveExpiry || prod.expiryDate
+          };
         }
         return prod;
       });
@@ -1147,6 +1228,74 @@ export const POSTab: React.FC<POSTabProps> = ({
       ? Math.max(...existingNumIds) + 1 
       : (salesHistory.length + 1);
     const invoiceNumber = nextSeqNum.toString();
+
+    // Customer and debt association
+    let resolvedCustomerName = prescriptionInfo.patientName || (isKu ? 'کڕیاری گشتی (نەقد)' : isAr ? 'زبون عام (كاش)' : 'Walk-in Customer');
+    let resolvedCustomerId: string | undefined = undefined;
+    let actualDebtAmount = 0;
+    let actualPaidAmount = grandTotal;
+
+    if (paymentMethod === 'debt') {
+      const typedName = (debtCustomerName || '').trim();
+      resolvedCustomerName = typedName || (isKu ? 'کڕیاری قەرز' : isAr ? 'عميل دين / آجل' : 'Debt Client');
+      actualDebtAmount = (debtAmount !== undefined && debtAmount >= 0) ? debtAmount : grandTotal;
+      actualPaidAmount = Math.max(0, grandTotal - actualDebtAmount);
+
+      // Resolve customer ID synchronously from the existing customers list
+      const existingCustomer = (customers || []).find(
+        c => c.name.trim().toLowerCase() === resolvedCustomerName.toLowerCase() ||
+             (c.phone && debtCustomerPhone && c.phone.trim() === debtCustomerPhone.trim())
+      );
+
+      const targetCustomerId = existingCustomer ? existingCustomer.id : `cust-${Date.now()}`;
+      resolvedCustomerId = targetCustomerId;
+
+      if (setCustomers) {
+        setCustomers(prevList => {
+          const matchIdx = prevList.findIndex(
+            c => c.id === targetCustomerId ||
+                 c.name.trim().toLowerCase() === resolvedCustomerName.toLowerCase() ||
+                 (c.phone && debtCustomerPhone && c.phone.trim() === debtCustomerPhone.trim())
+          );
+          if (matchIdx !== -1) {
+            const existing = prevList[matchIdx];
+            const updatedTotalSpent = (existing.totalSpent || 0) + grandTotal;
+            const earnedPoints = Math.max(1, Math.floor(grandTotal / 1000));
+            const updated: Customer = {
+              ...existing,
+              debtBalance: (existing.debtBalance || 0) + actualDebtAmount,
+              totalSpent: updatedTotalSpent,
+              visitsCount: (existing.visitsCount || 0) + 1,
+              loyaltyPoints: (existing.loyaltyPoints || 0) + earnedPoints,
+              tier: updatedTotalSpent > 250000 ? 'VIP' : updatedTotalSpent > 100000 ? 'Gold' : updatedTotalSpent > 35000 ? 'Silver' : 'Bronze'
+            };
+            const updatedList = [...prevList];
+            updatedList[matchIdx] = updated;
+            try { localStorage.setItem('supermarket_customers_v1', JSON.stringify(updatedList)); } catch {}
+            syncWriteDocument('customers', updated.id, updated);
+            return updatedList;
+          } else {
+            const earnedPoints = Math.max(1, Math.floor(grandTotal / 1000));
+            const newCust: Customer = {
+              id: targetCustomerId,
+              name: resolvedCustomerName,
+              phone: debtCustomerPhone.trim() || '+964 750 000 0000',
+              email: `${resolvedCustomerName.replace(/\s+/g, '_').toLowerCase()}@loyalty.pos`,
+              loyaltyPoints: 100 + earnedPoints, // 100 Welcome bonus + points
+              totalSpent: grandTotal,
+              debtBalance: actualDebtAmount,
+              visitsCount: 1,
+              tier: grandTotal > 100000 ? 'Gold' : 'Bronze',
+              joinedDate: new Date().toISOString().split('T')[0]
+            };
+            const updatedList = [newCust, ...prevList];
+            try { localStorage.setItem('supermarket_customers_v1', JSON.stringify(updatedList)); } catch {}
+            syncWriteDocument('customers', newCust.id, newCust);
+            return updatedList;
+          }
+        });
+      }
+    }
 
     const newSale: SaleTransaction = {
       id: `tx-${Date.now()}`,
@@ -1173,14 +1322,28 @@ export const POSTab: React.FC<POSTabProps> = ({
       discount: discountAmount,
       total: grandTotal,
       paymentMethod,
-      customerName: prescriptionInfo.patientName || (isKu ? 'کڕیاری گشتی (نەقد)' : isAr ? 'زبون عام (كاش)' : 'Walk-in Customer'),
-      amountTendered: paymentMethod === 'cash' && cashTendered > 0 ? cashTendered : grandTotal,
+      customerName: resolvedCustomerName,
+      customerId: resolvedCustomerId,
+      debtAmount: paymentMethod === 'debt' ? actualDebtAmount : undefined,
+      paidAmount: paymentMethod === 'debt' ? actualPaidAmount : grandTotal,
+      amountTendered: paymentMethod === 'cash' && cashTendered > 0 ? cashTendered : paymentMethod === 'debt' ? actualPaidAmount : grandTotal,
       changeDue: paymentMethod === 'cash' && cashTendered > grandTotal ? changeDue : 0,
       cashierName: currentUser?.fullName || currentUser?.username || (isKu ? 'کاشێر' : isAr ? 'الكاشير المسؤول' : 'Sales Cashier'),
       status: 'completed'
     };
 
     onSaleCompleted(newSale);
+
+    if (paymentMethod === 'debt') {
+      setScanAlert({
+        msg: isKu
+          ? `🧡 پسوولەی قەرز بە بڕی (${settings.currencySymbol}${formatNumber(actualDebtAmount)}) بە سەرکەوتوویی لە ئەژمێری (${resolvedCustomerName}) تۆمارکرا!`
+          : isAr
+          ? `🧡 تم تسجيل وصل البيع بالدين بمبلغ (${settings.currencySymbol}${formatNumber(actualDebtAmount)}) لحساب العميل (${resolvedCustomerName}) وترحيله باللون البرتقالي!`
+          : `🧡 Debt invoice of (${settings.currencySymbol}${formatNumber(actualDebtAmount)}) recorded for (${resolvedCustomerName}) in orange debt ledger!`,
+        type: 'success'
+      });
+    }
 
     // Broadcast completed sale celebration & summary to customer display
     broadcastCustomerDisplay({
@@ -1353,25 +1516,13 @@ export const POSTab: React.FC<POSTabProps> = ({
 
           {/* Search & Categories */}
           <div className="space-y-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={isAr ? 'ابحث باسم المادة أو الباركود...' : isKu ? 'گەڕان بەپێی ناو یان بارکۆد...' : 'Search item name or barcode...'}
-                className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-9 rtl:pl-8 rtl:pr-9 pr-8 py-2 rounded-xl border border-amber-500/30 focus:outline-none focus:border-amber-400"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-2.5 rtl:right-auto rtl:left-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            <FastSearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder={isAr ? 'ابحث باسم المادة أو الباركود...' : isKu ? 'گەڕان بەپێی ناو یان بارکۆد...' : 'Search item name or barcode...'}
+              debounceMs={80}
+              className="border-amber-500/30"
+            />
 
             <div className="flex gap-1.5 overflow-x-auto pb-1 text-[11px] custom-scrollbar">
               <button
@@ -1444,6 +1595,26 @@ export const POSTab: React.FC<POSTabProps> = ({
                     <div className="min-w-0 flex-1">
                       <h4 className="text-xs font-bold text-white truncate">{isAr ? p.nameAr : isKu ? p.nameAr : p.name}</h4>
                       <p className="text-[10px] text-slate-400 font-mono">{p.barcode}</p>
+                      {(() => {
+                        const pExp = getProductExpirySummary(p);
+                        if (!pExp.hasExpiry) return null;
+                        return (
+                          <div className="mt-1">
+                            <span className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                              pExp.isExpired 
+                                ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40' 
+                                : pExp.hasMultipleBatches
+                                ? 'bg-amber-950/80 text-amber-300 border border-amber-500/40'
+                                : pExp.isNearExpiry 
+                                ? 'bg-amber-950/70 text-amber-300 border border-amber-500/30' 
+                                : 'bg-slate-900 text-slate-300 border border-slate-700'
+                            }`}>
+                              📅 {pExp.earliestExpiryDate}
+                              {pExp.hasMultipleBatches && ' ⚡'}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1667,13 +1838,236 @@ export const POSTab: React.FC<POSTabProps> = ({
               </div>
             )}
 
-            {/* Debt Info Notice (if Debt) */}
-            {paymentMethod === 'debt' && (
-              <div className="p-1.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between shrink-0">
-                <span className="text-[11px]">{isAr ? 'بيع بالدين / حساب العميل' : isKu ? 'فرۆشتن بە قەرز / حیسابی کڕیار' : 'On Account / Customer Debt Sale'}</span>
-                <span className="font-bold text-amber-400 font-mono text-xs">{settings.currencySymbol}{formatNumber(grandTotal)}</span>
-              </div>
-            )}
+            {/* Debt Input Panel (Two fields: 1. Customer Name/Account 2. Debt Amount) */}
+            {paymentMethod === 'debt' && (() => {
+              const currentDebtVal = debtAmount !== undefined ? debtAmount : grandTotal;
+              const remainingCashPortion = Math.max(0, grandTotal - currentDebtVal);
+              const matchedCustomer = customers.find(c =>
+                (debtCustomerName && c.name.trim().toLowerCase() === debtCustomerName.trim().toLowerCase()) ||
+                (debtCustomerPhone && c.phone && c.phone.trim() === debtCustomerPhone.trim())
+              );
+              const matchingSuggestions = debtCustomerName.trim()
+                ? customers.filter(c =>
+                    c.name.toLowerCase().includes(debtCustomerName.toLowerCase()) ||
+                    (c.phone && c.phone.includes(debtCustomerName))
+                  ).slice(0, 5)
+                : customers.slice(0, 5);
+
+              return (
+                <div className="p-2 rounded-2xl bg-gradient-to-b from-[#180e06] to-[#0d0912] border-2 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.2)] space-y-2 shrink-0 animate-fadeIn">
+                  
+                  {/* Debt Panel Header */}
+                  <div className="flex items-center justify-between pb-1 border-b border-amber-500/30">
+                    <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                      <span className="p-1 rounded-lg bg-amber-500/20 text-amber-300">
+                        <User className="w-3.5 h-3.5" />
+                      </span>
+                      <span>{isAr ? 'بيانات البيع بالدين / الآجل' : isKu ? 'زانیاری فرۆشتنی قەرز / ئەژمێر' : 'Debt Sale Details'}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 text-[10px] font-mono font-black border border-amber-500/40">
+                      🧡 {isAr ? 'وصل برتقالي' : isKu ? 'پسوولەی پرتەقاڵی' : 'Orange Receipt'}
+                    </span>
+                  </div>
+
+                  {/* FIELD 1: Customer Name & Loyalty Lookup */}
+                  <div className="space-y-1 relative">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-amber-200 flex items-center gap-1">
+                        <span>{isAr ? '1. اسم الزبون / العميل:' : isKu ? '١. ناوی کڕیار / ئەژمێر:' : '1. Customer Name:'}</span>
+                        <span className="text-rose-400">*</span>
+                      </label>
+                      {matchedCustomer && (
+                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>{isAr ? 'عميل مسجل' : isKu ? 'کڕیاری تۆمارکراو' : 'Registered Member'}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={debtCustomerName}
+                        onChange={(e) => {
+                          setDebtCustomerName(e.target.value);
+                          setIsDebtCustDropdownOpen(true);
+                        }}
+                        onFocus={() => {
+                          setIsBarcodePaused(true);
+                          setIsDebtCustDropdownOpen(true);
+                        }}
+                        onBlur={() => {
+                          // Allow click on dropdown items
+                          setTimeout(() => {
+                            setIsDebtCustDropdownOpen(false);
+                            setIsBarcodePaused(false);
+                          }, 250);
+                        }}
+                        placeholder={isAr ? 'اكتب اسم الزبون للبحث أو إنشاء حساب...' : isKu ? 'ناوی کڕیار بنووسە بۆ گەڕان یان دروستکردنی ئەژمێر...' : 'Type customer name to search or add...'}
+                        className="w-full bg-[#080d1a] text-amber-200 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-500/50 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder:text-slate-500"
+                      />
+
+                      {/* Dropdown Customer Autocomplete List */}
+                      {isDebtCustDropdownOpen && matchingSuggestions.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-[#090e1c] border border-amber-500/50 rounded-xl shadow-2xl z-40 max-h-40 overflow-y-auto divide-y divide-slate-800">
+                          {matchingSuggestions.map(cust => (
+                            <button
+                              key={cust.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setDebtCustomerName(cust.name);
+                                if (cust.phone) setDebtCustomerPhone(cust.phone);
+                                setIsDebtCustDropdownOpen(false);
+                              }}
+                              className="w-full p-2 text-right rtl:text-right hover:bg-amber-950/50 transition-all flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-slate-100 truncate flex items-center gap-1.5">
+                                  <span>{cust.name}</span>
+                                  {cust.tier && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                      {cust.tier}
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-mono truncate">{cust.phone || (isAr ? 'بدون هاتف' : 'No phone')}</p>
+                              </div>
+                              <div className="text-left rtl:text-left shrink-0">
+                                <span className={`text-[10px] font-mono font-bold block ${
+                                  (cust.debtBalance || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
+                                }`}>
+                                  {(cust.debtBalance || 0) > 0 
+                                    ? `${isAr ? 'عليه دين:' : isKu ? 'قەرز:' : 'Debt:'} ${settings.currencySymbol}${formatNumber(cust.debtBalance || 0)}`
+                                    : (isAr ? 'لا يوجد دين' : isKu ? 'قەرزی نییە' : 'No debt')
+                                  }
+                                </span>
+                                <span className="text-[9px] text-pink-400 font-mono block">
+                                  ⭐ {cust.loyaltyPoints || 0} {isAr ? 'نقطة ولاء' : isKu ? 'خاڵ' : 'pts'}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Customer Status / Loyalty Feedback Badge */}
+                    {matchedCustomer ? (
+                      <div className="p-1.5 rounded-lg bg-[#07131e] border border-cyan-500/30 text-[10px] flex items-center justify-between text-cyan-200">
+                        <span>{isAr ? 'الرصيد السابق بالدين:' : isKu ? 'قەرزی پێشوو:' : 'Prior Debt:'} <strong className="text-amber-400 font-mono">{settings.currencySymbol}{formatNumber(matchedCustomer.debtBalance || 0)}</strong></span>
+                        <span className="text-pink-300 font-mono font-bold">🎁 {matchedCustomer.loyaltyPoints || 0} {isAr ? 'نقطة ولاء' : isKu ? 'خاڵ' : 'pts'}</span>
+                      </div>
+                    ) : debtCustomerName.trim() ? (
+                      <div className="p-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[9.5px] text-emerald-300 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>{isAr ? '✨ سيتم إنشاء حساب ولاء جديد فوراً ومنحه 100 نقطة ترحيبية' : isKu ? '✨ ئەژمێری نوێ دروست دەکرێت بە ١٠٠ خاڵی بەخشش' : '✨ New account will be created with 100 bonus pts'}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* FIELD 2: Debt Amount (كمية المال بالدين) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-amber-200 flex items-center gap-1">
+                        <span>{isAr ? '2. كمية المال بالدين (المبلغ الآجل):' : isKu ? '٢. بڕی پارەی قەرز (ماوە):' : '2. Debt Amount (On Credit):'}</span>
+                        <span className="text-rose-400">*</span>
+                      </label>
+                      <span className="text-[10px] font-mono font-bold text-amber-400">
+                        {isAr ? 'الإجمالي:' : isKu ? 'کۆی گشتی:' : 'Total:'} {settings.currencySymbol}{formatNumber(grandTotal)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <div className="relative flex-1">
+                        <span className="absolute left-2.5 rtl:left-auto rtl:right-2.5 top-1/2 -translate-y-1/2 text-amber-400 font-bold text-xs">
+                          {settings.currencySymbol}
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={grandTotal}
+                          value={debtAmount !== undefined ? (debtAmount === 0 ? '' : debtAmount) : (grandTotal === 0 ? '' : grandTotal)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setDebtAmount(0);
+                            } else {
+                              const num = Math.max(0, parseFloat(val) || 0);
+                              setDebtAmount(num);
+                            }
+                          }}
+                          onFocus={(e) => {
+                            setIsBarcodePaused(true);
+                            e.target.select();
+                          }}
+                          onClick={(e) => {
+                            setIsBarcodePaused(true);
+                            (e.target as HTMLInputElement).select();
+                          }}
+                          onBlur={() => {
+                            setIsBarcodePaused(false);
+                            focusBarcodeIfEnabled(50);
+                          }}
+                          className="w-full bg-[#080d1a] text-amber-400 font-mono font-bold text-xs px-8 py-1.5 rounded-xl border border-amber-500/50 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-center"
+                        />
+                      </div>
+
+                      {/* Quick Percentage Presets */}
+                      <button
+                        type="button"
+                        onClick={() => setDebtAmount(grandTotal)}
+                        className={`px-2 py-1.5 rounded-xl text-[10px] font-bold font-mono transition-all border shrink-0 ${
+                          currentDebtVal === grandTotal
+                            ? 'bg-amber-500 text-slate-950 border-amber-300 font-black shadow'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                        }`}
+                        title={isAr ? 'كامل المبلغ بالدين (100%)' : isKu ? 'هەمووی بە قەرز' : '100% Debt'}
+                      >
+                        100%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDebtAmount(Math.round(grandTotal / 2))}
+                        className={`px-2 py-1.5 rounded-xl text-[10px] font-bold font-mono transition-all border shrink-0 ${
+                          currentDebtVal === Math.round(grandTotal / 2) && grandTotal > 0
+                            ? 'bg-amber-500 text-slate-950 border-amber-300 font-black shadow'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                        }`}
+                        title={isAr ? 'نصف المبلغ بالدين (50%)' : isKu ? 'نیوەی بە قەرز' : '50% Debt'}
+                      >
+                        50%
+                      </button>
+                    </div>
+
+                    {/* Breakdown of Cash Paid vs Remaining Debt */}
+                    <div className="p-1.5 rounded-lg bg-[#060b17] border border-slate-800 flex items-center justify-between text-[10px]">
+                      <span className="text-emerald-400 font-semibold">
+                        {isAr ? 'المدفوع نقداً الآن:' : isKu ? 'دراوی نەختینە:' : 'Cash Paid:'}{' '}
+                        <strong className="font-mono text-emerald-300">{settings.currencySymbol}{formatNumber(remainingCashPortion)}</strong>
+                      </span>
+                      <span className="text-amber-400 font-bold">
+                        {isAr ? 'الباقي بالدين:' : isKu ? 'ماوە بە قەرز:' : 'Remaining Debt:'}{' '}
+                        <strong className="font-mono text-amber-300">{settings.currencySymbol}{formatNumber(currentDebtVal)}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Orange Notice */}
+                  <div className="p-1.5 rounded-xl bg-orange-950/50 border border-orange-500/40 text-[10px] text-orange-200 flex items-center gap-1.5 shadow-sm">
+                    <Receipt className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    <span>
+                      {isAr
+                        ? 'سيظهر هذا الوصل باللون البرتقالي في واجهة العملاء ويُضاف لسجل الديون ونقاط الولاء فوراً.'
+                        : isKu
+                        ? 'ئەم پسوولەیە بە ڕەنگی پرتەقاڵی لە بەشی کڕیاران و خشتەی قەرزەکان دەردەکەوێت.'
+                        : 'This invoice appears orange in Customers & Loyalty tab and tracks to member balance.'}
+                    </span>
+                  </div>
+
+                </div>
+              );
+            })()}
           </div>
 
           {/* FIXED BOTTOM CONTAINER: Bill Breakdown, Large Sale Button & Extra Action Buttons */}
@@ -2159,6 +2553,11 @@ export const POSTab: React.FC<POSTabProps> = ({
                     const isFirstNewlyAdded = (idx === 0) && (item.product.id === lastAddedId);
                     const isWholesaleOrCarton = item.saleType === 'wholesale' || item.saleType === 'carton';
                     const unitPrice = getItemUnitPrice(item);
+                    const totalPiecesInLine = item.saleType === 'carton' 
+                      ? item.quantity * ((item.product.unitsPerCarton && item.product.unitsPerCarton > 0) ? item.product.unitsPerCarton : 1)
+                      : item.quantity;
+                    const expirySummary = getProductExpirySummary(item.product, totalPiecesInLine);
+                    const batchAllocations = calculateBatchAllocations(item.product, totalPiecesInLine);
 
                     let cardStyles = 'bg-[#070D1C] border border-blue-500/20 hover:border-cyan-500/30';
                     if (isReturnMode) {
@@ -2176,23 +2575,78 @@ export const POSTab: React.FC<POSTabProps> = ({
                       >
                         <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 w-full">
                           {/* 1. Product Info */}
-                          <div className="flex items-center space-x-2 rtl:space-x-reverse min-w-0 flex-1">
-                            <span className="text-lg p-1.5 rounded-lg bg-slate-800/80 shrink-0 leading-none">
+                          <div className="flex items-start space-x-2 rtl:space-x-reverse min-w-0 flex-1">
+                            <span className="text-lg p-1.5 rounded-lg bg-slate-800/80 shrink-0 leading-none mt-0.5">
                               {item.product.imageIcon}
                             </span>
-                            <div className="min-w-0 flex-1 leading-tight">
+                            <div className="min-w-0 flex-1 leading-tight space-y-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="text-xs font-bold text-slate-100 truncate">
                                   {isAr ? item.product.nameAr : isKu ? (item.product.nameAr || item.product.name) : item.product.name}
                                 </p>
                               </div>
-                              <div className="flex items-center gap-1 text-[9px] text-slate-400 mt-0.5 flex-wrap">
+                              <div className="flex items-center gap-1 text-[9px] text-slate-400 flex-wrap">
                                 {item.product.dosageForm && (
                                   <span className="text-cyan-400 font-semibold">{item.product.dosageForm}</span>
                                 )}
                                 <span>•</span>
                                 <span className="font-mono text-slate-400">{item.product.barcode}</span>
                               </div>
+
+                              {/* ⚡ EXPIRY & BATCH NOTICE FOR CASHIER (ملاحظة وتنبيه تاريخ الصلاحية والدفعات للكاشير) */}
+                              {expirySummary.hasExpiry && (
+                                <div className="pt-1 flex flex-col gap-1 max-w-xl">
+                                  {expirySummary.hasMultipleBatches ? (
+                                    <div className={`p-1.5 rounded-lg border shadow-sm flex items-start gap-1.5 text-[10px] leading-snug transition-all ${
+                                      expirySummary.isEarliestExhausted && expirySummary.takenFromNewer > 0
+                                        ? 'bg-gradient-to-r from-cyan-950/95 via-blue-950/90 to-[#061826] border-cyan-500/70 text-cyan-100'
+                                        : expirySummary.isEarliestExhausted
+                                        ? 'bg-gradient-to-r from-emerald-950/95 via-emerald-900/80 to-teal-950/90 border-emerald-500/70 text-emerald-100'
+                                        : 'bg-gradient-to-r from-amber-950/90 via-amber-900/70 to-orange-950/90 border-amber-500/60 text-amber-100'
+                                    }`}>
+                                      <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${
+                                        expirySummary.isEarliestExhausted ? 'text-cyan-400' : 'text-amber-400'
+                                      }`} />
+                                      <div className="flex-1">
+                                        <p className={`font-semibold ${
+                                          expirySummary.isEarliestExhausted ? 'text-cyan-200' : 'text-amber-200'
+                                        }`}>
+                                          {isKu ? expirySummary.alertMessageKu : isAr ? expirySummary.alertMessageAr : expirySummary.alertMessageEn}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className={`p-1.5 rounded-lg border text-[10px] leading-snug flex items-start gap-1.5 ${
+                                      expirySummary.isExpired 
+                                        ? 'bg-rose-950/90 border-rose-500/60 text-rose-200' 
+                                        : expirySummary.isUrgentExpiry
+                                        ? 'bg-amber-950/90 border-amber-500/70 text-amber-100 animate-pulse font-medium'
+                                        : expirySummary.isNearExpiry
+                                        ? 'bg-amber-950/70 border-amber-500/50 text-amber-100 font-medium'
+                                        : 'bg-slate-900/90 border-slate-700/70 text-slate-300'
+                                    }`}>
+                                      <Calendar className="w-3.5 h-3.5 shrink-0 text-amber-400 mt-0.5" />
+                                      <div className="flex-1">
+                                        <p className="font-semibold">
+                                          {isKu ? expirySummary.alertMessageKu : isAr ? expirySummary.alertMessageAr : expirySummary.alertMessageEn}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* If this sold quantity is allocated across multiple batches */}
+                                  {batchAllocations.length > 1 && (
+                                    <div className="text-[9.5px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-500/30 flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-bold">{isKu ? '⚡ دابەشکاری سەر دەستەکان:' : isAr ? '⚡ تفصيل الخصم من الدفعات:' : '⚡ Batch Distribution:'}</span>
+                                      {batchAllocations.map((alloc, aIdx) => (
+                                        <span key={aIdx} className="font-mono bg-black/50 px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-200 font-bold">
+                                          {alloc.allocatedQty} {isKu ? 'دانە' : isAr ? 'قطعة' : 'pcs'} ({alloc.expiryDate})
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -2270,24 +2724,48 @@ export const POSTab: React.FC<POSTabProps> = ({
                               </div>
                             </div>
 
-                            {/* 5. Quantity Controls */}
-                            <div className="w-18 shrink-0 flex flex-col items-center">
+                            {/* 5. Quantity Controls with Direct Editable Input & Buttons */}
+                            <div className="w-20 shrink-0 flex flex-col items-center">
                               <span className="lg:hidden text-[8.5px] text-emerald-400 mb-0.5 font-bold">{isAr ? 'العدد' : isKu ? 'ژمارە' : 'Qty'}</span>
-                              <div className="flex items-center space-x-0.5 rtl:space-x-reverse bg-slate-900 border border-slate-800 rounded-lg p-0.5 w-full justify-between">
+                              <div className="flex items-center space-x-0.5 rtl:space-x-reverse bg-slate-900 border border-emerald-500/40 rounded-lg p-0.5 w-full justify-between shadow-inner">
                                 <button
+                                  type="button"
                                   onClick={() => updateQuantity(item.product.id, item.saleType, -1)}
-                                  className="p-0.5 hover:bg-slate-800 rounded text-slate-300 active:scale-95"
+                                  className="p-1 hover:bg-slate-800 rounded text-slate-300 active:scale-90 transition-colors"
                                   title={isAr ? 'إنقاص العدد' : isKu ? 'کەمکردنەوەی ژمارە' : 'Decrease'}
                                 >
-                                  <Minus className="w-2.5 h-2.5" />
+                                  <Minus className="w-3 h-3 text-slate-400 hover:text-white" />
                                 </button>
-                                <span className="text-[11px] font-bold text-white px-0.5 font-mono">{item.quantity}</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (!isNaN(val) && val >= 1) {
+                                      setDirectQuantity(item.product.id, item.saleType, val);
+                                    } else if (e.target.value === '') {
+                                      setDirectQuantity(item.product.id, item.saleType, 1);
+                                    }
+                                  }}
+                                  onFocus={(e) => {
+                                    setIsBarcodePaused(true);
+                                    e.target.select();
+                                  }}
+                                  onBlur={() => {
+                                    setIsBarcodePaused(false);
+                                    focusBarcodeIfEnabled(60);
+                                  }}
+                                  className="w-8 text-center text-xs font-black text-emerald-300 font-mono bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-emerald-400 rounded p-0"
+                                  title={isAr ? 'انقر لكتابة وتعديل العدد مباشرة' : isKu ? 'کلیک بکە بۆ نووسینی ڕاستەوخۆی ژمارە' : 'Type quantity directly'}
+                                />
                                 <button
+                                  type="button"
                                   onClick={() => updateQuantity(item.product.id, item.saleType, 1)}
-                                  className="p-0.5 hover:bg-slate-800 rounded text-slate-300 active:scale-95"
+                                  className="p-1 hover:bg-slate-800 rounded text-slate-300 active:scale-90 transition-colors"
                                   title={isAr ? 'زيادة العدد' : isKu ? 'زیادکردنی ژمارە' : 'Increase'}
                                 >
-                                  <Plus className="w-2.5 h-2.5" />
+                                  <Plus className="w-3 h-3 text-slate-400 hover:text-white" />
                                 </button>
                               </div>
                             </div>
@@ -2390,25 +2868,12 @@ export const POSTab: React.FC<POSTabProps> = ({
 
             {/* Modal Controls (Search & Category Chips) */}
             <div className="p-4 border-b border-slate-800 bg-[#0B1120] space-y-3">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={isAr ? 'بحث فوري باسم المنتج، الفئة، أو رقم الباركود...' : isKu ? 'گەڕانی خێرا بە ناوی دەرمان، بەش، یان بارکۆد...' : 'Fast search product name, category, or barcode...'}
-                  className="w-full bg-[#070D1C] text-xs text-slate-200 placeholder-slate-500 pl-10 rtl:pl-8 rtl:pr-10 pr-8 py-2.5 rounded-xl border border-blue-500/20 focus:outline-none focus:border-emerald-500"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-3 rtl:right-auto rtl:left-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+              <FastSearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder={isAr ? 'بحث فوري باسم المنتج، الفئة، أو رقم الباركود...' : isKu ? 'گەڕانی خێرا بە ناوی دەرمان، بەش، یان بارکۆد...' : 'Fast search product name, category, or barcode...'}
+                debounceMs={80}
+              />
 
               <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
                 <button
@@ -2489,6 +2954,30 @@ export const POSTab: React.FC<POSTabProps> = ({
                       <p className="text-[9.5px] text-slate-400 font-mono truncate">
                         {p.barcode}
                       </p>
+                      {(() => {
+                        const pExp = getProductExpirySummary(p);
+                        if (!pExp.hasExpiry) return null;
+                        return (
+                          <div className="mt-1">
+                            <span className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                              pExp.isExpired 
+                                ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40' 
+                                : pExp.hasMultipleBatches
+                                ? 'bg-amber-950/90 text-amber-300 border border-amber-500/50'
+                                : pExp.isNearExpiry 
+                                ? 'bg-amber-950/70 text-amber-300 border border-amber-500/30' 
+                                : 'bg-slate-900 text-slate-300 border border-slate-700'
+                            }`}>
+                              <span>📅 {pExp.earliestExpiryDate}</span>
+                              {pExp.hasMultipleBatches && (
+                                <span className="text-[8.5px] text-amber-200 bg-black/40 px-1 rounded">
+                                  {isKu ? 'فرۆشتنی کۆن' : isAr ? 'يُباع أولاً' : 'Sell First'}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Prices Breakdown: Retail / Wholesale / Carton */}

@@ -107,10 +107,10 @@ export const VouchersHubTab: React.FC<VouchersHubTabProps> = ({
   // Statistics calculation for the Hub View
   const todaySales = salesHistory.filter(s => s && isToday(s.timestamp));
   const todaySalesCount = todaySales.length;
-  const todaySalesTotal = todaySales.reduce((acc, s) => acc + (s.finalAmount || 0), 0);
+  const todaySalesTotal = todaySales.reduce((acc, s) => acc + (s.total || 0), 0);
 
   const purchaseInvoicesCount = purchaseInvoices.length;
-  const totalPurchasesAmount = purchaseInvoices.reduce((acc, p) => acc + (p.finalAmount || p.totalAmount || 0), 0);
+  const totalPurchasesAmount = purchaseInvoices.reduce((acc, p) => acc + (p.totalInvoiceAmount || 0), 0);
 
   const voucherCards = [
     {
@@ -361,8 +361,8 @@ export const VouchersHubTab: React.FC<VouchersHubTabProps> = ({
               products={products}
               setProducts={setProducts}
               customers={customers}
+              setCustomers={setCustomers}
               settings={settings}
-              setSettings={setSettings}
               onSaleCompleted={onSaleCompleted}
               showInventory={showPOSInventory}
               setShowInventory={setShowPOSInventory}
