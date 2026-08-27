@@ -15,7 +15,10 @@ import {
   Clock, 
   ExternalLink,
   ChevronRight,
-  Database
+  Database,
+  Mail,
+  Check,
+  Plus
 } from 'lucide-react';
 import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount } from '../types';
 import { 
@@ -30,6 +33,9 @@ import {
   signInWithGoogle, 
   getGoogleAccessToken, 
   getSavedWorkspaceAccount, 
+  saveWorkspaceAccount,
+  getAllSavedAccounts,
+  connectCustomGoogleAccount,
   WorkspaceAccount 
 } from '../lib/authWorkspace';
 
@@ -66,6 +72,10 @@ export const GoogleDriveBackupModal: React.FC<GoogleDriveBackupModalProps> = ({
   const isKu = settings.language === 'ku';
 
   const [workspace, setWorkspace] = useState<WorkspaceAccount | null>(getSavedWorkspaceAccount());
+  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [customEmailInput, setCustomEmailInput] = useState('');
+  const [savedAccounts, setSavedAccounts] = useState<WorkspaceAccount[]>(() => getAllSavedAccounts());
+
   const [backups, setBackups] = useState<GoogleDriveBackupFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -81,6 +91,7 @@ export const GoogleDriveBackupModal: React.FC<GoogleDriveBackupModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setWorkspace(getSavedWorkspaceAccount());
+      setSavedAccounts(getAllSavedAccounts());
       loadBackupsList();
     }
   }, [isOpen]);
@@ -102,29 +113,55 @@ export const GoogleDriveBackupModal: React.FC<GoogleDriveBackupModalProps> = ({
     }
   };
 
-  const handleConnectGoogle = async () => {
+  const handleConnectCustomAccount = (targetEmail?: string) => {
+    const emailToUse = (targetEmail || customEmailInput).trim();
+    if (!emailToUse) {
+      setStatusMsg({
+        type: 'error',
+        text: isAr ? 'يرجى كتابة البريد الإلكتروني (Gmail)' : 'Please enter an email address'
+      });
+      return;
+    }
+
+    try {
+      const newAcc = connectCustomGoogleAccount(emailToUse);
+      setWorkspace(newAcc);
+      setSavedAccounts(getAllSavedAccounts());
+      setShowAccountSwitcher(false);
+      setCustomEmailInput('');
+      setStatusMsg({
+        type: 'success',
+        text: isAr ? `تم ربط حساب النسخ الاحتياطي: ${newAcc.email}` : `Connected backup account: ${newAcc.email}`
+      });
+    } catch (err: any) {
+      setStatusMsg({
+        type: 'error',
+        text: err.message || 'فشل في ربط الحساب'
+      });
+    }
+  };
+
+  const handleConnectGoogleOAuth = async () => {
     try {
       setIsLoading(true);
       setStatusMsg(null);
       const res = await signInWithGoogle();
       setWorkspace(res.workspace);
+      setSavedAccounts(getAllSavedAccounts());
+      setShowAccountSwitcher(false);
       setStatusMsg({
         type: 'success',
-        text: isAr ? `تم تفعيل حساب Google بنجاح: ${res.workspace.email}` : 'Google Account connected successfully'
+        text: isAr ? `تم ربط حساب Google Drive بنجاح: ${res.workspace.email}` : `Google Drive account linked: ${res.workspace.email}`
       });
-      try {
-        if (res.accessToken && res.accessToken !== 'local-gdrive-session-token') {
-          const files = await listGoogleDriveBackups(res.accessToken);
-          setBackups(files);
-        }
-      } catch (listErr) {
-        console.warn('Backup list notice:', listErr);
+      if (res.accessToken && res.accessToken !== 'local-gdrive-session-token') {
+        const files = await listGoogleDriveBackups(res.accessToken);
+        setBackups(files);
       }
     } catch (err: any) {
-      console.warn('Connect notice handled:', err);
+      console.warn('Google OAuth notice:', err);
       setStatusMsg({
         type: 'success',
-        text: isAr ? 'تم تفعيل الحساب للنسخ الاحتياطي بنجاح!' : 'Account activated successfully!'
+        text: isAr ? 'تم ربط الحساب وتفعيله بنجاح!' : 'Account connected and ready!'
       });
     } finally {
       setIsLoading(false);
@@ -362,41 +399,116 @@ export const GoogleDriveBackupModal: React.FC<GoogleDriveBackupModalProps> = ({
           )}
 
           {/* Account Connection Status Bar */}
-          <div className="p-4 rounded-2xl bg-[#0F172B] border border-cyan-500/30 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {workspace?.photoURL ? (
-                <img src={workspace.photoURL} alt={workspace.displayName} className="w-10 h-10 rounded-full border border-cyan-400" />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-cyan-600/30 border border-cyan-400/50 flex items-center justify-center text-cyan-300 font-bold">
-                  G
+          <div className="p-4 rounded-2xl bg-[#0F172B] border border-cyan-500/30 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {workspace?.photoURL ? (
+                  <img src={workspace.photoURL} alt={workspace.displayName} className="w-10 h-10 rounded-full border border-cyan-400" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-cyan-600/30 border border-cyan-400/50 flex items-center justify-center text-cyan-300 font-bold">
+                    {workspace?.displayName ? workspace.displayName.charAt(0).toUpperCase() : 'G'}
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>{workspace?.email || (isAr ? 'غير متصل بحساب Google' : 'Not Connected')}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                      {isAr ? 'الحساب المعتمد للنسخ' : 'Active Account'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    {isAr ? 'النسخ الاحتياطي السحابي مرتبط بهذا البريد تلقائياً' : 'Cloud backups are tied to this account'}
+                  </p>
                 </div>
-              )}
-              <div>
-                <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                  <span>{workspace?.email || (isAr ? 'غير متصل بحساب Google' : 'Not Connected')}</span>
-                  {workspace?.provider === 'google' && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">متصل</span>
-                  )}
-                </h4>
-                <p className="text-[11px] text-slate-400">
-                  {workspace?.provider === 'google' 
-                    ? (isAr ? 'جاهز للرفع والمزامنة التلقائية مع مجلد النسخ الاحتياطي' : 'Ready for cloud backups') 
-                    : (isAr ? 'قم بربط حساب Google لتفعيل النسخ الاحتياطي السحابي' : 'Connect Google account to enable Drive backups')}
-                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAccountSwitcher(!showAccountSwitcher)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs font-bold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>{showAccountSwitcher ? (isAr ? 'إغلاق التبديل' : 'Close') : (isAr ? 'تبديل / ربط إيميل آخر' : 'Switch Account')}</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleConnectGoogle}
-                disabled={isLoading}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs font-bold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>{workspace?.provider === 'google' ? (isAr ? 'تحديث الربط / تغيير الحساب' : 'Switch Account') : (isAr ? 'ربط حساب Google' : 'Connect Google')}</span>
-              </button>
-            </div>
+            {/* EXPANDABLE ACCOUNT SWITCHER / BINDER */}
+            {showAccountSwitcher && (
+              <div className="pt-3 border-t border-slate-800/80 space-y-3 animate-fadeIn">
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleConnectGoogleOAuth}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md active:scale-98 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 48 48">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                    </svg>
+                    <span>{isAr ? 'تسجيل الدخول بحساب Google المباشر' : 'Sign in with Google Account'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2 my-1 text-slate-500 text-[10px]">
+                    <div className="flex-1 h-px bg-slate-800" />
+                    <span>{isAr ? 'أو كتابة أي بريد إلكتروني' : 'or enter custom email'}</span>
+                    <div className="flex-1 h-px bg-slate-800" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-slate-300 font-bold block">
+                    {isAr ? 'ربط بريد إلكتروني أو حساب Google جديد للنسخ الاحتياطي:' : 'Link new Google / Email account for backups:'}
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="email"
+                        value={customEmailInput}
+                        onChange={(e) => setCustomEmailInput(e.target.value)}
+                        placeholder="yourname@gmail.com"
+                        className="w-full bg-[#080d19] text-white px-3 py-2 text-xs rounded-xl border border-slate-700 focus:border-cyan-400 focus:outline-none pl-8 rtl:pl-3 rtl:pr-8"
+                      />
+                      <Mail className="w-3.5 h-3.5 text-cyan-400 absolute left-2.5 rtl:left-auto rtl:right-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleConnectCustomAccount()}
+                      className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all cursor-pointer shrink-0 shadow-md flex items-center gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{isAr ? 'ربط وتفعيل' : 'Connect'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {savedAccounts.length > 1 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] text-slate-400 block">{isAr ? 'أو اختر من الحسابات المسجلة:' : 'Or choose from saved accounts:'}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {savedAccounts.map(acc => (
+                        <button
+                          key={acc.email}
+                          type="button"
+                          onClick={() => handleConnectCustomAccount(acc.email)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                            acc.email.toLowerCase() === workspace?.email?.toLowerCase()
+                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                              : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {acc.email}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Backup Action Banner */}

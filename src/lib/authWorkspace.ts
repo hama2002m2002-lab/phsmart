@@ -1,6 +1,7 @@
 import localConfig from '../../firebase-applet-config.json';
 
 export const WORKSPACE_STORAGE_KEY = 'pos_workspace_account_v1';
+export const KNOWN_ACCOUNTS_STORAGE_KEY = 'pos_known_workspace_accounts_v1';
 export const CLIENT_ID = localConfig.oAuthClientId || '327229962762-p1jnvv8evs0c69dph64858548986j335.apps.googleusercontent.com';
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
@@ -23,6 +24,66 @@ declare global {
   interface Window {
     google?: any;
   }
+}
+
+/**
+ * Get list of all known/saved accounts on this device
+ */
+export function getAllSavedAccounts(): WorkspaceAccount[] {
+  try {
+    const raw = localStorage.getItem(KNOWN_ACCOUNTS_STORAGE_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) return list;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+/**
+ * Add or update an account in the known accounts list
+ */
+export function saveAccountToList(acc: WorkspaceAccount) {
+  try {
+    const existing = getAllSavedAccounts().filter(a => a.email.toLowerCase() !== acc.email.toLowerCase());
+    existing.unshift(acc);
+    localStorage.setItem(KNOWN_ACCOUNTS_STORAGE_KEY, JSON.stringify(existing.slice(0, 10)));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Remove an account from the known list
+ */
+export function removeAccountFromList(email: string) {
+  try {
+    const existing = getAllSavedAccounts().filter(a => a.email.toLowerCase() !== email.toLowerCase());
+    localStorage.setItem(KNOWN_ACCOUNTS_STORAGE_KEY, JSON.stringify(existing));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Connect any custom Google account directly by email
+ */
+export function connectCustomGoogleAccount(email: string, displayName?: string): WorkspaceAccount {
+  const cleanEmail = email.trim().toLowerCase();
+  const name = displayName?.trim() || cleanEmail.split('@')[0] || 'مدير المتجر';
+  const workspace: WorkspaceAccount = {
+    uid: `google-${cleanEmail.replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+    email: cleanEmail,
+    displayName: name,
+    photoURL: null,
+    provider: 'google',
+    lastLogin: new Date().toISOString()
+  };
+  saveWorkspaceAccount(workspace);
+  saveAccountToList(workspace);
+  return workspace;
 }
 
 /**
@@ -128,11 +189,11 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
 
               // Auto-resolve gracefully with current/default user account so user is never blocked
               const saved = getSavedWorkspaceAccount();
-              const fallbackEmail = saved?.email || 'hama2002m2002@gmail.com';
+              const fallbackEmail = saved?.email || 'admin@store-pos.local';
               const workspace: WorkspaceAccount = {
                 uid: saved?.uid || `google-${Date.now()}`,
                 email: fallbackEmail,
-                displayName: saved?.displayName || 'Hama Store Admin',
+                displayName: saved?.displayName || 'مدير المتجر',
                 photoURL: saved?.photoURL || null,
                 provider: 'google',
                 lastLogin: new Date().toISOString()
@@ -145,7 +206,7 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
             cachedAccessToken = accessToken;
 
             // Fetch user info from Google
-            let email = 'hama2002m2002@gmail.com';
+            let email = '';
             let name = 'مدير المتجر (Google)';
             let picture: string | null = null;
             let sub = `google-${Date.now()}`;
@@ -156,18 +217,18 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
               });
               if (userInfoRes.ok) {
                 const userInfo = await userInfoRes.json();
-                email = userInfo.email || email;
-                name = userInfo.name || email.split('@')[0];
+                email = userInfo.email || '';
+                name = userInfo.name || (email ? email.split('@')[0] : 'مدير المتجر');
                 picture = userInfo.picture || null;
                 sub = userInfo.sub || sub;
               }
             } catch (err) {
-              console.warn('Could not fetch Google userinfo, using fallback defaults:', err);
+              console.warn('Could not fetch Google userinfo:', err);
             }
 
             const workspace: WorkspaceAccount = {
               uid: sub,
-              email: email,
+              email: email || 'connected-account@google.com',
               displayName: name,
               photoURL: picture,
               provider: 'google',
@@ -179,13 +240,13 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
           },
           error_callback: (error: any) => {
             console.warn('GSI Error Notice:', error);
-            // Seamlessly fall back instead of throwing raw error
+            // Fall back cleanly
             const saved = getSavedWorkspaceAccount();
-            const fallbackEmail = saved?.email || 'hama2002m2002@gmail.com';
+            const fallbackEmail = saved?.email || 'admin@store-pos.local';
             const workspace: WorkspaceAccount = {
               uid: saved?.uid || `google-${Date.now()}`,
               email: fallbackEmail,
-              displayName: saved?.displayName || 'Hama Store Admin',
+              displayName: saved?.displayName || 'مدير المتجر',
               photoURL: saved?.photoURL || null,
               provider: 'google',
               lastLogin: new Date().toISOString()
@@ -223,8 +284,8 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
       const user = result.user;
       const workspace: WorkspaceAccount = {
         uid: user.uid,
-        email: user.email || 'hama2002m2002@gmail.com',
-        displayName: user.displayName || user.email?.split('@')[0] || 'Hama Store Admin',
+        email: user.email || 'connected-account@google.com',
+        displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'مدير المتجر'),
         photoURL: user.photoURL || null,
         provider: 'google',
         lastLogin: new Date().toISOString()
@@ -237,11 +298,11 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
       
       // Auto-fallback: If popup was blocked, closed by user, or origin mismatch
       const saved = getSavedWorkspaceAccount();
-      const defaultEmail = saved?.email || 'hama2002m2002@gmail.com';
+      const defaultEmail = saved?.email || 'admin@store-pos.local';
       const workspace: WorkspaceAccount = {
         uid: saved?.uid || `google-${Date.now()}`,
         email: defaultEmail,
-        displayName: saved?.displayName || 'Hama (Google Store Admin)',
+        displayName: saved?.displayName || 'مدير المتجر',
         photoURL: saved?.photoURL || null,
         provider: 'google',
         lastLogin: new Date().toISOString()
