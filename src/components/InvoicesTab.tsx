@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FileText, 
   Search, 
@@ -52,6 +52,7 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
 
   // Filters State for Invoices
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = React.useDeferredValue(searchTerm);
   const [paymentFilter, setPaymentFilter] = useState<'all' | string>('all');
   const [cashierFilter, setCashierFilter] = useState<'all' | string>('all');
   const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'three_months' | 'this_year' | 'range'>('all');
@@ -59,133 +60,188 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const [endDate, setEndDate] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Pagination state for ultra fast rendering of large sales histories
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+
+  // Reset pagination when any filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [deferredSearchTerm, paymentFilter, cashierFilter, dateFilterMode, startDate, endDate, pageSize]);
+
+  // Pre-index products for lightning fast O(1) searches without repetitive array scanning
+  const { productLookupMap, matchingProductIdsForQuery } = useMemo(() => {
+    const pMap = new Map<string, Product>();
+    const query = deferredSearchTerm.trim().toLowerCase();
+    const matchingIds = new Set<string>();
+
+    if (products && products.length > 0) {
+      for (let i = 0; i < products.length; i++) {
+        const p = products[i];
+        if (!p) continue;
+        pMap.set(p.id, p);
+
+        if (query) {
+          const b = (p.barcode || '').toLowerCase();
+          const n1 = (p.name || '').toLowerCase();
+          const n2 = (p.nameAr || '').toLowerCase();
+          const n3 = (p.nameKu || '').toLowerCase();
+          if (b.includes(query) || n1.includes(query) || n2.includes(query) || n3.includes(query)) {
+            matchingIds.add(p.id);
+          }
+        }
+      }
+    }
+
+    return { productLookupMap: pMap, matchingProductIdsForQuery: matchingIds };
+  }, [products, deferredSearchTerm]);
+
   // Filter sales history with comprehensive barcode, product, customer & date search
   const filteredSales = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-
-    // Map query to matching product IDs by barcode or name for deep lookup
-    const matchingProductIds = new Set<string>();
-    if (query && products && products.length > 0) {
-      products.forEach(p => {
-        if (!p) return;
-        const b = (p.barcode || '').toLowerCase();
-        const n1 = (p.name || '').toLowerCase();
-        const n2 = (p.nameAr || '').toLowerCase();
-        const n3 = (p.nameKu || '').toLowerCase();
-        if (b.includes(query) || n1.includes(query) || n2.includes(query) || n3.includes(query)) {
-          matchingProductIds.add(p.id);
-        }
-      });
-    }
+    const query = deferredSearchTerm.trim().toLowerCase();
+    const hasQuery = query.length > 0;
 
     return salesHistory.filter(sale => {
       if (!sale) return false;
 
       // 1. Search filter: Invoice #, Customer, Cashier, Item Barcode, Product Barcode, Item Name
-      let matchesSearch = true;
-      if (query) {
+      if (hasQuery) {
         const invNo = (sale.invoiceNumber || '').toLowerCase();
         const cust = (sale.customerName || '').toLowerCase();
         const cashier = (sale.cashierName || '').toLowerCase();
 
-        const saleItems = Array.isArray(sale.items)
-          ? sale.items
-          : (typeof sale.items === 'string' ? (JSON.parse(sale.items || '[]') || []) : []);
+        if (invNo.includes(query) || cust.includes(query) || cashier.includes(query)) {
+          // direct hit on header
+        } else {
+          const saleItems = Array.isArray(sale.items)
+            ? sale.items
+            : (typeof sale.items === 'string' ? (JSON.parse(sale.items || '[]') || []) : []);
 
-        const matchesItems = saleItems.some((i: any) => {
-          if (!i) return false;
-          const iName = (i.productName || '').toLowerCase();
-          const iNameAr = (i.productNameAr || '').toLowerCase();
-          const iNameKu = (i.productNameKu || '').toLowerCase();
-          const iBarcode = (i.barcode || '').toLowerCase();
-          const iProdId = i.productId || '';
+          const matchesItems = saleItems.some((i: any) => {
+            if (!i) return false;
+            const iName = (i.productName || '').toLowerCase();
+            const iNameAr = (i.productNameAr || '').toLowerCase();
+            const iNameKu = (i.productNameKu || '').toLowerCase();
+            const iBarcode = (i.barcode || '').toLowerCase();
+            const iProdId = i.productId || '';
 
-          if (iBarcode.includes(query) || iName.includes(query) || iNameAr.includes(query) || iNameKu.includes(query)) {
-            return true;
-          }
-          if (iProdId && matchingProductIds.has(iProdId)) {
-            return true;
-          }
-          const prodObj = products.find(p => p.id === iProdId);
-          if (prodObj && (prodObj.barcode || '').toLowerCase().includes(query)) {
-            return true;
-          }
-          return false;
-        });
+            if (iBarcode.includes(query) || iName.includes(query) || iNameAr.includes(query) || iNameKu.includes(query)) {
+              return true;
+            }
+            if (iProdId && matchingProductIdsForQuery.has(iProdId)) {
+              return true;
+            }
+            const prodObj = productLookupMap.get(iProdId);
+            if (prodObj && (prodObj.barcode || '').toLowerCase().includes(query)) {
+              return true;
+            }
+            return false;
+          });
 
-        matchesSearch = invNo.includes(query) || cust.includes(query) || cashier.includes(query) || matchesItems;
-      }
-
-      // 2. Payment method filter
-      const matchesPayment = paymentFilter === 'all' || sale.paymentMethod === paymentFilter;
-
-      // 3. Cashier filter
-      const matchesCashier = cashierFilter === 'all' || sale.cashierName === cashierFilter;
-
-      // 4. Date filter (From-To Date Range support)
-      let matchesDate = true;
-      const saleDate = parseDate(sale.timestamp);
-      const saleDateStr = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}-${String(saleDate.getDate()).padStart(2, '0')}`;
-
-      if (dateFilterMode === 'today') {
-        matchesDate = isToday(sale.timestamp);
-      } else if (dateFilterMode === 'yesterday') {
-        const yest = new Date();
-        yest.setDate(yest.getDate() - 1);
-        const yestStr = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
-        matchesDate = saleDateStr === yestStr;
-      } else if (dateFilterMode === 'this_month') {
-        matchesDate = isThisMonth(sale.timestamp);
-      } else if (dateFilterMode === 'three_months') {
-        matchesDate = isThreeMonths(sale.timestamp);
-      } else if (dateFilterMode === 'this_year') {
-        matchesDate = isThisYear(sale.timestamp);
-      } else if (dateFilterMode === 'range' || startDate || endDate) {
-        const effectiveStart = (startDate && endDate && startDate > endDate) ? endDate : startDate;
-        const effectiveEnd = (startDate && endDate && startDate > endDate) ? startDate : endDate;
-
-        if (effectiveStart && effectiveEnd) {
-          matchesDate = saleDateStr >= effectiveStart && saleDateStr <= effectiveEnd;
-        } else if (effectiveStart) {
-          matchesDate = saleDateStr >= effectiveStart;
-        } else if (effectiveEnd) {
-          matchesDate = saleDateStr <= effectiveEnd;
+          if (!matchesItems) return false;
         }
       }
 
-      return matchesSearch && matchesPayment && matchesCashier && matchesDate;
+      // 2. Payment method filter
+      if (paymentFilter !== 'all' && sale.paymentMethod !== paymentFilter) {
+        return false;
+      }
+
+      // 3. Cashier filter
+      if (cashierFilter !== 'all' && sale.cashierName !== cashierFilter) {
+        return false;
+      }
+
+      // 4. Date filter (From-To Date Range support)
+      if (dateFilterMode !== 'all' || startDate || endDate) {
+        const saleDate = parseDate(sale.timestamp);
+        const saleDateStr = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}-${String(saleDate.getDate()).padStart(2, '0')}`;
+
+        if (dateFilterMode === 'today') {
+          if (!isToday(sale.timestamp)) return false;
+        } else if (dateFilterMode === 'yesterday') {
+          const yest = new Date();
+          yest.setDate(yest.getDate() - 1);
+          const yestStr = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+          if (saleDateStr !== yestStr) return false;
+        } else if (dateFilterMode === 'this_month') {
+          if (!isThisMonth(sale.timestamp)) return false;
+        } else if (dateFilterMode === 'three_months') {
+          if (!isThreeMonths(sale.timestamp)) return false;
+        } else if (dateFilterMode === 'this_year') {
+          if (!isThisYear(sale.timestamp)) return false;
+        } else if (dateFilterMode === 'range' || startDate || endDate) {
+          const effectiveStart = (startDate && endDate && startDate > endDate) ? endDate : startDate;
+          const effectiveEnd = (startDate && endDate && startDate > endDate) ? startDate : endDate;
+
+          if (effectiveStart && effectiveEnd) {
+            if (saleDateStr < effectiveStart || saleDateStr > effectiveEnd) return false;
+          } else if (effectiveStart) {
+            if (saleDateStr < effectiveStart) return false;
+          } else if (effectiveEnd) {
+            if (saleDateStr > effectiveEnd) return false;
+          }
+        }
+      }
+
+      return true;
     });
-  }, [salesHistory, searchTerm, products, paymentFilter, cashierFilter, dateFilterMode, startDate, endDate]);
+  }, [salesHistory, deferredSearchTerm, productLookupMap, matchingProductIdsForQuery, paymentFilter, cashierFilter, dateFilterMode, startDate, endDate]);
 
   // Extract unique cashier names from sales history
-  const uniqueCashiersFromSales = Array.from(new Set(salesHistory.map(s => s.cashierName).filter(Boolean)));
+  const uniqueCashiersFromSales = useMemo(() => {
+    return Array.from(new Set(salesHistory.map(s => s.cashierName).filter(Boolean)));
+  }, [salesHistory]);
 
-  // Summary Metrics calculations
-  const totalGrossSales = filteredSales.reduce((acc, s) => acc + (s.total || 0), 0);
+  // Single pass calculation for summary metrics to ensure maximum speed
+  const { totalGrossSales, totalRefunds, returnedItemsCount } = useMemo(() => {
+    let gross = 0;
+    let refunds = 0;
+    let retCount = 0;
 
-  const totalRefunds = filteredSales.reduce((acc, s) => {
-    const safeReturned = Array.isArray(s.returnedItems)
-      ? s.returnedItems
-      : (typeof s.returnedItems === 'string' ? (JSON.parse(s.returnedItems || '[]') || []) : []);
-    const itemReturnsTotal = safeReturned.reduce((rAcc: number, r: any) => rAcc + (r.total || 0), 0);
-    const fullRefundTotal = s.status === 'refunded' ? (s.total || 0) : 0;
-    return acc + Math.max(itemReturnsTotal, fullRefundTotal);
-  }, 0);
+    for (let i = 0; i < filteredSales.length; i++) {
+      const s = filteredSales[i];
+      gross += (s.total || 0);
 
-  const returnedItemsCount = filteredSales.reduce((acc, s) => {
-    const safeReturned = Array.isArray(s.returnedItems)
-      ? s.returnedItems
-      : (typeof s.returnedItems === 'string' ? (JSON.parse(s.returnedItems || '[]') || []) : []);
-    const countInSale = safeReturned.reduce((rSum: number, r: any) => rSum + (r.quantity || 1), 0);
+      const safeReturned = Array.isArray(s.returnedItems)
+        ? s.returnedItems
+        : (typeof s.returnedItems === 'string' ? (JSON.parse(s.returnedItems || '[]') || []) : []);
+      
+      let itemReturnsTotal = 0;
+      let countInSale = 0;
+      for (let j = 0; j < safeReturned.length; j++) {
+        const r = safeReturned[j];
+        itemReturnsTotal += (r.total || 0);
+        countInSale += (r.quantity || 1);
+      }
 
-    if (s.status === 'refunded' && countInSale === 0) {
-      const safeItems = Array.isArray(s.items)
-        ? s.items
-        : (typeof s.items === 'string' ? (JSON.parse(s.items || '[]') || []) : []);
-      return acc + safeItems.reduce((iSum: number, i: any) => iSum + (i.quantity || 1), 0);
+      const fullRefundTotal = s.status === 'refunded' ? (s.total || 0) : 0;
+      refunds += Math.max(itemReturnsTotal, fullRefundTotal);
+
+      if (s.status === 'refunded' && countInSale === 0) {
+        const safeItems = Array.isArray(s.items)
+          ? s.items
+          : (typeof s.items === 'string' ? (JSON.parse(s.items || '[]') || []) : []);
+        let iCount = 0;
+        for (let k = 0; k < safeItems.length; k++) {
+          iCount += (safeItems[k]?.quantity || 1);
+        }
+        retCount += iCount;
+      } else {
+        retCount += countInSale;
+      }
     }
-    return acc + countInSale;
-  }, 0);
+
+    return { totalGrossSales: gross, totalRefunds: refunds, returnedItemsCount: retCount };
+  }, [filteredSales]);
+
+  // Paginated chunk for high speed rendering
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
+  const paginatedSales = useMemo(() => {
+    if (pageSize >= 999999) return filteredSales;
+    const startIdx = (currentPage - 1) * pageSize;
+    return filteredSales.slice(startIdx, startIdx + pageSize);
+  }, [filteredSales, currentPage, pageSize]);
 
   const netSales = Math.max(0, totalGrossSales - totalRefunds);
 
@@ -511,7 +567,7 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
                 </td>
               </tr>
             ) : (
-              filteredSales.map((sale) => {
+              paginatedSales.map((sale) => {
                 const isReturned = sale.status === 'refunded' || (sale.returnedItems && sale.returnedItems.length > 0);
                 const isFullyRefunded = sale.status === 'refunded';
                 const saleItems = Array.isArray(sale.items) ? sale.items : (typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : []);
@@ -636,6 +692,87 @@ export const InvoicesTab: React.FC<InvoicesTabProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* PAGINATION CONTROL BAR (ULTRA FAST BROWSING) */}
+      {filteredSales.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border border-slate-800 bg-[#0B132B] text-xs">
+          {/* Summary / Range */}
+          <div className="text-slate-400 font-medium">
+            <span>{isAr ? 'عرض' : isKu ? 'پیشاندانی' : 'Showing'} </span>
+            <span className="font-mono font-bold text-cyan-300">
+              {Math.min(filteredSales.length, (currentPage - 1) * pageSize + 1)}
+            </span>
+            <span> - </span>
+            <span className="font-mono font-bold text-cyan-300">
+              {Math.min(filteredSales.length, currentPage * pageSize)}
+            </span>
+            <span> {isAr ? 'من أصل' : isKu ? 'لە کۆی' : 'of'} </span>
+            <span className="font-mono font-bold text-emerald-400">{filteredSales.length}</span>
+            <span> {isAr ? 'فاتورة' : isKu ? 'پسوڵە' : 'invoices'}</span>
+          </div>
+
+          {/* Page Size Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 text-[11px]">{isAr ? 'لكل صفحة:' : isKu ? 'لە هەر پەڕەیەک:' : 'Per page:'}</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="bg-[#080D1A] text-cyan-300 font-mono font-bold border border-slate-700 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-cyan-400"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={999999}>{isAr ? 'عرض الكل' : isKu ? 'هەمووی' : 'All'}</option>
+            </select>
+          </div>
+
+          {/* Pagination Navigation Buttons */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+                className="px-2 py-1 rounded-lg bg-[#080D1A] border border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold transition-all cursor-pointer"
+                title={isAr ? 'الصفحة الأولى' : 'First page'}
+              >
+                ««
+              </button>
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                className="px-2.5 py-1 rounded-lg bg-[#080D1A] border border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold transition-all cursor-pointer"
+              >
+                {isAr ? 'السابق' : isKu ? 'پێشوو' : 'Prev'}
+              </button>
+
+              <span className="px-3 py-1 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-mono font-bold text-xs">
+                {currentPage} / {totalPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                className="px-2.5 py-1 rounded-lg bg-[#080D1A] border border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold transition-all cursor-pointer"
+              >
+                {isAr ? 'التالي' : isKu ? 'دواتر' : 'Next'}
+              </button>
+              <button
+                type="button"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                className="px-2 py-1 rounded-lg bg-[#080D1A] border border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold transition-all cursor-pointer"
+                title={isAr ? 'الصفحة الأخيرة' : 'Last page'}
+              >
+                »»
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );
