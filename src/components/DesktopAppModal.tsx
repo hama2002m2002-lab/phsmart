@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { X, Monitor, Download, Wifi, WifiOff, CheckCircle2, ShieldCheck, Cpu, HardDrive, Smartphone, Sparkles, Layers, Share2, Copy, Check, Cloud, Database, UploadCloud, RotateCcw } from 'lucide-react';
 import { StoreSettings } from '../types';
 import { uploadBackupToGoogleDrive } from '../lib/googleDrive';
-import { testFirestoreConnection } from '../lib/firebase';
 
 interface DesktopAppModalProps {
   isOpen: boolean;
@@ -23,7 +22,7 @@ export const DesktopAppModal: React.FC<DesktopAppModalProps> = ({
 
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-  const [firebaseStatus, setFirebaseStatus] = useState<string>('Testing...');
+  const [firebaseStatus, setFirebaseStatus] = useState<string>('Local Isolated Storage 📦');
   const [driveSyncStatus, setDriveSyncStatus] = useState<string>('');
   const [driveToken, setDriveToken] = useState<string>('');
 
@@ -33,10 +32,6 @@ export const DesktopAppModal: React.FC<DesktopAppModalProps> = ({
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
-    testFirestoreConnection().then((connected) => {
-      setFirebaseStatus(connected ? 'Online Connected ⚡' : 'Offline Ready 📦');
-    });
 
     return () => {
       window.removeEventListener('online', handleOnline);

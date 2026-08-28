@@ -52,8 +52,12 @@ import {
 
 import { Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, StoreSettings, UserAccount, PurchaseInvoice } from './types';
 import { 
-  subscribeToCollection, 
-  subscribeToDocument, 
+  getDeviceLocalPreferences,
+  saveDeviceLocalPreferences,
+  mergeWithDevicePreferences,
+  getSharedStoreSettingsForCloud
+} from './lib/devicePreferences';
+import { 
   syncWriteDocument, 
   syncDeleteDocument, 
   syncBulkWriteCollection 
@@ -186,12 +190,31 @@ export function App() {
   const [orders, setOrders] = usePersistentState<MarketOrder[]>('supermarket_orders_v1', initialOrders);
   const [notifications, setNotifications] = usePersistentState<MarketNotification[]>('supermarket_notifications_v1', initialNotifications);
   const [purchaseInvoices, setPurchaseInvoices] = usePersistentState<PurchaseInvoice[]>('supermarket_purchases_v1', initialPurchaseInvoices);
-  const [settings, setSettingsState] = usePersistentState<StoreSettings>('supermarket_settings_v3', defaultSettings);
+  const [settings, setSettingsState] = usePersistentState<StoreSettings>('supermarket_settings_v3', () => {
+    const localPrefs = getDeviceLocalPreferences();
+    return mergeWithDevicePreferences(defaultSettings, localPrefs);
+  });
 
   const setSettings: React.Dispatch<React.SetStateAction<StoreSettings>> = (action) => {
     setSettingsState((prev) => {
       const nextSettings = typeof action === 'function' ? action(prev) : action;
-      syncWriteDocument('settings', 'store', nextSettings);
+      
+      // Save device-specific preferences locally on THIS laptop/device only
+      saveDeviceLocalPreferences({
+        themeMode: nextSettings.themeMode,
+        language: nextSettings.language,
+        printerType: nextSettings.printerType,
+        connectedPrinterName: nextSettings.connectedPrinterName,
+        printerIpAddress: nextSettings.printerIpAddress,
+        paperSize: nextSettings.paperSize,
+        autoPrintReceipt: nextSettings.autoPrintReceipt,
+        posShortcuts: nextSettings.posShortcuts,
+      });
+
+      // Write ONLY shared store parameters to cloud database so other laptops' theme/language remain untouched
+      const sharedStoreData = getSharedStoreSettingsForCloud(nextSettings);
+      syncWriteDocument('settings', 'store', sharedStoreData);
+
       return nextSettings;
     });
   };
@@ -273,62 +296,9 @@ export function App() {
 
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(true);
 
-  // Real-Time Multi-Device Synchronization via Firestore Listeners
+  // Local standalone initialization
   useEffect(() => {
-    const unsubProducts = subscribeToCollection<Product>('products', (cloudProducts) => {
-      setProducts(cloudProducts);
-      setIsFirebaseSynced(true);
-    }, initialProducts);
-
-    const unsubSales = subscribeToCollection<SaleTransaction>('sales', (cloudSales) => {
-      setSalesHistory(cloudSales);
-    }, initialSalesHistory);
-
-    const unsubSuppliers = subscribeToCollection<Supplier>('suppliers', (cloudSuppliers) => {
-      setSuppliers(cloudSuppliers);
-    }, initialSuppliers);
-
-    const unsubCustomers = subscribeToCollection<Customer>('customers', (cloudCustomers) => {
-      setCustomers(cloudCustomers);
-    }, initialCustomers);
-
-    const unsubOrders = subscribeToCollection<MarketOrder>('orders', (cloudOrders) => {
-      setOrders(cloudOrders);
-    }, initialOrders);
-
-    const unsubNotifications = subscribeToCollection<MarketNotification>('notifications', (cloudNotifs) => {
-      setNotifications(cloudNotifs);
-    }, initialNotifications);
-
-    const unsubPurchases = subscribeToCollection<PurchaseInvoice>('purchases', (cloudPurchases) => {
-      setPurchaseInvoices(cloudPurchases);
-    }, initialPurchaseInvoices);
-
-    const unsubUsers = subscribeToCollection<UserAccount>('users', (cloudUsers) => {
-      setUserAccounts(cloudUsers);
-    }, initialUserAccounts);
-
-    const unsubSettings = subscribeToDocument<StoreSettings>('settings', 'store', (cloudSettings) => {
-      if (cloudSettings && typeof cloudSettings === 'object' && Object.keys(cloudSettings).length > 0) {
-        setSettingsState((prev) => ({
-          ...defaultSettings,
-          ...prev,
-          ...cloudSettings
-        }));
-      }
-    }, defaultSettings);
-
-    return () => {
-      unsubProducts();
-      unsubSales();
-      unsubSuppliers();
-      unsubCustomers();
-      unsubOrders();
-      unsubNotifications();
-      unsubPurchases();
-      unsubUsers();
-      unsubSettings();
-    };
+    setIsFirebaseSynced(true);
   }, []);
 
   // Helper to check if current user has permission for activeTab

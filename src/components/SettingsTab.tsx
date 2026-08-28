@@ -155,10 +155,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         
         {/* Language & Regional Settings */}
         <div className="space-y-4">
-          <h3 className="text-sm font-bold text-cyan-400 border-b border-slate-800 pb-2 flex items-center gap-2">
-            <Globe className="w-4 h-4 text-cyan-400" />
-            <span>{getTranslation(settings.language, 'languageSelectLabel')}</span>
-          </h3>
+          <div className="border-b border-slate-800 pb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-cyan-400 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-cyan-400" />
+              <span>{getTranslation(settings.language, 'languageSelectLabel')}</span>
+            </h3>
+            <span className="text-[10px] text-cyan-300/80 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">
+              {isKu ? '🔒 تایبەت بەم ئامێرە' : isAr ? '🔒 مستقل وخاص بهذا الجهاز فقط' : '🔒 Device-specific setting'}
+            </span>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
@@ -213,10 +218,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {/* System Theme & Night Mode Settings */}
         <div className="space-y-4 pt-4 border-t border-slate-800">
-          <h3 className="text-sm font-bold text-cyan-400 border-b border-slate-800 pb-2 flex items-center gap-2">
-            <Moon className="w-4 h-4 text-cyan-400" />
-            <span>{getTranslation(settings.language, 'themeModeLabel')}</span>
-          </h3>
+          <div className="border-b border-slate-800 pb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-cyan-400 flex items-center gap-2">
+              <Moon className="w-4 h-4 text-cyan-400" />
+              <span>{getTranslation(settings.language, 'themeModeLabel')}</span>
+            </h3>
+            <span className="text-[10px] text-cyan-300/80 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">
+              {isKu ? '🔒 تایبەت بەم ئامێرە' : isAr ? '🔒 مستقل وخاص بهذا الجهاز فقط' : '🔒 Device-specific setting'}
+            </span>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
@@ -480,14 +490,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs sm:text-sm">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{isKu ? 'پاشەکەوتکردنی خۆکار چالاککراوە (localStorage & Firestore)' : isAr ? 'ميزة الحفظ والتخزين التلقائي مفعّلة بنجاح' : 'Auto-Save Persistence Active'}</span>
+                  <span>{isKu ? 'داتاکان تەواو جیاکراوەن و تایبەتن بەم ئامێرە (تەواو سەربەخۆیە)' : isAr ? 'البيانات معزولة وخاصة بهذا الجهاز فقط (غير مرتبطة بأي لابتوب آخر)' : 'Private Local Database (Isolated per Device)'}</span>
                 </div>
                 <p className="text-slate-300 text-[11px] leading-relaxed max-w-2xl">
                   {isKu
-                    ? 'هەموو زانیارییەکان (کاڵاکان، نرخەکان، کڕینەکان، دابینکەران، فرۆشتنەکان، مەندوب، قەرزارەکان، و ڕاپۆرتەکان) پارێزراون و دەتوانی لە یەک پەڕگەدا هەناردە و هاوردەیان بکەیت.'
+                    ? 'هەموو زانیارییەکان (کاڵاکان، نرخەکان، کڕینەکان، دابینکەران، فرۆشتنەکان، مەندوب، قەرزارەکان، و ڕاپۆرتەکان) لەناو کۆگای ئەم لابتۆپە پاشەکەوت دەبن بە شێوەیەکی سەربەخۆ، و ئامێرەکانی تر ناتوانن بیبینن.'
                     : isAr
-                    ? 'جميع بيانات المنظومة (المواد، الأسعار، المبيعات، المشتريات، الموردين والشركات، المندوبين، العملاء، المصاريف، التقارير وحركات الصندوق) تُحفظ تلقائياً ومجهزة للتصدير والاستيراد الشامل بنقرة واحدة.'
-                    : 'All system data (products, sales, purchases, suppliers, delegates, customers, expenses, and financial reports) are persisted and exportable.'}
+                    ? 'كافة بيانات المنظومة (المواد، الأسعار، المبيعات، الفواتير، الموردين، العملاء، المصاريف، التقارير واللغات والوضع الليلي) تُخزن وتُعالج محلياً على هذا الجهاز بشكل منعزل ومستقل تماماً، ولا يمكن لأي جهاز أو لابتوب آخر رؤيتها أو التأثير عليها.'
+                    : 'All system data (products, prices, sales, purchases, suppliers, customers, expenses, settings, and theme) are processed and stored locally on this machine with total offline isolation.'}
                 </p>
               </div>
 
