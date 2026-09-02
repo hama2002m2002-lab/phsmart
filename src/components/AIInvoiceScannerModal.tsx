@@ -31,10 +31,16 @@ import {
   Copy, 
   Clock, 
   RefreshCw, 
-  Barcode 
+  Barcode,
+  BarChart3,
+  ShoppingCart,
+  Truck,
+  Languages,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Product, Supplier, PurchaseInvoice, StoreSettings, ProductBatch } from '../types';
 import { generateUniqueBarcode200245 } from '../lib/barcodeUtils';
+import { toPharmaceuticalEnglish, isArabicOrKurdishText } from '../lib/pharmaTranslator';
 
 export interface ScannedInvoiceData {
   supplier: {
@@ -57,7 +63,9 @@ export interface ScannedInvoiceData {
     currency?: string;
   };
   items: Array<{
-    name: string;
+    rawInvoiceName?: string; // نص الوصل الحرفي كما هو
+    name: string; // الاسم المعتمد للإضافة (إنجليزي أو نص الوصل حسب الخيار)
+    englishName?: string; // الاسم الإنجليزي الصيدلاني القياسي
     nameAr?: string;
     nameKu?: string;
     category?: string;
@@ -90,6 +98,7 @@ interface AIInvoiceScannerModalProps {
   onConfirmImport: (data: {
     newProducts: Product[];
     updatedProducts: Product[];
+    targetSupplier?: Supplier;
     newSupplier?: Supplier;
     newPurchaseInvoice?: PurchaseInvoice;
   }) => void;
@@ -126,6 +135,7 @@ interface AIInvoiceScannerModalProps {
     invoiceDate?: string;
     discountAmount?: number;
   }) => void;
+  onNavigateToTab?: (tab: string) => void;
 }
 
 export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
@@ -135,7 +145,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   existingProducts,
   existingSuppliers,
   onConfirmImport,
-  onTransferToDraft
+  onTransferToDraft,
+  onNavigateToTab
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -149,8 +160,14 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedData, setScannedData] = useState<ScannedInvoiceData | null>(null);
 
+  // Naming Language Mode: 'english' (Default: English Pharmaceutical Name) vs 'raw_invoice' (Exact verbatim text as on receipt)
+  const [namingPreference, setNamingPreference] = useState<'english' | 'raw_invoice'>('english');
+
   // Profit markup multiplier state (default 25%)
   const [defaultProfitMargin, setDefaultProfitMargin] = useState<number>(25);
+
+  // Cost calculation method: Weighted Average vs Direct New Price
+  const [costUpdateMethod, setCostUpdateMethod] = useState<'weighted_average' | 'direct_new_price'>('weighted_average');
 
   // Active filter tab for manager review: 'all' | 'existing' | 'new' | 'price_changed'
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'existing' | 'new' | 'price_changed'>('all');
@@ -283,8 +300,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     }
   };
 
-  // Compress and resize image helper
-  const compressImage = (dataUrl: string, maxWidth = 1400, quality = 0.82): Promise<string> => {
+  // Compress and resize image helper for high-precision multi-item AI OCR
+  const compressImage = (dataUrl: string, maxWidth = 2048, quality = 0.85): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -344,7 +361,9 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       },
       items: [
         {
+          rawInvoiceName: "Avo Pregna Care Tab. *30Tab (افو بريجنا كير)",
           name: "Avo Pregna Care Tab. *30Tab",
+          englishName: "Avo Pregna Care Tab. *30Tab",
           nameAr: "افو بريجنا كير حبوب 30 قرص",
           nameKu: "ئاڤۆ پرێگنا کێر حەب",
           category: "أدوية وفيتامينات",
@@ -365,7 +384,9 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
+          rawInvoiceName: "Colic Sleep Oral Drops *30ML (كوليك سليب)",
           name: "Colic Sleep Oral Drops *30ML",
+          englishName: "Colic Sleep Oral Drops *30ML",
           nameAr: "كوليك سليب نقط بالفم 30 مل",
           nameKu: "کۆلیک سلیپ قەترەی دەم",
           category: "أدوية أطفال",
@@ -386,7 +407,9 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
+          rawInvoiceName: "Coxib Celecoxib 200mg *30Cap (كوكسيب 200)",
           name: "Coxib Celecoxib 200mg *30Cap",
+          englishName: "Coxib Celecoxib 200mg *30Cap",
           nameAr: "كوكسيب سيليكوكسيب 200 ملغ 30 كبسولة",
           nameKu: "کۆکسیب سیليكۆکسیب ٢٠٠مگ",
           category: "مسكنات ومضادات التهاب",
@@ -407,7 +430,9 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
+          rawInvoiceName: "Neurotop Carbamazepine 200mg *50Tab (نيوروتوب)",
           name: "Neurotop Carbamazepine 200mg *50Tab",
+          englishName: "Neurotop Carbamazepine 200mg *50Tab",
           nameAr: "نيوروتوب كاربامازيبين 200 ملغ 50 قرص",
           nameKu: "نیۆرۆتۆپ کاربامازیپین",
           category: "أدوية أعصاب",
@@ -428,7 +453,9 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
+          rawInvoiceName: "Arjuna 200mg 30*cap (أرجونا 200 كبسول)",
           name: "Arjuna 200mg 30*cap",
+          englishName: "Arjuna 200mg 30*cap",
           nameAr: "أرجونا 200 ملغ 30 كبسولة",
           nameKu: "ئارجونا ٢٠٠مگ",
           category: "مكملات وأعشاب",
@@ -449,7 +476,9 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
+          rawInvoiceName: "Otosan Throat Gel Forte *14Stick (اوتوسان جل)",
           name: "Otosan Throat Gel Forte *14Stick",
+          englishName: "Otosan Throat Gel Forte *14Stick",
           nameAr: "اوتوسان جل الحلق فورت 14 ظرف",
           nameKu: "ئۆتۆسان جیلی قورگ فۆرتێ",
           category: "أدوية حلق وجهاز تنفسي",
@@ -474,18 +503,36 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
     try {
       if (base64Image === 'demo_collagen_invoice') {
-        setScannedData(fallbackData);
-        setSelectedItemIndices(new Set(fallbackData.items.map((_, i) => i)));
+        const demoProcessed = {
+          ...fallbackData,
+          items: fallbackData.items.map(item => {
+            const raw = item.rawInvoiceName || item.name;
+            const english = item.englishName || toPharmaceuticalEnglish(item.name || raw, item.nameAr, item.dosageForm);
+            return {
+              ...item,
+              rawInvoiceName: raw,
+              englishName: english,
+              name: namingPreference === 'english' ? english : raw
+            };
+          })
+        };
+        setScannedData(demoProcessed);
+        setSelectedItemIndices(new Set(demoProcessed.items.map((_, i) => i)));
         setIsScanning(false);
         return;
       }
 
       const optimizedImage = await compressImage(base64Image);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const response = await fetch('/api/gemini/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: optimizedImage, mimeType: 'image/jpeg' })
+        body: JSON.stringify({ imageBase64: optimizedImage, mimeType: 'image/jpeg' }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       let result: ScannedInvoiceData;
       if (!response.ok) {
@@ -495,12 +542,32 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
         result = await response.json();
       }
       
-      // Auto adjust suggested prices based on default margin if needed
-      if (result.items) {
-        result.items.forEach(item => {
-          if (!item.suggestedRetailPrice || item.suggestedRetailPrice <= item.unitPurchasePrice) {
-            item.suggestedRetailPrice = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
+      // Auto normalize items: establish rawInvoiceName, englishName, and active name based on namingPreference
+      if (result.items && Array.isArray(result.items)) {
+        result.items = result.items.map(item => {
+          const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
+          let engName = item.englishName;
+          
+          if (!engName || isArabicOrKurdishText(engName)) {
+            engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
           }
+
+          // Active name to use across POS & Inventory
+          const activeName = namingPreference === 'english' ? engName : rawName;
+
+          let retail = item.suggestedRetailPrice;
+          if (!retail || retail <= item.unitPurchasePrice) {
+            retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
+          }
+
+          return {
+            ...item,
+            rawInvoiceName: rawName,
+            englishName: engName,
+            name: activeName,
+            nameAr: item.nameAr || rawName,
+            suggestedRetailPrice: retail
+          };
         });
       }
 
@@ -518,6 +585,48 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   // Load Preset / Demo Collagen Drug Store Invoice
   const handleLoadDemoInvoice = () => {
     processInvoiceImage('demo_collagen_invoice');
+  };
+
+  // Global Toggle for Product Names: English Medical vs Exact Invoice Text
+  const handleToggleGlobalNamingPreference = (mode: 'english' | 'raw_invoice') => {
+    setNamingPreference(mode);
+    if (!scannedData?.items) return;
+
+    const updatedItems = scannedData.items.map(item => {
+      const raw = item.rawInvoiceName || item.name;
+      const eng = item.englishName || toPharmaceuticalEnglish(item.name || raw, item.nameAr, item.dosageForm);
+      const chosenName = mode === 'english' ? eng : raw;
+      return {
+        ...item,
+        name: chosenName
+      };
+    });
+
+    setScannedData({
+      ...scannedData,
+      items: updatedItems
+    });
+  };
+
+  // Row-level Quick Toggle between English Name and Raw Invoice Name
+  const handleToggleItemNamingMode = (index: number) => {
+    if (!scannedData?.items?.[index]) return;
+    const item = scannedData.items[index];
+    const raw = item.rawInvoiceName || item.name;
+    const eng = item.englishName || toPharmaceuticalEnglish(item.name || raw, item.nameAr, item.dosageForm);
+    
+    // Toggle active name
+    const newName = (item.name === eng) ? raw : eng;
+    updateItemField(index, 'name', newName);
+  };
+
+  // Convert single item explicitly to Pharmaceutical English
+  const handleTranslateSingleItemToEnglish = (index: number) => {
+    if (!scannedData?.items?.[index]) return;
+    const item = scannedData.items[index];
+    const eng = toPharmaceuticalEnglish(item.name || item.rawInvoiceName || '', item.nameAr, item.dosageForm);
+    updateItemField(index, 'englishName', eng);
+    updateItemField(index, 'name', eng);
   };
 
   // Item field change
@@ -563,8 +672,12 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
   const handleAddNewItemRow = () => {
     if (!scannedData) return;
+    const defaultRaw = 'مادة جديدة / New Item';
+    const defaultEng = 'New Item (Tablet)';
     const newItem: ScannedInvoiceItem = {
-      name: 'مادة جديدة / New Item',
+      rawInvoiceName: defaultRaw,
+      name: namingPreference === 'english' ? defaultEng : defaultRaw,
+      englishName: defaultEng,
       nameAr: 'مادة جديدة',
       nameKu: 'کاڵای نوێ',
       category: 'أدوية ومستلزمات',
@@ -616,17 +729,26 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     if (!scannedData?.items) return [];
 
     return scannedData.items.map((item, index) => {
-      // 1. Search existing product in inventory by exact or normalized name / barcode
+      // 1. Search existing product in inventory by exact or normalized name / barcode / English name / raw invoice name
       const cleanName = item.name.trim().toLowerCase();
+      const cleanEnglishName = (item.englishName || '').trim().toLowerCase();
+      const cleanRawName = (item.rawInvoiceName || '').trim().toLowerCase();
       const cleanNameAr = (item.nameAr || '').trim().toLowerCase();
       const cleanBarcode = (item.barcode || '').trim();
 
       const matchedProd = existingProducts.find(p => {
         if (cleanBarcode && p.barcode === cleanBarcode) return true;
-        if (p.name && p.name.trim().toLowerCase() === cleanName) return true;
-        if (item.nameAr && p.nameAr && p.nameAr.trim().toLowerCase() === cleanNameAr) return true;
-        if (cleanName.length > 4 && p.name.toLowerCase().includes(cleanName)) return true;
-        if (cleanNameAr.length > 4 && p.nameAr && p.nameAr.toLowerCase().includes(cleanNameAr)) return true;
+        const pName = (p.name || '').trim().toLowerCase();
+        const pNameAr = (p.nameAr || '').trim().toLowerCase();
+        const pNameKu = (p.nameKu || '').trim().toLowerCase();
+
+        if (pName && (pName === cleanName || pName === cleanEnglishName || pName === cleanRawName)) return true;
+        if (cleanNameAr && pNameAr && pNameAr === cleanNameAr) return true;
+        if (cleanName.length > 4 && pName.includes(cleanName)) return true;
+        if (cleanEnglishName.length > 4 && pName.includes(cleanEnglishName)) return true;
+        if (cleanRawName.length > 4 && pName.includes(cleanRawName)) return true;
+        if (cleanNameAr.length > 4 && pNameAr && pNameAr.includes(cleanNameAr)) return true;
+        if (cleanName.length > 4 && pNameKu && pNameKu.includes(cleanName)) return true;
         return false;
       });
 
@@ -649,8 +771,15 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       const isPriceIncreased = isExisting && priceDifference > 0;
       const isPriceDecreased = isExisting && priceDifference < 0;
 
+      // Weighted Average Cost calculation vs Direct New Price
+      const weightedAverageCost = (isExisting && oldStock > 0 && oldPurchasePrice > 0)
+        ? Math.round(((oldStock * oldPurchasePrice) + (totalUnitsBought * newUnitCost)) / (oldStock + totalUnitsBought))
+        : newUnitCost;
+
+      const finalPieceCost = costUpdateMethod === 'weighted_average' ? weightedAverageCost : newUnitCost;
+
       const retailPrice = Number(item.suggestedRetailPrice) || Math.round(newUnitCost * (1 + defaultProfitMargin / 100));
-      const profitPerPiece = retailPrice - newUnitCost;
+      const profitPerPiece = retailPrice - finalPieceCost;
       const expectedTotalProfit = profitPerPiece * totalUnitsBought;
 
       return {
@@ -663,6 +792,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
         expectedNewStock,
         oldPurchasePrice,
         newUnitCost,
+        weightedAverageCost,
+        finalPieceCost,
         priceDifference,
         priceDifferencePercent,
         isPriceIncreased,
@@ -678,7 +809,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
         discountPercent: Number(item.discountPercent) || 0
       };
     });
-  }, [scannedData, existingProducts, defaultProfitMargin]);
+  }, [scannedData, existingProducts, defaultProfitMargin, costUpdateMethod]);
 
   // Filtered items for display
   const filteredEnhancedItems = useMemo(() => {
@@ -750,7 +881,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
         return {
           productId: i.matchedProduct?.id || `prod-ocr-${Date.now()}-${i.originalIndex}`,
-          productName: item.nameAr || item.name,
+          productName: item.name,
           barcode: effectiveBarcode,
           purchaseUnitMode: (upc > 1 ? 'carton' : 'piece') as 'carton' | 'piece',
           cartonsCount: upc > 1 ? qty : 0,
@@ -900,17 +1031,23 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
         const effectiveItemBarcode = (item.barcode && item.barcode.trim()) ? item.barcode.trim() : existing.barcode;
 
+        const finalCalculatedCost = costUpdateMethod === 'weighted_average' ? info.weightedAverageCost : unitCost;
+
         const updated: Product = {
           ...existing,
           barcode: effectiveItemBarcode,
           stock: newTotalStock,
           totalUnits: newTotalStock,
           cartonsCount: Math.floor(newTotalStock / unitsPerPack),
-          costPerUnit: unitCost,
-          cost: unitCost,
+          costPerUnit: finalCalculatedCost,
+          cost: finalCalculatedCost,
           lastPurchasePrice: unitCost,
+          cartonPurchasePrice: finalCalculatedCost * unitsPerPack,
           singleRetailPrice: retailPrice,
           price: retailPrice,
+          cartonSellingPrice: retailPrice * unitsPerPack,
+          singleProfit: retailPrice - finalCalculatedCost,
+          cartonProfit: (retailPrice * unitsPerPack) - (finalCalculatedCost * unitsPerPack),
           batchNumber: batch,
           expiryDate: effectiveExpiry,
           batches: updatedBatches,
@@ -930,6 +1067,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           purchasedQuantity: totalUnits,
           oldPurchasePrice: info.oldPurchasePrice,
           newPurchasePrice: unitCost,
+          finalCalculatedCost: finalCalculatedCost,
+          costUpdateMethod: costUpdateMethod,
           oldRetailPrice: existing.singleRetailPrice || existing.price,
           newRetailPrice: retailPrice,
           unitsPerCarton: unitsPerPack,
@@ -1048,6 +1187,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     onConfirmImport({
       newProducts: newProductsList,
       updatedProducts: updatedProductsList,
+      targetSupplier: targetSupplier || newSupplierObj,
       newSupplier: newSupplierObj,
       newPurchaseInvoice: newPurchaseInvoiceObj
     });
@@ -1215,13 +1355,6 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
             <h4 className="text-base font-black text-white">
               {t('جاري استخراج وقراءة المواد والأسعار والخصومات والتواريخ...', 'زیرەکی دەستکرد خەریکی شیکردنەوە و خوێندنەوەی پسوولەکەیە...', 'Gemini Vision AI is extracting items, discounts, expiries & costs...')}
             </h4>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              {t(
-                'مطابقة المواد مع المخزن، حساب فارق الأسعار القديمة والجديدة، تسجيل الدفعات الجديدة، وحساب الأرباح المتوقعة للمدير',
-                'بەراوردکردنی کاڵاکان لەگەڵ کۆگا، حیسابکردنی جیاوازی نرخی کۆن و نوێ، و تۆمارکردنی بەسەرچوونی نوێ',
-                'Matching items against warehouse inventory, computing price differences & projecting profit margins'
-              )}
-            </p>
           </div>
         )}
 
@@ -1361,6 +1494,37 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
                   </div>
                 </div>
 
+                {/* Cost Calculation Method Selector */}
+                <div className="space-y-1 col-span-2 sm:col-span-1 border-t sm:border-t-0 sm:border-r border-slate-800/80 pt-1.5 sm:pt-0 sm:pr-2">
+                  <span className="text-[10px] text-slate-400 font-bold block">{t('احتساب تكلفة المخزن للموجود:', 'حیسابکردنی تێچووی کۆگا:', 'Cost Method for Stock:')}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setCostUpdateMethod('weighted_average')}
+                      className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                        costUpdateMethod === 'weighted_average'
+                          ? 'bg-cyan-500 text-slate-950 font-black'
+                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                      title={t('المتوسط المرجح: ((الكمية القديمة × السعر القديم) + (الكمية الجديدة × السعر الجديد)) ÷ الإجمالي', 'تێکڕای بەپێی بڕ', 'Weighted average cost')}
+                    >
+                      ⚖️ {t('المتوسط المرجح', 'تێکڕا', 'Weighted')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCostUpdateMethod('direct_new_price')}
+                      className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                        costUpdateMethod === 'direct_new_price'
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                      title={t('اعتماد سعر الشراء الجديد المباشر ككلفة للقطعة بالمخزن', 'نرخی نوێی کڕین', 'Direct new purchase price')}
+                    >
+                      ⚡ {t('السعر الجديد', 'نرخی نوێ', 'New Price')}
+                    </button>
+                  </div>
+                </div>
+
               </div>
             )}
 
@@ -1368,19 +1532,53 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
             <div className="rounded-2xl border border-slate-800 bg-[#0B1528] overflow-hidden space-y-0">
               
               {/* Basket Toolbar */}
-              <div className="p-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-[#081020]">
+              <div className="p-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-[#081020]">
                 
-                <div className="flex items-center gap-2">
-                  <Boxes className="w-4 h-4 text-emerald-400" />
-                  <h4 className="text-xs font-black text-white">
-                    {t('سلة تدقيق وتأكيد المشتريات للمدير', 'سەبەتەی پێداچوونەوە و پەسەندکردنی بەڕێوەبەر', 'Manager Purchases Verification & Audit Basket')}
-                  </h4>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10.5px] font-mono font-bold">
-                    {selectedItemIndices.size} / {enhancedItems.length}
-                  </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <Boxes className="w-4 h-4 text-emerald-400" />
+                    <h4 className="text-xs font-black text-white">
+                      {t('سلة تدقيق وتأكيد المشتريات للمدير', 'سەبەتەی پێداچوونەوە و پەسەندکردنی بەڕێوەبەر', 'Manager Purchases Verification & Audit Basket')}
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10.5px] font-mono font-bold">
+                      {selectedItemIndices.size} / {enhancedItems.length}
+                    </span>
+                  </div>
+
+                  {/* Naming Language Preference (English Pharmacy Default vs Exact Invoice Text) */}
+                  <div className="flex items-center gap-1 bg-[#050B17] p-0.5 rounded-xl border border-slate-800 text-[10.5px]">
+                    <span className="text-[10px] text-slate-400 px-1.5 font-bold flex items-center gap-1">
+                      <Languages className="w-3 h-3 text-cyan-400" />
+                      <span>{t('تسمية المواد:', 'ناوی کاڵاکان:', 'Naming:')}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleGlobalNamingPreference('english')}
+                      className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        namingPreference === 'english'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title={t('تحويل وتثبيت أسماء جميع المواد إلى الإنجليزية الصيدلانية القياسية (مثل Panadol, Amoxicillin)', 'هەموو کاڵاکان بە ئینگلیزی دەرمانسازی بنووسرێن', 'Standardized Pharmaceutical English')}
+                    >
+                      <span>🇬🇧 {t('إنجليزية صيدلانية (افتراضي)', 'ئینگلیزی پزیشکی (بنەڕەت)', 'English Pharmacy (Default)')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleGlobalNamingPreference('raw_invoice')}
+                      className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        namingPreference === 'raw_invoice'
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title={t('الاحتفاظ بنص الوصل الحرفي كما هو دون ترجمة', 'هەمان دەقی پسوولە وەک خۆی', 'Exact Invoice Text')}
+                    >
+                      <span>📄 {t('نص الوصل كما هو', 'دەقی پسوولە وەک خۆی', 'Exact Invoice Text')}</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={handleAddNewItemRow}
@@ -1450,7 +1648,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
                           className="rounded text-emerald-500 focus:ring-0 cursor-pointer"
                         />
                       </th>
-                      <th className="p-2.5 text-start">{t('اسم المادة وحالتها بالمخزن', 'ناوی کاڵا و باڵانس لە کۆگا', 'Product & Warehouse Match')}</th>
+                      <th className="p-2.5 text-start min-w-[240px]">{t('اسم المادة (الاسم المعتمد / نص الوصل)', 'ناوی دەرمان (ئینگلیزی / پسوولە)', 'Product Name & Language')}</th>
                       <th className="p-2.5 text-center">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
                       <th className="p-2.5 text-center">{t('الكمية والعبوة', 'بڕ و دانە', 'Qty / Pack')}</th>
                       <th className="p-2.5 text-center">{t('مقارنة الشراء (قديم ⬅️ جديد)', 'بەراوردی کڕین (کۆن ⬅️ نوێ)', 'Cost (Old vs New)')}</th>
@@ -1466,6 +1664,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
                       const idx = info.originalIndex;
                       const item = info.rawItem;
                       const isSelected = selectedItemIndices.has(idx);
+                      const isCurrentEnglish = item.name === (item.englishName || toPharmaceuticalEnglish(item.name || item.rawInvoiceName || '', item.nameAr, item.dosageForm));
 
                       return (
                         <tr 
@@ -1484,14 +1683,55 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
                           </td>
 
                           {/* 1. Item Name & Warehouse Match Status */}
-                          <td className="p-2.5 font-medium max-w-[220px]">
-                            <input
-                              type="text"
-                              value={item.nameAr || item.name}
-                              onChange={(e) => updateItemField(idx, 'nameAr', e.target.value)}
-                              className="w-full bg-transparent text-white font-bold focus:outline-none border-b border-transparent focus:border-cyan-400 text-xs"
-                            />
-                            <div className="text-[10px] text-slate-400 font-mono truncate">{item.name}</div>
+                          <td className="p-2.5 font-medium max-w-[280px]">
+                            {/* Primary Active Name Input (English by default, or exact receipt name) */}
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => updateItemField(idx, 'name', e.target.value)}
+                                className="w-full bg-[#050B17] px-2 py-1 rounded text-white font-bold font-sans focus:outline-none border border-slate-700 focus:border-cyan-400 text-xs"
+                                placeholder={t('اسم المادة...', 'ناوی دەرمان...', 'Medicine / Product name...')}
+                              />
+                            </div>
+
+                            {/* Dual Language Badges & Quick Switchers */}
+                            <div className="mt-1 flex items-center gap-1.5 flex-wrap text-[10px]">
+                              {/* Quick switch button between English and Raw */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleItemNamingMode(idx)}
+                                className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold border transition-all cursor-pointer ${
+                                  isCurrentEnglish
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                }`}
+                                title={t('التبديل بين الاسم الإنجليزي الصيدلاني ونص الوصل الحرفي', 'گۆڕین لە نێوان ئینگلیزی و دەقی پسوولە', 'Toggle English / Raw invoice text')}
+                              >
+                                {isCurrentEnglish ? '🇬🇧 EN' : '📄 الوصل'}
+                              </button>
+
+                              {/* Manual Translate to English Button if needed */}
+                              <button
+                                type="button"
+                                onClick={() => handleTranslateSingleItemToEnglish(idx)}
+                                className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 text-[9px] font-bold transition-all cursor-pointer flex items-center gap-0.5"
+                                title={t('ترجمة وتحويل الاسم إلى إنجليزية صيدلانية قياسية', 'وەرگێڕان بۆ ئینگلیزی پزیشکی', 'Translate to English')}
+                              >
+                                ⚡ {t('ترجمة للإنجليزية', 'وەرگێڕان', 'To EN')}
+                              </button>
+
+                              {/* Secondary text display */}
+                              {isCurrentEnglish ? (
+                                <span className="text-[9.5px] text-slate-400 font-sans truncate max-w-[160px]" title={item.rawInvoiceName || item.nameAr || ''}>
+                                  📄 {item.rawInvoiceName || item.nameAr || '-'}
+                                </span>
+                              ) : (
+                                <span className="text-[9.5px] text-emerald-400 font-mono truncate max-w-[160px]" title={item.englishName || ''}>
+                                  🇬🇧 {item.englishName || '-'}
+                                </span>
+                              )}
+                            </div>
                             
                             {/* Warehouse status badge */}
                             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
@@ -1798,6 +2038,51 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
               </div>
             </div>
 
+            {/* Quick Direct Navigation Hub */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSavedSummaryReport(null);
+                  stopCamera();
+                  onClose();
+                  onNavigateToTab?.('reports');
+                }}
+                className="p-2.5 rounded-xl bg-blue-950/70 hover:bg-blue-900/80 border border-blue-600/50 text-blue-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-center"
+              >
+                <BarChart3 className="w-4 h-4 text-blue-400" />
+                <span className="text-[10.5px] font-bold leading-tight">{t('تقارير المشتريات', 'ڕاپۆرتی کڕین', 'Purchases Reports')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSavedSummaryReport(null);
+                  stopCamera();
+                  onClose();
+                  onNavigateToTab?.('purchases');
+                }}
+                className="p-2.5 rounded-xl bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-600/50 text-cyan-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-center"
+              >
+                <ShoppingCart className="w-4 h-4 text-cyan-400" />
+                <span className="text-[10.5px] font-bold leading-tight">{t('سجل فواتير الشراء', 'فایلی کڕین', 'Purchases Hub')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSavedSummaryReport(null);
+                  stopCamera();
+                  onClose();
+                  onNavigateToTab?.('suppliers');
+                }}
+                className="p-2.5 rounded-xl bg-purple-950/70 hover:bg-purple-900/80 border border-purple-600/50 text-purple-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-center"
+              >
+                <Truck className="w-4 h-4 text-purple-400" />
+                <span className="text-[10.5px] font-bold leading-tight">{t('حساب المورد والمندوب', 'هەژماری دابینکەر', 'Supplier Account')}</span>
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => {
@@ -1807,7 +2092,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
               }}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 font-black text-xs shadow-lg transition-all cursor-pointer"
             >
-              {t('إغلاق والعودة لواجهة الشراء والمخزن', 'داخستن و گەڕانەوە', 'Close & Return to Purchases')}
+              {t('إغلاق والعودة', 'داخستن و گەڕانەوە', 'Close & Return')}
             </button>
 
           </div>

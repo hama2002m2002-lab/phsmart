@@ -190,6 +190,7 @@ export interface Supplier {
   taxNumber?: string;
   address?: string;
   isSaved?: boolean;      // الشركات المحفوظة / المفضلة
+  lastSupplyDate?: string; // تاريخ آخر توريد
   payments?: SupplierPayment[];
 }
 
@@ -328,12 +329,12 @@ export interface StoreSettings {
   lowStockThresholdDefault: number;
   language: Language;
   themeMode?: 'dark' | 'light';
-  printerType?: 'thermal80mm' | 'thermal58mm' | 'a4' | 'a5' | 'label_barcode';
+  printerType?: 'thermal80mm' | 'thermal58mm' | 'a4' | 'a5' | 'label_barcode' | 'network' | 'browser';
   connectedPrinterName?: string;
   printerConnectionType?: 'system' | 'usb' | 'network' | 'bluetooth';
   printerIpAddress?: string;
   labelPrinterName?: string;
-  paperSize?: '80mm' | '58mm' | 'A4' | 'A5' | '50x30mm' | '40x20mm';
+  paperSize?: '80mm' | '58mm' | 'A4' | 'A5' | '50x30mm' | '40x20mm' | 'a4';
   autoPrintPriceLabels?: boolean;
   printerCopies?: number;
   posShortcuts?: POSKeyboardShortcuts;

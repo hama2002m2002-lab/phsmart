@@ -268,6 +268,9 @@ export async function signInWithGoogle(): Promise<{ accessToken: string; workspa
 
     // 2. Fallback to Firebase Google Auth Popup
     try {
+      if (!auth) {
+        throw new Error('Firebase Auth not initialized in current environment');
+      }
       const provider = new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
       provider.addScope('https://www.googleapis.com/auth/userinfo.email');

@@ -238,13 +238,9 @@ export function buildEscPosBuffer(sale: SaleTransaction, settings: StoreSettings
   const items = Array.isArray(sale.items) ? sale.items : (typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : []);
   items.forEach((item: any) => {
     const itemName = isKu ? (item.productNameKu || item.productNameAr || item.productName) : (item.productNameAr || item.productName);
-    const saleTypeTag = item.saleType === 'carton' 
-      ? (isKu ? '[کارتۆن]' : isAr ? '[كرتون]' : '[Carton]')
-      : item.saleType === 'wholesale'
-      ? (isKu ? '[کۆ]' : isAr ? '[جملة]' : '[Wholesale]')
-      : item.saleType === 'blister'
-      ? (isKu ? '[شریت]' : isAr ? '[شريط]' : '[Strip]')
-      : (isKu ? '[تاک]' : isAr ? '[مفرد]' : '[Piece]');
+    const saleTypeTag = item.saleType === 'blister'
+      ? (isKu ? '[شیت]' : isAr ? '[شيت]' : '[Sheet]')
+      : (isKu ? '[باکەت]' : isAr ? '[باكت]' : '[Box]');
 
     const fullNameWithTag = `${itemName} ${saleTypeTag}`;
     const nameShort = fullNameWithTag.substring(0, 22).padEnd(24, ' ');
@@ -440,13 +436,9 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
 
   const itemsRows = itemsList.map((item: any) => {
     const itemName = isKu ? (item.productNameKu || item.productNameAr || item.productName) : (item.productNameAr || item.productName);
-    const saleTypeLabel = item.saleType === 'carton' 
-      ? (isKu ? 'کارتۆن' : isAr ? 'كرتون' : 'Carton')
-      : item.saleType === 'wholesale'
-      ? (isKu ? 'کۆ' : isAr ? 'جملة' : 'Wholesale')
-      : item.saleType === 'blister'
-      ? (isKu ? 'شریت' : isAr ? 'شريط' : 'Strip')
-      : (isKu ? 'تاک' : isAr ? 'مفرد' : 'Unit');
+    const saleTypeLabel = item.saleType === 'blister' 
+      ? (isKu ? 'شیت' : isAr ? 'شيت' : 'Sheet')
+      : (isKu ? 'باکەت' : isAr ? 'باكت' : 'Box');
 
     return `
       <tr style="border-bottom: 1px dashed #ccc;">

@@ -26,16 +26,20 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  X
+  X,
+  Clock,
+  ShieldAlert
 } from 'lucide-react';
 import { Product, Category, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { getSavedCategories } from './ProductModal';
 import { PriceHistoryTooltip } from './PriceHistoryTooltip';
 import { InventoryAuditView } from './InventoryAuditView';
+import { ExpiryManagementView } from './ExpiryManagementView';
 import { exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
 import { FastSearchInput } from './FastSearchInput';
+import { parseDate } from '../lib/dateUtils';
 
 interface ProductsTabProps {
   products: Product[];
@@ -102,10 +106,10 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const canViewInvoices = isAdmin || Boolean(perms?.canViewInvoices ?? perms?.canManageOrders);
 
   // Retain active subview in session so updates and hot reloads don't kick user out of their open warehouse view
-  const [activeSubView, setActiveSubView] = useState<'catalog' | 'stockStatus' | 'inventoryAudit' | null>(() => {
+  const [activeSubView, setActiveSubView] = useState<'catalog' | 'stockStatus' | 'inventoryAudit' | 'expiryAlerts' | null>(() => {
     try {
       const saved = sessionStorage.getItem('supermarket_warehouse_subview');
-      if (saved === 'catalog' || saved === 'stockStatus' || saved === 'inventoryAudit') return saved;
+      if (saved === 'catalog' || saved === 'stockStatus' || saved === 'inventoryAudit' || saved === 'expiryAlerts') return saved;
     } catch (e) {}
     return null;
   });
@@ -173,6 +177,56 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       outOfStockProducts: outOfStock,
       debtStockProducts: debtStock,
     };
+  }, [safeProducts]);
+
+  // Expiry statistics calculation for quick badges & hub warnings
+  const expiryStats = useMemo(() => {
+    let expiredCount = 0;
+    let nearExpiryCount = 0;
+    let totalWithExpiry = 0;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < safeProducts.length; i++) {
+      const p = safeProducts[i];
+      if (!p) continue;
+
+      let hasExp = false;
+      let earliestDays: number | null = null;
+
+      if (Array.isArray(p.batches) && p.batches.length > 0) {
+        for (const b of p.batches) {
+          if (b.expiryDate && b.expiryDate.trim() !== '' && b.expiryDate !== 'N/A') {
+            hasExp = true;
+            const expDate = parseDate(b.expiryDate);
+            const days = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (earliestDays === null || days < earliestDays) {
+              earliestDays = days;
+            }
+          }
+        }
+      }
+
+      if (earliestDays === null && p.expiryDate && p.expiryDate.trim() !== '' && p.expiryDate !== 'N/A') {
+        hasExp = true;
+        const expDate = parseDate(p.expiryDate);
+        const days = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        earliestDays = days;
+      }
+
+      if (hasExp) {
+        totalWithExpiry++;
+        if (earliestDays !== null) {
+          if (earliestDays < 0) {
+            expiredCount++;
+          } else if (earliestDays <= 90) {
+            nearExpiryCount++;
+          }
+        }
+      }
+    }
+
+    return { expiredCount, nearExpiryCount, totalWithExpiry };
   }, [safeProducts]);
 
   const deferredSearch = useDeferredValue(search);
@@ -621,7 +675,44 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
             </span>
           </button>
 
-          {/* Button 4: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
+          {/* Button 5: المواد المنتهية والصلاحيات (تتبع الصلاحية وانتهاء المدة) */}
+          <button
+            type="button"
+            onClick={() => setActiveSubView('expiryAlerts')}
+            className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              isLight
+                ? 'bg-white border-rose-200 hover:border-rose-500 shadow-sm hover:shadow-md'
+                : 'bg-gradient-to-br from-[#200A12] to-[#2E0F1A] border-rose-500/40 hover:border-rose-400 hover:shadow-[0_0_20px_rgba(244,63,94,0.25)]'
+            }`}
+          >
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-rose-600 to-red-500 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <Clock className="w-6 h-6 text-white stroke-[2.2]" />
+            </div>
+            <div className="flex flex-col flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <span className={`text-sm sm:text-base font-black transition-colors ${
+                  isLight
+                    ? 'text-slate-900 group-hover:text-rose-700'
+                    : 'text-white group-hover:text-rose-300'
+                }`}>
+                  {t('المواد المنتهية والصلاحيات', 'کاڵا بەسەرچووەکان و بەروار', 'Expiry & Expiration Management')}
+                </span>
+                {expiryStats.expiredCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black font-mono bg-rose-600 text-white animate-pulse">
+                    {expiryStats.expiredCount} {t('منتهية', 'بەسەرچوو', 'expired')}
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] text-slate-400 font-semibold mt-0.5 truncate">
+                {expiryStats.nearExpiryCount > 0 
+                  ? t(`يوجد ${expiryStats.nearExpiryCount} مادة قريبة من الانتهاء (≤ 90 يوم)`, `${expiryStats.nearExpiryCount} کاڵا نزیکن لە بەسەرچوون`, `${expiryStats.nearExpiryCount} items near expiry (≤ 90d)`)
+                  : t('كشف المواد المنتهية، القريبة من الانتهاء، وتتبع الباتشات', 'چاودێری بەرواری بەسەرچوون و باچەکان', 'Track expired, near-expiry & batch items')
+                }
+              </span>
+            </div>
+          </button>
+
+          {/* Button 6: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
           {canManageDamaged && (
             <button
               type="button"
@@ -760,6 +851,28 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
               )}
             </button>
 
+            {/* Expiry Alerts subview tab button */}
+            <button
+              onClick={() => setActiveSubView('expiryAlerts')}
+              className={`px-3 py-1.5 rounded-lg font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeSubView === 'expiryAlerts'
+                  ? isLight
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Clock className={`w-3.5 h-3.5 ${activeSubView === 'expiryAlerts' ? 'text-white' : 'text-rose-500'}`} />
+              <span>{t('المواد المنتهية والصلاحيات', 'کاڵا بەسەرچووەکان و بەروار', 'Expiry Alerts')}</span>
+              {(expiryStats.expiredCount > 0 || expiryStats.nearExpiryCount > 0) && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-500 text-white rounded font-bold">
+                  {expiryStats.expiredCount + expiryStats.nearExpiryCount}
+                </span>
+              )}
+            </button>
+
             {canManageAudit && (
               <button
                 onClick={() => setActiveSubView('inventoryAudit')}
@@ -781,7 +894,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         </div>
 
         {/* Action Buttons for Catalog View */}
-        {activeSubView !== 'inventoryAudit' && (
+        {activeSubView !== 'inventoryAudit' && activeSubView !== 'expiryAlerts' && (
           <div className="flex flex-wrap items-center gap-2">
             {/* Hidden File Input for Importing Products / Backup */}
             <input
@@ -917,8 +1030,22 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         />
       )}
 
+      {/* View 4: Dedicated Expiry & Near-Expiry Management Sub-View (واجهة المواد المنتهية والصلاحيات) */}
+      {activeSubView === 'expiryAlerts' && (
+        <ExpiryManagementView
+          products={products}
+          setProducts={setProducts}
+          settings={settings}
+          currentUser={currentUser}
+          onEditProduct={onEditProduct}
+          onOpenPrintBarcode={onOpenPrintBarcode}
+          onOpenDamagedItems={onOpenDamagedItems}
+          onBackToWarehouseMenu={() => setActiveSubView(null)}
+        />
+      )}
+
       {/* Catalog & Stock Status Search + Views */}
-      {activeSubView !== 'inventoryAudit' && (
+      {activeSubView !== 'inventoryAudit' && activeSubView !== 'expiryAlerts' && (
         <>
           {/* Import Notification Banner */}
           {importBanner && (

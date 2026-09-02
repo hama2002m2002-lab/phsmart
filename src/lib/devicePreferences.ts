@@ -4,10 +4,10 @@ import { defaultPOSShortcuts } from '../data/mockData';
 export interface DeviceLocalPreferences {
   themeMode: 'dark' | 'light';
   language: Language;
-  printerType: 'thermal80mm' | 'thermal58mm' | 'network' | 'browser' | 'a4';
+  printerType: 'thermal80mm' | 'thermal58mm' | 'network' | 'browser' | 'a4' | 'a5' | 'label_barcode';
   connectedPrinterName?: string;
   printerIpAddress?: string;
-  paperSize?: '80mm' | '58mm' | 'a4';
+  paperSize?: '80mm' | '58mm' | 'A4' | 'A5' | '50x30mm' | '40x20mm' | 'a4';
   autoPrintReceipt?: boolean;
   posShortcuts?: POSKeyboardShortcuts;
   isCloudSyncEnabled?: boolean; // When false, this device operates completely standalone (100% offline & isolated)

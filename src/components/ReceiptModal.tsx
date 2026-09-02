@@ -351,8 +351,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                           <div>
                             <p>{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</p>
                             {item.saleType && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 inline-block mt-0.5">
-                                {item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Blister') : t('مفرد', 'تاک', 'Unit')}
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 inline-block mt-0.5 font-bold">
+                                {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
                               </span>
                             )}
                           </div>
@@ -723,8 +723,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                                 </span>
                               </td>
                               <td className="p-2.5 text-center">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-cyan-300 border border-slate-700">
-                                  {item.saleType === 'wholesale' ? t('جملة', 'کۆ', 'Wholesale') : item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Strip') : t('مفرد', 'تاک', 'Retail')}
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-800 text-cyan-300 border border-slate-700">
+                                  {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
                                 </span>
                               </td>
                               <td className="p-2.5 text-center font-bold text-white font-mono">{item.quantity}</td>
@@ -883,14 +883,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                           <div className="flex justify-between items-start text-white font-bold text-xs font-sans">
                             <div>
                               <span className="truncate max-w-[190px] inline-block">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</span>
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 inline-block mx-1 font-sans">
-                                {item.saleType === 'carton' 
-                                  ? t('كرتون', 'کارتۆن', 'Carton') 
-                                  : item.saleType === 'wholesale' 
-                                  ? t('جملة', 'کۆ', 'Wholesale') 
-                                  : item.saleType === 'blister' 
-                                  ? t('شريط', 'شریت', 'Strip') 
-                                  : t('مفرد', 'تاک', 'Unit')}
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 inline-block mx-1 font-sans font-bold">
+                                {item.saleType === 'blister' 
+                                  ? t('شيت', 'شیت', 'Sheet') 
+                                  : t('باكت', 'باکەت', 'Box')}
                               </span>
                             </div>
                             <span className="font-mono text-emerald-400 shrink-0">{settings.currencySymbol}{formatNumber(item.total)}</span>

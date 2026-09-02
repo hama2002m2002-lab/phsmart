@@ -190,10 +190,10 @@ export function App() {
   const [orders, setOrders] = usePersistentState<MarketOrder[]>('supermarket_orders_v1', initialOrders);
   const [notifications, setNotifications] = usePersistentState<MarketNotification[]>('supermarket_notifications_v1', initialNotifications);
   const [purchaseInvoices, setPurchaseInvoices] = usePersistentState<PurchaseInvoice[]>('supermarket_purchases_v1', initialPurchaseInvoices);
-  const [settings, setSettingsState] = usePersistentState<StoreSettings>('supermarket_settings_v3', () => {
-    const localPrefs = getDeviceLocalPreferences();
-    return mergeWithDevicePreferences(defaultSettings, localPrefs);
-  });
+  const [settings, setSettingsState] = usePersistentState<StoreSettings>(
+    'supermarket_settings_v3',
+    mergeWithDevicePreferences(defaultSettings, getDeviceLocalPreferences())
+  );
 
   const setSettings: React.Dispatch<React.SetStateAction<StoreSettings>> = (action) => {
     setSettingsState((prev) => {
@@ -465,10 +465,11 @@ export function App() {
   const handleConfirmAIInvoiceImport = (data: {
     newProducts: Product[];
     updatedProducts: Product[];
+    targetSupplier?: Supplier;
     newSupplier?: Supplier;
     newPurchaseInvoice?: PurchaseInvoice;
   }) => {
-    // 1. Update & Add products in local state and Firestore
+    // 1. Update & Add products in local state, localStorage, IndexedDB and Firestore
     setProducts(prev => {
       let updatedList = [...prev];
       // Update existing products with new stock, prices, expiries
@@ -488,21 +489,73 @@ export function App() {
       return updatedList;
     });
 
-    // 2. Add or update supplier
-    if (data.newSupplier) {
+    // 2. Add or update supplier & delegate account
+    if (data.newPurchaseInvoice || data.targetSupplier || data.newSupplier) {
       setSuppliers(prev => {
-        const existingIdx = prev.findIndex(s => s.id === data.newSupplier?.id || s.name.toLowerCase() === data.newSupplier?.name.toLowerCase() || (data.newSupplier?.nameAr && s.nameAr === data.newSupplier?.nameAr));
+        const supName = (data.targetSupplier?.nameAr || data.targetSupplier?.name || data.newSupplier?.nameAr || data.newSupplier?.name || data.newPurchaseInvoice?.supplierName || '').trim();
+        const supPhone = (data.targetSupplier?.phone || data.newSupplier?.phone || data.newPurchaseInvoice?.supplierPhone || '').trim();
+        const invoiceTotal = data.newPurchaseInvoice?.totalInvoiceAmount || data.newSupplier?.totalInvoiced || data.targetSupplier?.totalInvoiced || 0;
+        const remainingAmount = data.newPurchaseInvoice?.remainingAmount !== undefined ? data.newPurchaseInvoice.remainingAmount : invoiceTotal;
+        const invoiceDate = data.newPurchaseInvoice?.date || new Date().toISOString().split('T')[0];
+
+        const existingIdx = prev.findIndex(s => 
+          (data.targetSupplier && s.id === data.targetSupplier.id) ||
+          (data.newSupplier && s.id === data.newSupplier.id) ||
+          (supName && (s.name.toLowerCase() === supName.toLowerCase() || (s.nameAr && s.nameAr.toLowerCase() === supName.toLowerCase()))) ||
+          (supPhone && s.phone && s.phone === supPhone)
+        );
+
         let nextSuppliers: Supplier[];
         if (existingIdx !== -1) {
-          nextSuppliers = prev.map((s, idx) => idx === existingIdx ? {
-            ...s,
-            balanceDue: (s.balanceDue || 0) + (data.newSupplier?.balanceDue || 0),
-            totalInvoicesCount: (s.totalInvoicesCount || 0) + 1,
-            lastSupplyDate: new Date().toISOString().split('T')[0],
-          } : s);
+          nextSuppliers = prev.map((s, idx) => {
+            if (idx !== existingIdx) return s;
+            return {
+              ...s,
+              balanceDue: (s.balanceDue || 0) + remainingAmount,
+              totalInvoiced: (s.totalInvoiced || 0) + invoiceTotal,
+              totalInvoicesCount: (s.totalInvoicesCount || 0) + 1,
+              activeOrders: (s.activeOrders || 0) + 1,
+              lastSupplyDate: invoiceDate,
+              phone: s.phone || supPhone,
+              address: s.address || data.targetSupplier?.address || data.newSupplier?.address || 'العراق'
+            };
+          });
+        } else if (data.newSupplier || data.targetSupplier) {
+          const supplierToAdd = data.newSupplier || data.targetSupplier!;
+          nextSuppliers = [{
+            ...supplierToAdd,
+            balanceDue: remainingAmount,
+            totalInvoiced: invoiceTotal,
+            totalInvoicesCount: 1,
+            lastSupplyDate: invoiceDate
+          }, ...prev];
+        } else if (supName) {
+          const created: Supplier = {
+            id: `sup-${Date.now()}`,
+            name: supName,
+            nameAr: supName,
+            contactPerson: supName,
+            phone: supPhone || '07700000000',
+            email: '',
+            categorySupplied: 'أدوية ومستلزمات عامة',
+            activeOrders: 1,
+            totalInvoiced: invoiceTotal,
+            totalPaid: (data.newPurchaseInvoice?.paidAmount || 0),
+            balanceDue: remainingAmount,
+            totalInvoicesCount: 1,
+            lastSupplyDate: invoiceDate,
+            rating: 5.0,
+            avatar: '🏢',
+            taxNumber: '',
+            address: 'العراق',
+            isSaved: true,
+            payments: []
+          };
+          nextSuppliers = [created, ...prev];
         } else {
-          nextSuppliers = [data.newSupplier!, ...prev];
+          return prev;
         }
+
         try { localStorage.setItem('supermarket_suppliers_v1', JSON.stringify(nextSuppliers)); } catch {}
         localDbBulkPut('suppliers', nextSuppliers);
         syncBulkWriteCollection('suppliers', nextSuppliers);
@@ -510,7 +563,7 @@ export function App() {
       });
     }
 
-    // 3. Add purchase invoice
+    // 3. Add purchase invoice (سجل فواتير التوريد والمشتريات)
     if (data.newPurchaseInvoice) {
       setPurchaseInvoices(prev => {
         const nextInvoices = [data.newPurchaseInvoice!, ...prev];
@@ -528,7 +581,7 @@ export function App() {
       title: 'AI Invoice Scanned & Imported',
       titleAr: 'تم مسح وإدراج مواد الوصل بالذكاء الاصطناعي',
       message: `Successfully processed ${totalCount} items from invoice ${data.newPurchaseInvoice?.invoiceNumber || ''}.`,
-      messageAr: `تم بنجاح إدراج وتحديث ${totalCount} مادة من الوصل ${data.newPurchaseInvoice?.invoiceNumber || ''} في المخزن وحساب المورد.`,
+      messageAr: `تم بنجاح إدراج وتحديث ${totalCount} مادة من الوصل ${data.newPurchaseInvoice?.invoiceNumber || ''} في المخزن والتقارير وحساب المورد.`,
       time: 'Just now',
       priority: 'high',
       category: 'inventory',
@@ -1630,6 +1683,7 @@ export function App() {
           setAiDraftImportData(draftData);
           setActiveTab('purchases');
         }}
+        onNavigateToTab={(tab) => setActiveTab(tab as any)}
       />
 
     </div>

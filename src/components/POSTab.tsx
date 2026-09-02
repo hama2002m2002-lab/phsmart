@@ -708,15 +708,36 @@ export const POSTab: React.FC<POSTabProps> = ({
     return () => window.removeEventListener('click', handleGlobalClick);
   }, [isBarcodeDisabled, activeWindowId, cart, isBarcodePaused]);
 
-  // Helper to calculate exact price depending on unit type (مفرد, جملة, كرتون)
+  // Helper to calculate exact price depending on unit type (باكت / شيت)
   const getItemUnitPrice = (item: CartItem): number => {
+    if (item.saleType === 'blister') {
+      if (item.product.blisterPrice !== undefined && item.product.blisterPrice !== null && item.product.blisterPrice > 0) {
+        return item.product.blisterPrice;
+      }
+      const bpb = item.product.blistersPerBox && item.product.blistersPerBox > 1 ? item.product.blistersPerBox : 1;
+      const basePrice = item.product.singleRetailPrice || item.product.price || 0;
+      return bpb > 1 ? Number((basePrice / bpb).toFixed(2)) : basePrice;
+    }
     if (item.saleType === 'wholesale') {
-      return item.product.wholesalePrice || (item.product.price * 0.85);
+      return item.product.wholesalePrice || (item.product.singleRetailPrice || item.product.price);
     }
     if (item.saleType === 'carton') {
-      return item.product.cartonSellingPrice || (item.product.price * 10);
+      return item.product.cartonSellingPrice || (item.product.singleRetailPrice || item.product.price);
     }
     return item.product.singleRetailPrice || item.product.price;
+  };
+
+  const getItemUnitCost = (item: CartItem): number => {
+    const baseCost = item.product.costPerUnit || item.product.cost || item.product.lastPurchasePrice || 0;
+    if (item.saleType === 'blister') {
+      const bpb = item.product.blistersPerBox && item.product.blistersPerBox > 1 ? item.product.blistersPerBox : 1;
+      return bpb > 1 ? Number((baseCost / bpb).toFixed(2)) : baseCost;
+    }
+    if (item.saleType === 'carton') {
+      const upc = (item.product.unitsPerCarton && item.product.unitsPerCarton > 0) ? item.product.unitsPerCarton : 1;
+      return item.product.cartonPurchasePrice || (baseCost * upc);
+    }
+    return baseCost;
   };
 
   const playErrorBeep = () => {
@@ -1810,21 +1831,21 @@ export const POSTab: React.FC<POSTabProps> = ({
                   </div>
                 </div>
 
-                {/* Quick Cash Buttons (1000, 5000, 10000, 15000, 20000, 25000, 50000) */}
+                {/* Quick Cash Buttons (1k, 5k, 10k, 15k, 20k, 25k, 50k) */}
                 <div className="grid grid-cols-7 gap-1">
                   {[1000, 5000, 10000, 15000, 20000, 25000, 50000].map(amt => (
                     <button
                       key={amt}
                       type="button"
                       onClick={() => setCashTendered(amt)}
-                      className={`py-1 px-0.5 rounded-md text-[9.5px] font-bold font-mono transition-all border active:scale-95 cursor-pointer text-center whitespace-nowrap ${
+                      className={`py-1 px-0.5 rounded-md text-[10.5px] font-black font-mono transition-all border active:scale-95 cursor-pointer text-center whitespace-nowrap ${
                         cashTendered === amt
                           ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
                           : 'bg-slate-800/90 text-slate-300 border-slate-700/80 hover:bg-emerald-950 hover:text-emerald-300 hover:border-emerald-500/50'
                       }`}
                       title={isAr ? `تحديد المبلغ: ${formatNumber(amt)}` : isKu ? `دیاریکردنی بڕ: ${formatNumber(amt)}` : `Set cash: ${formatNumber(amt)}`}
                     >
-                      {formatNumber(amt)}
+                      {amt >= 1000 ? `${amt / 1000}k` : amt}
                     </button>
                   ))}
                 </div>
@@ -2211,31 +2232,20 @@ export const POSTab: React.FC<POSTabProps> = ({
               </div>
 
               {/* Added Quick Action Buttons Row */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center">
                 {/* Clear Cart Button */}
                 <button
                   type="button"
                   onClick={clearCart}
                   disabled={cart.length === 0}
-                  className="flex-1 py-1 px-2 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 hover:text-rose-200 text-xs font-bold transition-all flex items-center justify-center gap-1 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  className="w-full py-1.5 px-3 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 hover:text-rose-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                   title={isAr ? `تفريغ السلة (${posShortcuts.clearCart})` : isKu ? `بەتاڵکردنی سەبەتە (${posShortcuts.clearCart})` : `Clear Cart (${posShortcuts.clearCart})`}
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
                   <span>{isAr ? 'تفريغ السلة' : isKu ? 'بەتاڵکردنی سەبەتە' : 'Clear Cart'}</span>
-                  <span className="px-1 py-0.2 rounded bg-rose-950 text-rose-300 font-mono text-[9px] border border-rose-500/40">
+                  <span className="px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 font-mono text-[9px] border border-rose-500/40">
                     [{posShortcuts.clearCart}]
                   </span>
-                </button>
-
-                {/* Silent POS Printing Guide Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowKioskModal(true)}
-                  className="py-1 px-2.5 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                  title={isAr ? 'إعداد وتفعيل الطباعة الصامتة الفورية وإلغاء نافذة المتصفح' : isKu ? 'ڕێکخستنی چاپی خێرا و بێ پەنجەرە' : 'Instant Silent Printing Setup'}
-                >
-                  <Zap className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
-                  <span>{isAr ? 'الطباعة الصامتة' : isKu ? 'چاپی صامت' : 'Silent Print'}</span>
                 </button>
               </div>
             </div>
@@ -2465,17 +2475,6 @@ export const POSTab: React.FC<POSTabProps> = ({
                 </span>
               </button>
 
-              {/* DIRECT SILENT PRINT SETUP BUTTON */}
-              <button
-                type="button"
-                onClick={() => setShowKioskModal(true)}
-                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400/60 text-cyan-300 font-bold text-xs shrink-0 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                title={isAr ? 'إعداد الطباعة الصامتة الفورية وإلغاء نافذة المتصفح' : isKu ? 'ڕێکخستنی چاپی صامت' : 'Silent Printing Setup'}
-              >
-                <Zap className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
-                <span className="hidden md:inline">{isAr ? 'الطباعة الفورية' : isKu ? 'چاپی خێرا' : 'Silent Print'}</span>
-              </button>
-
             </div>
           </div>
 
@@ -2551,21 +2550,20 @@ export const POSTab: React.FC<POSTabProps> = ({
 
                   {cart.map((item, idx) => {
                     const isFirstNewlyAdded = (idx === 0) && (item.product.id === lastAddedId);
-                    const isWholesaleOrCarton = item.saleType === 'wholesale' || item.saleType === 'carton';
+                    const isBlister = item.saleType === 'blister';
                     const unitPrice = getItemUnitPrice(item);
-                    const totalPiecesInLine = item.saleType === 'carton' 
-                      ? item.quantity * ((item.product.unitsPerCarton && item.product.unitsPerCarton > 0) ? item.product.unitsPerCarton : 1)
-                      : item.quantity;
+                    const bpb = (item.product.blistersPerBox && item.product.blistersPerBox > 0) ? item.product.blistersPerBox : 1;
+                    const totalPiecesInLine = isBlister ? (item.quantity / bpb) : item.quantity;
                     const expirySummary = getProductExpirySummary(item.product, totalPiecesInLine);
                     const batchAllocations = calculateBatchAllocations(item.product, totalPiecesInLine);
 
                     let cardStyles = 'bg-[#070D1C] border border-blue-500/20 hover:border-cyan-500/30';
                     if (isReturnMode) {
                       cardStyles = 'bg-[#180A10] border border-rose-500/40 hover:border-rose-400/60 shadow-[0_0_8px_rgba(244,63,94,0.15)]';
-                    } else if (isWholesaleOrCarton) {
-                      cardStyles = 'bg-gradient-to-r from-emerald-950/40 via-[#051417] to-[#070D1C] border border-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.2)]';
+                    } else if (isBlister) {
+                      cardStyles = 'bg-gradient-to-r from-cyan-950/40 via-[#051417] to-[#070D1C] border border-cyan-500/50 shadow-[0_0_8px_rgba(6,182,212,0.2)]';
                     } else if (isFirstNewlyAdded) {
-                      cardStyles = 'bg-gradient-to-r from-cyan-950/40 via-[#061826] to-[#070D1C] border border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.2)] animate-fadeIn';
+                      cardStyles = 'bg-gradient-to-r from-emerald-950/40 via-[#061826] to-[#070D1C] border border-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.2)] animate-fadeIn';
                     }
 
                     return (
@@ -2657,19 +2655,15 @@ export const POSTab: React.FC<POSTabProps> = ({
                             {canViewPurchasePrice && (
                               <div className="w-20 text-center shrink-0 flex flex-col items-center">
                                 <span className="lg:hidden text-[8.5px] text-purple-400 mb-0.5 font-bold">{isAr ? 'سعر الشراء' : isKu ? 'نرخی کڕین' : 'Cost Price'}</span>
-                                <div className="px-1.5 py-0.5 rounded-lg bg-purple-950/40 border border-purple-500/30 text-purple-300 text-[10.5px] font-mono font-bold flex items-center justify-center gap-1 w-full shadow-inner" title={isAr ? 'سعر شراء وتكلفة المادة' : isKu ? 'نرخی کڕینی دەرمان' : 'Purchase / Cost Price'}>
+                                <div className="px-1.5 py-0.5 rounded-lg bg-purple-950/40 border border-purple-500/30 text-purple-300 text-[10.5px] font-mono font-bold flex items-center justify-center gap-1 w-full shadow-inner" title={isAr ? (item.saleType === 'blister' ? 'تكلفة الشيت الواحد' : 'سعر شراء وتكلفة الباكت الواحد') : isKu ? 'نرخی کڕین' : 'Purchase / Cost Price'}>
                                   <span className="text-[11px] font-black text-purple-300 font-mono tracking-tight">
-                                    {settings.currencySymbol}{formatNumber(
-                                      item.saleType === 'carton'
-                                        ? (item.product.cartonPurchasePrice || (item.product.costPerUnit * (item.product.unitsPerCarton || 1)) || 0)
-                                        : (item.product.costPerUnit || item.product.cost || 0)
-                                    )}
+                                    {settings.currencySymbol}{formatNumber(getItemUnitCost(item))}
                                   </span>
                                 </div>
                               </div>
                             )}
 
-                            {/* السعر (Unit Price) - تم نقله مكان داخل الكرتون المحذوف */}
+                            {/* السعر (Unit Price) - مرتبط مباشرة مع أسعار المخزن */}
                             <div className="w-22 text-center shrink-0 flex flex-col items-center">
                               <span className="lg:hidden text-[8.5px] text-cyan-400 mb-0.5 font-bold">{isAr ? 'السعر' : isKu ? 'نرخ' : 'Price'}</span>
                               <div className="px-1.5 py-0.5 rounded-lg bg-slate-900/90 border border-cyan-500/30 text-center w-full shadow-inner">
@@ -2679,47 +2673,34 @@ export const POSTab: React.FC<POSTabProps> = ({
                               </div>
                             </div>
 
-                            {/* 4. Sale Type Pills (مفرد / جملة / كرتون - يدعم الكردي) */}
+                            {/* 4. Sale Type Pills (باكت / شيت - يدعم الكردي والعربي والإنكليزي) */}
                             <div className="w-24 shrink-0 flex flex-col items-center">
                               <span className="lg:hidden text-[8.5px] text-slate-400 mb-0.5 font-bold">{isAr ? 'نوع البيع' : isKu ? 'جۆری فرۆشتن' : 'Sale Type'}</span>
                               <div className="flex items-center gap-0.5 bg-[#0B1120] p-0.5 rounded-lg border border-slate-800 w-full justify-center">
                                 <button
                                   type="button"
                                   onClick={() => updateSaleType(item.product.id, item.saleType, 'retail')}
-                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
-                                    item.saleType === 'retail'
-                                      ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
+                                  className={`px-1.5 py-0.5 text-[9.5px] font-black rounded transition-all flex-1 text-center whitespace-nowrap cursor-pointer ${
+                                    item.saleType === 'retail' || item.saleType === 'wholesale' || item.saleType === 'carton'
+                                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
                                       : 'text-slate-400 hover:text-white'
                                   }`}
-                                  title={isAr ? 'بيع بالعلبة (مفرد)' : isKu ? 'فرۆشتن بە قوتی (تاک)' : 'Box'}
+                                  title={isAr ? 'بيع بالباكت (العلبة الكاملة)' : isKu ? 'فرۆشتن بە باکەت' : 'Box / Packet'}
                                 >
-                                  {isAr ? 'علبة' : isKu ? 'قوتی' : 'Box'}
+                                  {isAr ? 'باكت' : isKu ? 'باکەت' : 'Box'}
                                 </button>
 
                                 <button
                                   type="button"
-                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'wholesale')}
-                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
-                                    item.saleType === 'wholesale'
-                                      ? 'bg-emerald-500 text-slate-950 font-extrabold shadow-sm'
+                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'blister')}
+                                  className={`px-1.5 py-0.5 text-[9.5px] font-black rounded transition-all flex-1 text-center whitespace-nowrap cursor-pointer ${
+                                    item.saleType === 'blister'
+                                      ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
                                       : 'text-slate-400 hover:text-white'
                                   }`}
-                                  title={isAr ? 'بيع بسعر الجملة' : isKu ? 'فرۆشتن بە کۆ' : 'Wholesale'}
+                                  title={isAr ? 'بيع بالشيت (الشريط)' : isKu ? 'فرۆشتن بە شیت' : 'Sheet / Strip'}
                                 >
-                                  {isAr ? 'جملة' : isKu ? 'کۆ' : 'WS'}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => updateSaleType(item.product.id, item.saleType, 'carton')}
-                                  className={`px-1 py-0.5 text-[8.5px] font-bold rounded transition-all flex-1 text-center whitespace-nowrap ${
-                                    item.saleType === 'carton'
-                                      ? 'bg-emerald-600 text-slate-950 font-extrabold shadow-sm'
-                                      : 'text-slate-400 hover:text-white'
-                                  }`}
-                                  title={isAr ? 'بيع بالكرتون' : isKu ? 'فرۆشتن بە کارتۆن' : 'Carton'}
-                                >
-                                  {isAr ? 'كرتون' : isKu ? 'کارتۆن' : 'CT'}
+                                  {isAr ? 'شيت' : isKu ? 'شیت' : 'Sheet'}
                                 </button>
                               </div>
                             </div>
@@ -2913,12 +2894,18 @@ export const POSTab: React.FC<POSTabProps> = ({
                       const upc = (p.unitsPerCarton && p.unitsPerCarton > 0) ? p.unitsPerCarton : 1;
                       return sum + (item.quantity * upc);
                     }
+                    if (item.saleType === 'blister') {
+                      const bpb = (p.blistersPerBox && p.blistersPerBox > 0) ? p.blistersPerBox : 1;
+                      return sum + (item.quantity / bpb);
+                    }
                     return sum + item.quantity;
                   }, 0);
                 const remainingStock = p.stock - totalUnitsInCart;
                 const retailP = p.singleRetailPrice || p.price;
-                const wholesaleP = p.wholesalePrice || (p.price * 0.85);
-                const cartonP = p.cartonSellingPrice || (p.price * 10);
+                const bpb = (p.blistersPerBox && p.blistersPerBox > 0) ? p.blistersPerBox : 1;
+                const blisterP = (p.blisterPrice !== undefined && p.blisterPrice !== null && p.blisterPrice > 0)
+                  ? p.blisterPrice
+                  : (bpb > 1 ? Number((retailP / bpb).toFixed(2)) : retailP);
 
                 return (
                   <div
@@ -2980,49 +2967,38 @@ export const POSTab: React.FC<POSTabProps> = ({
                       })()}
                     </div>
 
-                    {/* Prices Breakdown: Retail / Wholesale / Carton */}
-                    <div className="bg-[#0B1120] p-1.5 rounded-xl border border-slate-800/80 text-[9.5px] space-y-0.5">
+                    {/* Prices Breakdown: Box (باكت) / Sheet (شيت) */}
+                    <div className="bg-[#0B1120] p-1.5 rounded-xl border border-slate-800/80 text-[9.5px] space-y-1">
                       <div className="flex justify-between items-center text-slate-300">
-                        <span className="text-cyan-400 font-semibold">{isAr ? 'مفرد:' : isKu ? 'تاک:' : 'Ret:'}</span>
+                        <span className="text-emerald-400 font-bold">{isAr ? 'باكت:' : isKu ? 'باکەت:' : 'Box:'}</span>
                         <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(retailP)}</span>
                       </div>
                       <div className="flex justify-between items-center text-slate-300">
-                        <span className="text-amber-400 font-semibold">{isAr ? 'جملة:' : isKu ? 'کۆ:' : 'WS:'}</span>
-                        <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(wholesaleP)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-slate-300">
-                        <span className="text-purple-400 font-semibold">{isAr ? 'كرتون:' : isKu ? 'کارتۆن:' : 'Ctn:'}</span>
-                        <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(cartonP)}</span>
+                        <span className="text-cyan-400 font-bold">{isAr ? 'شيت:' : isKu ? 'شیت:' : 'Sheet:'}</span>
+                        <span className="font-mono font-bold text-slate-100">{settings.currencySymbol}{formatNumber(blisterP)}</span>
                       </div>
                     </div>
 
-                    {/* Quick Add Buttons (Always Enabled Even If Stock is 0) */}
-                    <div className="grid grid-cols-3 gap-1 pt-0.5">
+                    {/* Quick Add Buttons: + باكت / + شيت */}
+                    <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                       <button
                         type="button"
                         onClick={() => addToCart(p, 'retail')}
-                        className="py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 text-[9.5px] font-bold border border-cyan-500/30 transition-all flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer"
+                        className="py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 text-[10px] font-black border border-emerald-500/30 transition-all flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
+                        title={isAr ? 'إضافة باكت كامل إلى السلة' : isKu ? 'زیادکردنی باکەت بۆ سەبەتە' : 'Add Box'}
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>{isAr ? 'مفرد' : isKu ? 'تاک' : 'Ret'}</span>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{isAr ? 'باكت' : isKu ? 'باکەت' : 'Box'}</span>
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => addToCart(p, 'wholesale')}
-                        className="py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-[9.5px] font-bold border border-amber-500/30 transition-all flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer"
+                        onClick={() => addToCart(p, 'blister')}
+                        className="py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 text-[10px] font-black border border-cyan-500/30 transition-all flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
+                        title={isAr ? 'إضافة شيت إلى السلة' : isKu ? 'زیادکردنی شیت بۆ سەبەتە' : 'Add Sheet'}
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>{isAr ? 'جملة' : isKu ? 'کۆ' : 'WS'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => addToCart(p, 'carton')}
-                        className="py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500 text-purple-300 hover:text-slate-950 text-[9.5px] font-bold border border-purple-500/30 transition-all flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>{isAr ? 'كرتون' : isKu ? 'کارتۆن' : 'Ctn'}</span>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{isAr ? 'شيت' : isKu ? 'شیت' : 'Sheet'}</span>
                       </button>
                     </div>
 

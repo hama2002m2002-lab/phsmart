@@ -242,20 +242,20 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [lastEditDate, setLastEditDate] = useState(todayStr);
   const [expiryDate, setExpiryDate] = useState('');
 
-  // Quantities & Packaging
-  const [cartonsCount, setCartonsCount] = useState<number | ''>(''); // عدد العلب/الكراتين
-  const [unitsPerCarton, setUnitsPerCarton] = useState<number | ''>(12); // عدد العلب بالكرتونة
-
-  // Prices
-  const [cartonPurchasePrice, setCartonPurchasePrice] = useState<number | ''>('');
-  const [singleRetailPrice, setSingleRetailPrice] = useState<number | ''>('');
-  const [wholesalePrice, setWholesalePrice] = useState<number | ''>('');
-  const [cartonSellingPrice, setCartonSellingPrice] = useState<number | ''>('');
+  // Quantities & Packaging (Pharmacy tailored)
+  const [pharmacyUnit, setPharmacyUnit] = useState<string>('باكت'); // باكت / علبة / شيت / أمبول / شراب / قرص
+  const [packetsCount, setPacketsCount] = useState<number | ''>(''); // باكت (عدد الباكتات / الكمية)
+  const [blistersPerBox, setBlistersPerBox] = useState<number | ''>(2); // شيت (عدد الشيتات داخل الباكت الواحد)
+  const [purchasePrice, setPurchasePrice] = useState<number | ''>(''); // سعر شراء الباكت
+  const [singleRetailPrice, setSingleRetailPrice] = useState<number | ''>(''); // سعر بيع الباكت للزبون
+  const [blisterPrice, setBlisterPrice] = useState<number | ''>(''); // سعر بيع الشيت / الشريط الواحد
 
   // Blurred / Touched states for price validation on exit
   const [singleRetailBlurred, setSingleRetailBlurred] = useState(false);
-  const [wholesaleBlurred, setWholesaleBlurred] = useState(false);
-  const [cartonSellBlurred, setCartonSellBlurred] = useState(false);
+  const [blisterPriceBlurred, setBlisterPriceBlurred] = useState(false);
+
+  // Fullscreen state (default: true for filling entire screen)
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
 
   // Lifecycle guard refs
   const prevIsOpenRef = useRef<boolean>(false);
@@ -279,8 +279,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       const currentDosageForms = getSavedDosageForms();
       setBarcodeError(null);
       setSingleRetailBlurred(false);
-      setWholesaleBlurred(false);
-      setCartonSellBlurred(false);
+      setBlisterPriceBlurred(false);
 
       if (productToEdit) {
         const prodCategory = productToEdit.categoryAr || productToEdit.category || 'أدوية ومسكنات (OTC / Rx)';
@@ -315,13 +314,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         setLastEditDate(todayStr);
         setExpiryDate(productToEdit.expiryDate || '');
         
-        setCartonsCount(productToEdit.cartonsCount || 1);
-        setUnitsPerCarton(productToEdit.unitsPerCarton || 12);
-
-        setCartonPurchasePrice(productToEdit.cartonPurchasePrice || (productToEdit.cost ? productToEdit.cost * (productToEdit.unitsPerCarton || 12) : ''));
+        setPharmacyUnit(productToEdit.unit || 'باكت');
+        setPacketsCount(productToEdit.totalUnits ?? productToEdit.stock ?? 1);
+        setBlistersPerBox(productToEdit.blistersPerBox || 2);
+        setPurchasePrice(productToEdit.costPerUnit ?? productToEdit.cost ?? (productToEdit.cartonPurchasePrice && productToEdit.unitsPerCarton ? productToEdit.cartonPurchasePrice / productToEdit.unitsPerCarton : ''));
         setSingleRetailPrice(productToEdit.singleRetailPrice || productToEdit.price || '');
-        setWholesalePrice(productToEdit.wholesalePrice || '');
-        setCartonSellingPrice(productToEdit.cartonSellingPrice || '');
+        setBlisterPrice(productToEdit.blisterPrice || '');
       } else {
         setCategoriesList(Array.from(new Set(currentCategories)));
         setDosageFormsList(Array.from(new Set(currentDosageForms)));
@@ -347,38 +345,37 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         setLastEditDate(todayStr);
         setExpiryDate('');
 
-        setCartonsCount('');
-        setUnitsPerCarton(12);
-
-        setCartonPurchasePrice('');
+        setPharmacyUnit('باكت');
+        setPacketsCount('');
+        setBlistersPerBox(2);
+        setPurchasePrice('');
         setSingleRetailPrice('');
-        setWholesalePrice('');
-        setCartonSellingPrice('');
+        setBlisterPrice('');
       }
     }
   }, [productToEdit, isOpen, initialSupplierName, todayStr, existingProducts]);
 
   // Derived Automatic Calculations
-  const numCartons = Number(cartonsCount) || 0;
-  const numUnitsPerCarton = Number(unitsPerCarton) || 1;
-  const totalUnits = numCartons * numUnitsPerCarton;
+  const totalUnits = Number(packetsCount) || 0;
+  const numBlistersPerBox = Math.max(1, Number(blistersPerBox) || 1);
+  const totalBlisters = totalUnits * numBlistersPerBox;
 
-  const cartonCost = Number(cartonPurchasePrice) || 0;
-  const costPerUnit = numUnitsPerCarton > 0 ? cartonCost / numUnitsPerCarton : 0;
+  const costPerUnit = Number(purchasePrice) || 0;
+  const costPerBlister = numBlistersPerBox > 0 ? costPerUnit / numBlistersPerBox : 0;
 
   const singleRetail = Number(singleRetailPrice) || 0;
   const singleProfit = singleRetail - costPerUnit;
 
-  const wholesale = Number(wholesalePrice) || 0;
-  const wholesaleProfit = wholesale - costPerUnit;
+  const singleBlisterPrice = Number(blisterPrice) || 0;
+  const blisterProfit = singleBlisterPrice - costPerBlister;
 
-  const cartonSell = Number(cartonSellingPrice) || 0;
-  const cartonProfit = cartonSell - cartonCost;
+  // Profit Margins in Percentage
+  const packetProfitPercent = costPerUnit > 0 ? Math.round((singleProfit / costPerUnit) * 100) : 0;
+  const blisterProfitPercent = costPerBlister > 0 ? Math.round((blisterProfit / costPerBlister) * 100) : 0;
 
   // Validation flags: Selling price must not be lower than cost
   const isSingleRetailBelowCost = singleRetail > 0 && costPerUnit > 0 && singleRetail < costPerUnit;
-  const isWholesaleBelowCost = wholesale > 0 && costPerUnit > 0 && wholesale < costPerUnit;
-  const isCartonSellBelowCost = cartonSell > 0 && cartonCost > 0 && cartonSell < cartonCost;
+  const isBlisterPriceBelowCost = singleBlisterPrice > 0 && costPerBlister > 0 && singleBlisterPrice < costPerBlister;
 
   // Check Barcode Duplication in real-time
   const duplicateProduct = useMemo(() => {
@@ -550,19 +547,21 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       categoryAr: finalCategory,
       barcode: barcode || `6281007${Date.now().toString().slice(-6)}`,
       supplierDelegate: supplierDelegate,
-      cartonsCount: numCartons,
-      unitsPerCarton: numUnitsPerCarton,
+      cartonsCount: Math.ceil(totalUnits / 12) || 1,
+      unitsPerCarton: productToEdit?.unitsPerCarton || 12,
+      blistersPerBox: numBlistersPerBox,
+      blisterPrice: singleBlisterPrice,
       totalUnits: totalUnits,
-      cartonPurchasePrice: cartonCost,
+      cartonPurchasePrice: costPerUnit * (productToEdit?.unitsPerCarton || 12),
       lastPurchasePrice: productToEdit?.lastPurchasePrice || Number(costPerUnit.toFixed(2)),
-      lastCartonPurchasePrice: productToEdit?.lastCartonPurchasePrice || cartonCost,
+      lastCartonPurchasePrice: productToEdit?.lastCartonPurchasePrice || (costPerUnit * (productToEdit?.unitsPerCarton || 12)),
       costPerUnit: Number(costPerUnit.toFixed(2)),
       singleRetailPrice: singleRetail,
-      wholesalePrice: wholesale,
-      cartonSellingPrice: cartonSell,
+      wholesalePrice: singleRetail,
+      cartonSellingPrice: singleRetail * (productToEdit?.unitsPerCarton || 12),
       singleProfit: Number(singleProfit.toFixed(2)),
-      wholesaleProfit: Number(wholesaleProfit.toFixed(2)),
-      cartonProfit: Number(cartonProfit.toFixed(2)),
+      wholesaleProfit: Number(singleProfit.toFixed(2)),
+      cartonProfit: Number((singleProfit * (productToEdit?.unitsPerCarton || 12)).toFixed(2)),
       initialAddDate: productToEdit?.initialAddDate || initialAddDate || todayStr,
       lastEditDate: todayStr,
       lastPriceUpdate: lastPriceUpdateDate,
@@ -585,7 +584,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       cost: Number(costPerUnit.toFixed(2)),
       stock: totalUnits,
       minStock: 10,
-      unit: 'علبة',
+      unit: pharmacyUnit || 'باكت',
       supplierId: matchedSupplier ? matchedSupplier.id : (productToEdit?.supplierId || 'sup-1'),
       supplierName: supplierDelegate || (matchedSupplier ? matchedSupplier.nameAr : 'مذخر الأدوية الرئيسي'),
       imageIcon: '💊',
@@ -599,168 +598,176 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-1.5 sm:p-3 overflow-y-auto" dir={lang === 'en' ? 'ltr' : 'rtl'}>
-      {/* Modal Container */}
-      <div className="cyber-card p-2.5 sm:p-3.5 rounded-2xl border border-cyan-500/40 w-full max-w-5xl max-h-[96vh] bg-[#0a1120] text-slate-100 relative animate-scaleUp shadow-2xl overflow-y-auto flex flex-col justify-between custom-scrollbar">
-        
-        {/* Header - Compact */}
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/20 shrink-0">
-              <Pill className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-black bg-gradient-to-r from-cyan-300 via-white to-blue-300 bg-clip-text text-transparent leading-tight">
-                {productToEdit
-                  ? (isKu ? 'دەستکاریکردنی زانیاری دەرمان' : isAr ? 'تعديل بيانات الصنف الدوائي' : 'Edit Pharmaceutical Product')
-                  : (isKu ? 'تۆمارکردن و پێناسەکردنی دەرمانی نوێ' : isAr ? 'إضافة وتعريف صنف دوائي ومادة جديدة' : 'Add New Pharmaceutical Product')}
-              </h2>
-              <p className="text-[10px] text-slate-400">
-                {isKu ? 'دروستکەر، دەوڵەت، وەجبە، بەروار و نرخەکان' : isAr ? 'الدولة المصنعة، الشركة، رقم التشغيلة، الشكل الدوائي والأسعار' : 'Origin, Manufacturer, Batch No, Dosage Form & Pricing'}
-              </p>
-            </div>
+    <div 
+      className="fixed inset-0 z-50 bg-[#070c18] w-screen h-screen flex flex-col overflow-hidden text-slate-100" 
+      dir={lang === 'en' ? 'ltr' : 'rtl'}
+    >
+      {/* Top Header Bar - Full Width & High Contrast */}
+      <header className="bg-[#0b1329] border-b border-cyan-500/30 px-4 py-2.5 flex items-center justify-between shrink-0 shadow-lg shadow-black/40">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/25 shrink-0">
+            <Pill className="w-5 h-5" />
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setShowGuidance(prev => !prev)}
-              className="p-1 px-2 rounded-lg bg-cyan-950/70 text-cyan-300 hover:bg-cyan-900/80 border border-cyan-500/30 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <Info className="w-3 h-3 text-cyan-400" />
-              <span>{showGuidance ? (isAr ? 'إخفاء الدليل' : isKu ? 'شاردنەوە' : 'Hide Guide') : (isAr ? 'دليل الإدخال' : isKu ? 'ڕێنمایی' : 'Guide')}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg bg-slate-800/80 hover:bg-rose-900/50 hover:text-rose-300 text-slate-400 border border-slate-700 transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-black bg-gradient-to-r from-cyan-300 via-white to-blue-200 bg-clip-text text-transparent leading-none">
+                {productToEdit
+                  ? (isKu ? 'دەستکاریکردنی زانیاری دەرمان' : isAr ? 'تعديل بيانات الصنف الدوائي والمادة' : 'Edit Pharmaceutical Product')
+                  : (isKu ? 'تۆمارکردن و پێناسەکردنی دەرمانی نوێ' : isAr ? 'إضافة وتعريف صنف دوائي ومادة جديدة بالصيدلية' : 'Add New Pharmaceutical Product')}
+              </h2>
+              <span className="px-2 py-0.5 rounded-md bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-mono text-[11px] font-bold">
+                {productToEdit ? (isAr ? 'تعديل مادة' : 'Edit Mode') : (isAr ? 'شاشة كاملة للبيانات' : 'Full Screen Entry')}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {isKu ? 'دروستکەر، دەوڵەت، وەجبە، شیت و باکەت، بەروار و نرخەکان' : isAr ? 'الاسم العلمي، الدولة، المصنع، التشغيلة، التعبئة الصيدلانية (باكت / شيت / كرتونة) والأسعار والأرباح' : 'Scientific Name, Batch, Pharmacy Packaging (Packet/Sheet), Expiry & Pricing'}
+            </p>
           </div>
         </div>
 
-        {/* Optional Guidance Accordion */}
-        {showGuidance && (
-          <div className="my-1.5 p-2 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-[10.5px] text-cyan-200 space-y-1 animate-fadeIn shrink-0">
-            <div className="flex items-center gap-1.5 font-bold text-cyan-300">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{isKu ? 'ڕێنمایی خێرای داخڵکردنی دەرمان:' : isAr ? 'ضوابط الإدخال الدوائي السريع:' : 'Quick Pharma Rules:'}</span>
-            </div>
-            <p className="text-slate-300 leading-snug">
-              {isKu
-                ? '• دەتوانیت دەوڵەتی دروستکەر و ناوی کۆمپانیا و شێوازی دەرمان هەڵبژێریت یان جۆری نوێ زیاد بکەیت. بارکۆدی تایبەت بە 200245 دروست دەکرێت.'
-                : isAr
-                ? '• يمكنك تحديد الدولة المصنعة واسم الشركة المنتجة ورقم التشغيلة (Batch Number)، مع إضافة أشكال دوائية مخصصة وحفظها تلقائياً.'
-                : '• Fill Country of origin, Manufacturer company, Batch number and select/add custom dosage forms.'}
-            </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowGuidance(prev => !prev)}
+            className="px-3 h-8 rounded-lg bg-cyan-950/70 text-cyan-300 hover:bg-cyan-900/80 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Info className="w-3.5 h-3.5 text-cyan-400" />
+            <span>{showGuidance ? (isAr ? 'إخفاء الدليل' : isKu ? 'شاردنەوە' : 'Hide Guide') : (isAr ? 'دليل الإدخال الصيدلاني' : isKu ? 'ڕێنمایی' : 'Pharma Guide')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 hover:text-rose-200 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+            title={isAr ? 'إغلاق النافذة' : 'Close'}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* Guidance Alert (Collapsible) */}
+      {showGuidance && (
+        <div className="mx-4 mt-2 p-2.5 rounded-xl bg-cyan-950/50 border border-cyan-500/40 text-xs text-cyan-200 space-y-1 animate-fadeIn shrink-0 shadow-md">
+          <div className="flex items-center gap-2 font-bold text-cyan-300">
+            <Sparkles className="w-4 h-4" />
+            <span>{isKu ? 'ڕێنمایی خێرای داخڵکردنی دەرمانخانە:' : isAr ? 'ضوابط ونظام الإدخال الصيدلاني والتعبئة:' : 'Pharmacy Data Entry Rules:'}</span>
           </div>
-        )}
+          <p className="text-slate-300 leading-relaxed text-[13px]">
+            {isKu
+              ? '• دەتوانیت جۆری یەکە هەڵبژێریت (باکەت / شیت / کارتۆن) و ژمارەی شیت لەناو باکەت دیاری بکەیت تا سیستەم بە شێوەی ئۆتۆماتیکی قازانج و تێچووی باکەت و شیت حیساب بکات.'
+              : isAr
+              ? '• يدعم النظام وحدات الصيدلية بدقة: اختر الوحدة الأساسية (باكت / علبة / شيت / أمبول / شراب / قرص)، وحدد عدد الباكتات بالكرتونة وعدد الشيتات داخل الباكت، ليقوم النظام باحتساب تكلفة وسعر وربح الباكت والشيت تلقائياً.'
+              : '• Supports pharmacy units: Box, Sheet/Blister, Carton, Ampoule, Syrup. Automatically computes unit cost and blister margins.'}
+          </p>
+        </div>
+      )}
 
-        {/* MAIN FORM BODY */}
-        <form onSubmit={handleSubmit} className="space-y-2.5 pt-1.5">
+      {/* Main Scrollable Form Body */}
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3.5 space-y-3 custom-scrollbar flex flex-col justify-between">
+        <div className="space-y-3">
+          
+          {/* TOP SPLIT ROW: Yellow Region (Pharma details) & Red Region (Batch, Expiry & Alert) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+            
+            {/* 🟡 YELLOW CONTAINER: Pharma & Product Details (البيانات الأساسية للصنف، المادة الفعالة والمصنع) */}
+            <div className="lg:col-span-8 bg-[#0f172a] p-3 rounded-xl border border-yellow-500/40 space-y-2.5 shadow-md flex flex-col justify-between">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <h3 className="text-sm font-black text-yellow-300 flex items-center gap-2">
+                  <Pill className="w-4 h-4 text-yellow-400" />
+                  <span>{isKu ? '١. ناسنامەی دەرمان، دروستکەر و پۆلێن' : isAr ? '1. البيانات الأساسية للصنف، المادة الفعالة والشركة المصنعة' : '1. Product & Medicine Information'}</span>
+                </h3>
+                <span className="text-xs text-yellow-400/80 font-mono font-bold bg-yellow-950/50 px-2 py-0.5 rounded border border-yellow-500/30">
+                  {isAr ? 'تفاصيل المادة الدوائية' : 'Pharma Registry'}
+                </span>
+              </div>
 
-          {/* SECTION 1: BASIC & PHARMA IDENTIFICATION (بيانات الدواء والشركة والمصنع) */}
-          <div className="bg-[#10192d] p-2.5 rounded-xl border border-cyan-500/30 space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1">
-              <h3 className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
-                <Pill className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{isKu ? '١. ناسنامەی دەرمان و دروستکەر (Identification & Manufacturer)' : isAr ? '1. البيانات الأساسية والشركة المصنعة والدولة' : '1. Product & Manufacturer Data'}</span>
-              </h3>
-              <span className="text-[9.5px] text-slate-400 font-mono">Pharma Registry</span>
-            </div>
+              {/* Row 1: Barcode + Trade Name + Scientific Name */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
+                {/* Barcode Field */}
+                <div className="md:col-span-4">
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'بارکۆد' : isAr ? 'الباركود الدولي أو المحلي' : 'Barcode'} <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      required
+                      value={barcode}
+                      onChange={(e) => handleBarcodeChange(e.target.value)}
+                      placeholder="200245..."
+                      className={`w-full bg-[#0a1120] font-mono font-bold h-8 px-2 rounded-lg border focus:outline-none text-xs transition-colors ${
+                        barcodeError || duplicateProduct
+                          ? 'border-rose-500 text-rose-300 bg-rose-950/40 ring-1 ring-rose-500/50'
+                          : 'border-cyan-500/40 text-cyan-300 focus:border-cyan-400'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGenerateBarcode}
+                      className="px-2 h-8 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white rounded-lg text-xs font-bold whitespace-nowrap border border-cyan-400/40 cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 transition-all"
+                      title={isKu ? 'دروستکردنی بارکۆد' : isAr ? 'توليد باركود جديد' : 'Generate barcode'}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
+                      <span>{isKu ? 'تولید' : isAr ? 'توليد' : 'Gen'}</span>
+                    </button>
+                  </div>
+                  {(barcodeError || duplicateProduct) && (
+                    <div className="mt-1 text-xs font-bold text-rose-300 flex items-center gap-1 bg-rose-500/20 p-1 rounded border border-rose-500/40 animate-pulse">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>
+                        {barcodeError || (isKu ? `بۆ کاڵای (${duplicateProduct?.nameKu || duplicateProduct?.nameAr || duplicateProduct?.name}) تۆمارکراوە` : `مستخدم لمادة (${duplicateProduct?.nameAr || duplicateProduct?.name})`)}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-            {/* Row 1: Barcode + Trade Name + Scientific Name */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
-              
-              {/* Barcode Field */}
-              <div className="md:col-span-4">
-                <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'بارکۆد' : isAr ? 'الباركود الدولي أو المحلي' : 'Barcode'} <span className="text-rose-400">*</span>
-                </label>
-                <div className="flex gap-1">
+                {/* Trade Product Name */}
+                <div className="md:col-span-4">
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'ناوی بازرگانی دەرمان' : isAr ? 'الاسم التجاري للمادة الدوائية' : 'Trade Name'} <span className="text-rose-400">*</span>
+                  </label>
                   <input
                     type="text"
                     required
-                    value={barcode}
-                    onChange={(e) => handleBarcodeChange(e.target.value)}
-                    placeholder="200245..."
-                    className={`w-full bg-[#0a1120] font-mono font-bold h-7 px-2 rounded-lg border focus:outline-none text-xs transition-colors ${
-                      barcodeError || duplicateProduct
-                        ? 'border-rose-500 text-rose-300 bg-rose-950/30 ring-1 ring-rose-500/50'
-                        : 'border-cyan-500/30 text-cyan-300 focus:border-cyan-400'
-                    }`}
+                    value={nameAr}
+                    onChange={(e) => setNameAr(e.target.value)}
+                    placeholder={isKu ? 'نموونە: Panadol Extra 500mg' : isAr ? 'مثال: بنادول اكسترا / Amoxil 500' : 'e.g. Panadol Extra 500mg'}
+                    className="w-full bg-[#0a1120] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
                   />
-                  <button
-                    type="button"
-                    onClick={handleGenerateBarcode}
-                    className="px-2 h-7 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white rounded-lg text-[10px] font-bold whitespace-nowrap border border-cyan-400/40 cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
-                    title={isKu ? 'دروستکردنی بارکۆد' : isAr ? 'توليد باركود جديد' : 'Generate barcode'}
-                  >
-                    <Sparkles className="w-3 h-3 text-cyan-200" />
-                    <span>{isKu ? 'تولید' : isAr ? 'توليد' : 'Gen'}</span>
-                  </button>
                 </div>
-                {(barcodeError || duplicateProduct) && (
-                  <div className="mt-1 text-[9px] font-bold text-rose-300 flex items-center gap-1 bg-rose-500/15 p-1 rounded border border-rose-500/40 animate-pulse">
-                    <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                    <span>
-                      {barcodeError || (isKu ? `بۆ کاڵای (${duplicateProduct?.nameKu || duplicateProduct?.nameAr || duplicateProduct?.name}) تۆمارکراوە` : `مستخدم لمادة (${duplicateProduct?.nameAr || duplicateProduct?.name})`)}
-                    </span>
-                  </div>
-                )}
+
+                {/* Scientific Name (Active Ingredient) */}
+                <div className="md:col-span-4">
+                  <label className="text-emerald-300 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'ناوی زانستی (Active Ingredient)' : isAr ? 'الاسم العلمي والمادة الفعالة' : 'Scientific Name'} <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={scientificName}
+                    onChange={(e) => setScientificName(e.target.value)}
+                    placeholder={isKu ? 'Paracetamol + Caffeine' : isAr ? 'مثال: Paracetamol + Caffeine' : 'e.g. Paracetamol + Caffeine'}
+                    className="w-full bg-[#0a1120] text-emerald-300 font-mono h-8 px-2.5 rounded-lg border border-emerald-500/40 focus:outline-none focus:border-emerald-400 text-xs font-semibold"
+                  />
+                </div>
               </div>
 
-              {/* Trade Product Name */}
-              <div className="md:col-span-4">
-                <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'ناوی بازرگانی دەرمان' : isAr ? 'الاسم التجاري للمادة الدوائية' : 'Trade Name'} <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={nameAr}
-                  onChange={(e) => setNameAr(e.target.value)}
-                  placeholder={isKu ? 'نموونە: Panadol Extra 500mg' : isAr ? 'مثال: بنادول اكسترا / Amoxil 500' : 'e.g. Panadol Extra 500mg'}
-                  className="w-full bg-[#0a1120] text-slate-100 h-7 px-2 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
-                />
-              </div>
-
-              {/* Scientific Name (Active Ingredient) */}
-              <div className="md:col-span-4">
-                <label className="text-cyan-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'ناوی زانستی (Active Ingredient)' : isAr ? 'الاسم العلمي والمادة الفعالة' : 'Scientific Name'} <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={scientificName}
-                  onChange={(e) => setScientificName(e.target.value)}
-                  placeholder={isKu ? 'Paracetamol + Caffeine' : isAr ? 'مثال: Paracetamol + Caffeine' : 'e.g. Paracetamol + Caffeine'}
-                  className="w-full bg-[#0a1120] text-emerald-300 font-mono h-7 px-2 rounded-lg border border-emerald-500/40 focus:outline-none focus:border-emerald-400 text-xs"
-                />
-              </div>
-
-            </div>
-
-            {/* Row 2: Country of Origin + Manufacturer Name + Dosage Form + Pharma Category */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 pt-0.5 items-start">
-              
-              {/* 🌍 الدولة المصنعة للدواء (Country of Origin) */}
-              <div className="md:col-span-3">
-                <label className="text-cyan-300 mb-0.5 block font-bold text-[10px] flex items-center gap-1">
-                  <Globe className="w-3 h-3 text-cyan-400" />
-                  <span>{isKu ? 'دەوڵەتی دروستکەر' : isAr ? 'الدولة المصنعة للدواء' : 'Country of Origin'}</span>
-                </label>
-                <div className="relative">
+              {/* Row 2: Origin + Manufacturer + Dosage Form + Pharma Category */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 items-start">
+                {/* 🌍 الدولة المصنعة للدواء (Country of Origin) */}
+                <div>
+                  <label className="text-cyan-200 mb-1 block font-bold text-[14px] flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{isKu ? 'دەوڵەتی دروستکەر' : isAr ? 'الدولة المصنعة للدواء' : 'Origin'}</span>
+                  </label>
                   <input
                     type="text"
                     list="countries-datalist"
                     value={countryOfOrigin}
                     onChange={(e) => setCountryOfOrigin(e.target.value)}
-                    placeholder={isKu ? 'نموونە: عێراق، تورکیا، ئەڵمانیا' : isAr ? 'مثال: العراق، تركيا، ألمانيا' : 'e.g. Iraq, Germany, UK'}
-                    className="w-full bg-[#0a1120] text-slate-100 h-7 px-2 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
+                    placeholder={isKu ? 'عێراق، تورکیا...' : isAr ? 'العراق، تركيا...' : 'Origin'}
+                    className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
                   />
                   <datalist id="countries-datalist">
                     {DEFAULT_ORIGIN_COUNTRIES.map(c => (
@@ -768,22 +775,20 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     ))}
                   </datalist>
                 </div>
-              </div>
 
-              {/* 🏢 اسم الشركة المصنعة (Manufacturer) */}
-              <div className="md:col-span-3">
-                <label className="text-cyan-300 mb-0.5 block font-bold text-[10px] flex items-center gap-1">
-                  <Building2 className="w-3 h-3 text-cyan-400" />
-                  <span>{isKu ? 'ناوی کۆمپانیای دروستکەر' : isAr ? 'اسم الشركة المصنعة' : 'Manufacturer Name'}</span>
-                </label>
-                <div className="relative">
+                {/* 🏢 اسم الشركة المصنعة (Manufacturer) */}
+                <div>
+                  <label className="text-cyan-200 mb-1 block font-bold text-[14px] flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{isKu ? 'کۆمپانیای دروستکەر' : isAr ? 'الشركة المصنعة' : 'Manufacturer'}</span>
+                  </label>
                   <input
                     type="text"
                     list="manufacturers-datalist"
                     value={manufacturer}
                     onChange={(e) => setManufacturer(e.target.value)}
-                    placeholder={isKu ? 'نموونە: SDI Samarra / Pioneer' : isAr ? 'مثال: سامراء SDI / Pioneer / Hikma' : 'e.g. SDI Samarra / Hikma'}
-                    className="w-full bg-[#0a1120] text-slate-100 h-7 px-2 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
+                    placeholder={isKu ? 'سامراء SDI / Pioneer' : isAr ? 'سامراء SDI / Pioneer' : 'Manufacturer'}
+                    className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
                   />
                   <datalist id="manufacturers-datalist">
                     {DEFAULT_MANUFACTURERS.map(m => (
@@ -791,471 +796,491 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     ))}
                   </datalist>
                 </div>
-              </div>
 
-              {/* 💊 الشكل الدوائي (Dosage Form) with Add Custom Option */}
-              <div className="md:col-span-3">
-                <div className="flex items-center justify-between mb-0.5">
-                  <label className="text-slate-300 font-bold text-[10px] flex items-center gap-1">
-                    <Pill className="w-3 h-3 text-cyan-400" />
-                    <span>{isKu ? 'شێوەی دەرمان' : isAr ? 'الشكل الدوائي' : 'Dosage Form'}</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddDosageModal(true)}
-                    className="text-[9px] text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1 rounded border border-cyan-500/40"
-                    title={isAr ? 'إضافة شكل دوائي جديد للقائمة' : isKu ? 'زیادکردنی شێوەی نوێ' : 'Add new dosage form'}
+                {/* 💊 الشكل الدوائي (Dosage Form) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-200 font-bold text-[14px] flex items-center gap-1">
+                      <Pill className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>{isKu ? 'شێوەی دەرمان' : isAr ? 'الشكل الدوائي' : 'Dosage'}</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddDosageModal(true)}
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-500/40"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAr ? 'جديد' : 'New'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={dosageForm}
+                    onChange={(e) => setDosageForm(e.target.value)}
+                    className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold cursor-pointer"
                   >
-                    <Plus className="w-2.5 h-2.5" />
-                    <span>{isAr ? 'جديد' : isKu ? 'نوێ' : 'New'}</span>
-                  </button>
+                    {dosageFormsList.map(form => (
+                      <option key={form} value={form}>{form}</option>
+                    ))}
+                  </select>
                 </div>
-                <select
-                  value={dosageForm}
-                  onChange={(e) => setDosageForm(e.target.value)}
-                  className="w-full bg-[#0a1120] text-slate-100 h-7 px-1.5 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs font-semibold cursor-pointer"
-                >
-                  {dosageFormsList.map(form => (
-                    <option key={form} value={form}>{form}</option>
-                  ))}
-                </select>
-              </div>
 
-              {/* Pharma Classification (OTC / Rx / Controlled / Supplies) */}
-              <div className="md:col-span-3">
-                <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'پۆلێن و کۆدی دەرمان' : isAr ? 'الفئة والترميز الدوائي' : 'Pharma Classification'}
-                </label>
-                <select
-                  value={pharmaCategory}
-                  onChange={(e) => setPharmaCategory(e.target.value as any)}
-                  className="w-full bg-[#0a1120] text-slate-100 h-7 px-1.5 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs font-bold"
-                >
-                  <option value="OTC">{isKu ? 'OTC - بێ ڕەچەتە' : isAr ? 'OTC - أدوية بدون وصفة' : 'OTC - Over The Counter'}</option>
-                  <option value="Rx">{isKu ? 'Rx - بە ڕەچەتەی پزیشک' : isAr ? 'Rx - أدوية بوصفة طبية' : 'Rx - Prescription Only'}</option>
-                  <option value="Controlled">{isKu ? 'Controlled - چاودێریکراو' : isAr ? 'Controlled - أدوية مراقبة' : 'Controlled Medicine'}</option>
-                  <option value="Supplies">{isKu ? 'Supplies - پێداویستی پزیشکی' : isAr ? 'Supplies - مستلزمات طبية' : 'Medical Supplies'}</option>
-                  <option value="Cosmetics">{isKu ? 'Cosmetics - چاودێری و جوانکاری' : isAr ? 'Cosmetics - عناية وتجميل' : 'Cosmetics'}</option>
-                </select>
-              </div>
-
-            </div>
-
-            {/* Row 3: Pharmacy Category + Supplier */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 pt-0.5 items-start">
-              <div className="md:col-span-6">
-                <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'پۆلێنی ناو دەرمانخانە' : isAr ? 'التصنيف الدوائي بالصيدلية' : 'Pharmacy Category'}
-                </label>
-                <select
-                  value={categoryAr}
-                  onChange={(e) => setCategoryAr(e.target.value)}
-                  className="w-full bg-[#0a1120] text-slate-200 h-7 px-2 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
-                >
-                  {categoriesList.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {getCategoryName(cat, lang)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-6">
-                <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'کۆگای دەرمان / کۆمپانیای دابینکەر' : isAr ? 'مذخر الأدوية / الشركة الموردة' : 'Supplier / Drug Store'}
-                </label>
-                <input
-                  type="text"
-                  list="suppliers-datalist"
-                  value={supplierDelegate}
-                  onChange={(e) => setSupplierDelegate(e.target.value)}
-                  placeholder={isKu ? 'ناوی کۆگا یان کۆمپانیا' : isAr ? 'اسم المذخر أو الشركة' : 'Drug store or supplier'}
-                  className="w-full bg-[#0a1120] text-slate-200 h-7 px-2 rounded-lg border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-xs"
-                />
-                <datalist id="suppliers-datalist">
-                  {suppliers.map(s => (
-                    <React.Fragment key={s.id}>
-                      <option value={s.nameAr} />
-                      <option value={s.name} />
-                      <option value={s.contactPerson} />
-                    </React.Fragment>
-                  ))}
-                </datalist>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 2: BATCH & EXPIRY SYSTEM (التشغيلات والتواريخ والباج نمبر) */}
-          <div className="bg-[#10192d] p-2.5 rounded-xl border border-amber-500/30 space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1 flex-wrap gap-2">
-              <h3 className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isKu ? '٢. وەجبەکان و بەرواری بەسەرچوون (Batch & Expiry)' : isAr ? '2. رقم التشغيلة (Batch No) وتاريخ الصلاحية والتنبيه' : '2. Batch & Expiry Dates'}</span>
-              </h3>
-              {expiryStatusInfo && (
-                <div className={`p-0.5 px-2 rounded-lg border text-[10px] font-bold flex items-center gap-1 ${expiryStatusInfo.color}`}>
-                  <ShieldAlert className="w-3 h-3 shrink-0" />
-                  <span>{expiryStatusInfo.label}</span>
+                {/* Pharma Classification */}
+                <div>
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'پۆلێن و کۆد' : isAr ? 'الفئة والترميز الدوائي' : 'Pharma Class'}
+                  </label>
+                  <select
+                    value={pharmaCategory}
+                    onChange={(e) => setPharmaCategory(e.target.value as any)}
+                    className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-bold cursor-pointer"
+                  >
+                    <option value="OTC">OTC - بدون وصفة (مباشر)</option>
+                    <option value="Rx">Rx - بوصفة طبية فقط</option>
+                    <option value="Controlled">Controlled - أدوية مراقبة</option>
+                    <option value="Supplies">Supplies - مستلزمات طبية</option>
+                    <option value="Cosmetics">Cosmetics - عناية وتجميل</option>
+                  </select>
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-              {/* 1. Batch Number / رقم التشغيلة */}
-              <div className="md:col-span-5">
-                <label className="text-amber-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'ژمارەی وەجبە (Batch No)' : isAr ? 'رقم التشغيلة / الوجبة (Batch Number)' : 'Batch Number'} <span className="text-rose-400">*</span>
-                </label>
-                <div className="flex gap-1">
+              {/* Row 3: Category + Supplier + Storage & Shelf */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 items-start">
+                {/* Pharmacy Category */}
+                <div>
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'پۆلێنی ناو دەرمانخانە' : isAr ? 'التصنيف والقسم بالصيدلية' : 'Category'}
+                  </label>
+                  <select
+                    value={categoryAr}
+                    onChange={(e) => setCategoryAr(e.target.value)}
+                    className="w-full bg-[#0a1120] text-slate-200 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
+                  >
+                    {categoriesList.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {getCategoryName(cat, lang)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Supplier / Drug Store */}
+                <div>
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'کۆگای دەرمان / دابینکەر' : isAr ? 'مذخر الأدوية / المورد المعتمد' : 'Supplier'}
+                  </label>
                   <input
                     type="text"
-                    required
-                    value={batchNumber}
-                    onChange={(e) => setBatchNumber(e.target.value)}
-                    placeholder="BATCH-2026-X01"
-                    className="w-full bg-[#0a1120] text-amber-300 font-mono font-bold h-7 px-2 rounded-lg border border-amber-500/30 focus:outline-none focus:border-amber-400 text-xs"
+                    list="suppliers-datalist"
+                    value={supplierDelegate}
+                    onChange={(e) => setSupplierDelegate(e.target.value)}
+                    placeholder={isKu ? 'ناوی کۆگا یان کۆمپانیا' : isAr ? 'اسم المذخر أو شركة التوزيع' : 'Supplier'}
+                    className="w-full bg-[#0a1120] text-slate-200 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
                   />
-                  <button
-                    type="button"
-                    onClick={handleGenerateBatch}
-                    className="px-2 h-7 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-[10px] font-bold whitespace-nowrap border border-slate-700 cursor-pointer active:scale-95 transition-colors"
+                  <datalist id="suppliers-datalist">
+                    {suppliers.map(s => (
+                      <React.Fragment key={s.id}>
+                        <option value={s.nameAr} />
+                        <option value={s.name} />
+                        <option value={s.contactPerson} />
+                      </React.Fragment>
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* Storage condition */}
+                <div>
+                  <label className="text-purple-200 mb-1 block font-bold text-[14px] flex items-center gap-1">
+                    <Thermometer className="w-3.5 h-3.5 text-purple-400" />
+                    <span>{isKu ? 'پلەی گەرمی' : isAr ? 'شروط الحفظ والتخزين' : 'Storage'}</span>
+                  </label>
+                  <select
+                    value={storageCondition}
+                    onChange={(e) => setStorageCondition(e.target.value)}
+                    className="w-full bg-[#0a1120] text-purple-300 h-8 px-1.5 rounded-lg border border-purple-500/40 focus:outline-none text-xs font-bold cursor-pointer"
                   >
-                    {isKu ? 'وەجبەی نوێ' : isAr ? 'توليد باج' : 'New Batch'}
-                  </button>
+                    <option value="room_temp">🌡️ حرارة الغرفة (أقل من 25°C)</option>
+                    <option value="refrigerator">❄️ ثلاجة أدوية (2°C - 8°C)</option>
+                    <option value="protect_light">🌙 بعيداً عن الضوء والرطوبة</option>
+                    <option value="cool_dry">🌬️ مكان بارد وجاف (&lt;20°C)</option>
+                    <option value="freezer">🧊 مجمدة طبية (&lt;0°C)</option>
+                  </select>
+                </div>
+
+                {/* Shelf Location */}
+                <div>
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px] flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{isKu ? 'شوێنی ڕەفە' : isAr ? 'مكان الرف بالصيدلية' : 'Shelf Location'}</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={storageLocation}
+                    onChange={(e) => setStorageLocation(e.target.value)}
+                    placeholder={isKu ? 'ڕەف A-03' : isAr ? 'رف A-03 / خزانة' : 'Shelf A-03'}
+                    className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
+                  />
                 </div>
               </div>
 
-              {/* 2. Expiry Date / تاريخ انقضاء الصلاحية */}
-              <div className="md:col-span-4">
-                <label className="text-amber-300 mb-0.5 block font-bold text-[10px]">
-                  {isKu ? 'بەرواری بەسەرچوون (ڕۆژ/مانگ/ساڵ)' : isAr ? 'تاريخ انقضاء الصلاحية (يوم/شهر/سنة)' : 'Expiry Date (DD/MM/YYYY)'} <span className="text-rose-400">*</span>
-                </label>
-                <DatePickerDDMMYYYY
-                  value={expiryDate}
-                  onChange={(dStr) => setExpiryDate(dStr)}
-                  lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
-                />
+            </div>
+
+            {/* 🔴 RED CONTAINER: Batch, Expiry & Alert (رقم التشغيلة، تاريخ الصلاحية والتنبيه المبكر) */}
+            <div className="lg:col-span-4 bg-[#0f172a] p-3 rounded-xl border border-rose-500/40 space-y-2.5 shadow-md flex flex-col justify-between">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <h3 className="text-sm font-black text-rose-300 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-rose-400" />
+                  <span>{isKu ? '٢. وەجبە و بەرواری بەسەرچوون' : isAr ? '2. التشغيلة وتاريخ الصلاحية والتنبيه' : '2. Batch & Expiry System'}</span>
+                </h3>
+                {expiryStatusInfo && (
+                  <div className={`py-0.5 px-2 rounded-md border text-[11px] font-bold flex items-center gap-1 ${expiryStatusInfo.color}`}>
+                    <ShieldAlert className="w-3 h-3 shrink-0" />
+                    <span>{expiryStatusInfo.label}</span>
+                  </div>
+                )}
               </div>
 
-              {/* 3. Alert Threshold / مدة التنبيه المبكر */}
-              <div className="md:col-span-3">
-                <label className="text-slate-300 mb-0.5 block font-bold text-[10px] whitespace-nowrap">
-                  {isKu ? 'ئاگاداری پێشوەختە (مانگ)' : isAr ? 'مدة التنبيه المبكر (بالأشهر)' : 'Alert (Months)'}
-                </label>
-                <div className="flex items-center gap-1 bg-[#0a1120] border border-amber-500/30 rounded-lg px-2 h-7 focus-within:border-amber-400">
-                  <input
-                    type="number"
-                    min="1"
-                    max="36"
-                    value={expiryAlertMonths}
-                    onChange={(e) => setExpiryAlertMonths(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full bg-transparent text-amber-300 font-mono font-bold text-xs text-center focus:outline-none"
-                    placeholder="6"
+              <div className="space-y-2 flex-1 flex flex-col justify-around">
+                {/* 1. Batch Number / رقم التشغيلة */}
+                <div>
+                  <label className="text-amber-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'ژمارەی وەجبە (Batch No)' : isAr ? 'رقم التشغيلة / الوجبة (Batch Number)' : 'Batch Number'} <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      required
+                      value={batchNumber}
+                      onChange={(e) => setBatchNumber(e.target.value)}
+                      placeholder="BATCH-2026-X01"
+                      className="w-full bg-[#0a1120] text-amber-300 font-mono font-bold h-8 px-2.5 rounded-lg border border-amber-500/40 focus:outline-none focus:border-amber-400 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGenerateBatch}
+                      className="px-2.5 h-8 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-xs font-bold whitespace-nowrap border border-slate-700 cursor-pointer active:scale-95 transition-colors"
+                      title={isAr ? 'توليد رقم تشغيلة تلقائي' : 'Gen Batch'}
+                    >
+                      {isKu ? 'وەجبەی نوێ' : isAr ? 'توليد باج' : 'Gen'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Expiry Date / تاريخ انقضاء الصلاحية */}
+                <div>
+                  <label className="text-amber-200 mb-1 block font-bold text-[14px]">
+                    {isKu ? 'بەرواری بەسەرچوون (ڕۆژ/مانگ/ساڵ)' : isAr ? 'تاريخ انتهاء الصلاحية (يوم/شهر/سنة)' : 'Expiry Date (DD/MM/YYYY)'} <span className="text-rose-400">*</span>
+                  </label>
+                  <DatePickerDDMMYYYY
+                    value={expiryDate}
+                    onChange={(dStr) => setExpiryDate(dStr)}
+                    lang={isAr ? 'ar' : isKu ? 'ku' : 'en'}
                   />
-                  <span className="text-[10px] text-slate-400 font-bold shrink-0">{isKu ? 'مانگ' : isAr ? 'أشهر' : 'mo'}</span>
+                </div>
+
+                {/* 3. Alert Threshold / مدة التنبيه المبكر */}
+                <div>
+                  <label className="text-slate-200 mb-1 block font-bold text-[14px] whitespace-nowrap">
+                    {isKu ? 'ئاگاداری پێشوەختە (مانگ)' : isAr ? 'مدة التنبيه المبكر قبل الانتهاء (بالأشهر)' : 'Alert Before (Months)'}
+                  </label>
+                  <div className="flex items-center gap-1 bg-[#0a1120] border border-amber-500/40 rounded-lg px-2.5 h-8 focus-within:border-amber-400">
+                    <input
+                      type="number"
+                      min="1"
+                      max="36"
+                      value={expiryAlertMonths}
+                      onChange={(e) => setExpiryAlertMonths(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full bg-transparent text-amber-300 font-mono font-bold text-xs text-center focus:outline-none"
+                      placeholder="6"
+                    />
+                    <span className="text-xs text-slate-400 font-bold shrink-0">{isKu ? 'مانگ' : isAr ? 'أشهر' : 'mo'}</span>
+                  </div>
                 </div>
               </div>
             </div>
+
           </div>
 
-          {/* SECTION 3: QUANTITIES & PURCHASING (الكميات والتعبئة والتكلفة) */}
-          <div className="bg-[#10192d] p-2.5 rounded-xl border border-cyan-500/30 space-y-2">
-            <h3 className="text-xs font-black text-cyan-300 flex items-center gap-1.5 border-b border-slate-800 pb-1">
-              <Boxes className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{isKu ? '٣. بڕی قوتووەکان، کارتۆن و تێچوو' : isAr ? '3. كميات العلب والتعبئة بالكرتون والتكلفة' : '3. Quantities, Packaging & Cost'}</span>
-            </h3>
+          {/* 🟢 GREEN CONTAINER: Full-Width Quantities, Packaging Units, Selling Prices & Real-Time Profits */}
+          <div className="bg-[#0f172a] p-3 rounded-xl border border-emerald-500/40 space-y-2.5 shadow-md">
+            
+            {/* Header with Base Unit Selector */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 flex-wrap gap-2">
+              <h3 className="text-sm font-black text-emerald-300 flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-emerald-400" />
+                <span>{isKu ? '٣. ژمارە و بڕی دەرمان، نرخەکان و قازانج (باکەت / شیت)' : isAr ? '3. إدخال الأعداد، أسعار الشراء والبيع واحتساب الأرباح (باكت / شيت)' : '3. Quantities, Pricing & Margins (Box / Sheet)'}</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-300 font-bold">{isAr ? 'الوحدة الأساسية:' : 'Base Unit:'}</span>
+                <select
+                  value={pharmacyUnit}
+                  onChange={(e) => setPharmacyUnit(e.target.value)}
+                  className="bg-[#0a1120] text-cyan-300 border border-cyan-500/50 rounded-lg px-2.5 h-7 text-xs font-bold cursor-pointer focus:outline-none"
+                >
+                  <option value="باكت">باكت (Packet/Box)</option>
+                  <option value="شيت">شيت / شريط (Sheet/Blister)</option>
+                  <option value="علبة">علبة (Box)</option>
+                  <option value="أمبول">أمبول / فيال (Ampoule/Vial)</option>
+                  <option value="شراب">شراب / زجاجة (Syrup/Bottle)</option>
+                  <option value="قرص">قرص / كبسولة (Tablet/Capsule)</option>
+                  <option value="أنبوب">أنبوب / مرهم (Tube/Ointment)</option>
+                  <option value="كرتونة">كرتونة / شدة (Carton/Master)</option>
+                  <option value="كيس">كيس / ساشيت (Sachet)</option>
+                  <option value="بخاخ">بخاخ / قطرة (Spray/Drops)</option>
+                </select>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center">
+            {/* ROW 1: 5 INPUT FIELDS (باكت, شيت, سعر شراء الباكت, سعر بيع الباكت, سعر بيع الشيت) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 items-end">
+              {/* 1. باكت (عدد الباكتات / الكمية) */}
               <div>
-                <label className="text-slate-300 mb-0.5 block text-[10px] font-semibold">
-                  {isKu ? 'کارتۆنەکان' : isAr ? 'الكراتين / الشدات' : 'Cartons'}
+                <label className="text-emerald-300 mb-1 block text-[14px] font-black">
+                  {isKu ? 'باکەت (ژمارەی باکەت)' : isAr ? 'باكت (عدد الباكتات / الكمية)' : 'Box / Packets'} <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="number"
                   min="0"
-                  value={cartonsCount}
+                  placeholder="0"
+                  value={packetsCount}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setCartonsCount(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[#0a1120] text-white font-bold h-7 px-2 text-center rounded-lg border border-cyan-500/30 text-xs"
+                  onChange={(e) => setPacketsCount(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-[#0a1120] text-emerald-400 font-black h-8 px-2 text-center rounded-lg border border-emerald-500/40 text-xs focus:outline-none focus:border-emerald-300"
                 />
               </div>
 
+              {/* 2. شيت (عدد الشيتات داخل الباكت) */}
               <div>
-                <label className="text-slate-300 mb-0.5 block text-[10px] font-semibold">
-                  {isKu ? 'قوتوو / کارتۆن' : isAr ? 'علب / كرتونة' : 'Boxes/Carton'}
+                <label className="text-cyan-300 mb-1 block text-[14px] font-black">
+                  {isKu ? 'شیت (ژمارەی شیت لە باکەت)' : isAr ? 'شيت (عدد الشيت بالباكت)' : 'Sheets / Box'} <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="number"
                   min="1"
-                  value={unitsPerCarton}
+                  placeholder="2"
+                  value={blistersPerBox}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setUnitsPerCarton(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[#0a1120] text-white font-bold h-7 px-2 text-center rounded-lg border border-cyan-500/30 text-xs"
+                  onChange={(e) => setBlistersPerBox(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-[#0a1120] text-cyan-300 font-black h-8 px-2 text-center rounded-lg border border-cyan-500/50 text-xs focus:outline-none focus:border-cyan-300"
                 />
               </div>
 
-              <div className="bg-cyan-950/60 border border-cyan-500/40 h-10 px-2 rounded-lg text-center flex flex-col justify-center">
-                <span className="text-slate-400 text-[8.5px] font-semibold">
-                  {isKu ? 'کۆی گشتی قوتووەکان' : isAr ? 'مجموع العلب' : 'Total Boxes'}
-                </span>
-                <span className="text-xs font-black text-cyan-300 font-mono">
-                  {totalUnits} <span className="text-[9px] font-normal text-slate-400">{isKu ? 'قوتوو' : isAr ? 'علبة' : 'bxs'}</span>
-                </span>
-              </div>
-
+              {/* 3. سعر شراء الباكت */}
               <div>
-                <label className="text-slate-300 mb-0.5 block text-[10px] font-semibold">
-                  {isKu ? 'تێچووی کڕینی کارتۆن' : isAr ? 'شراء الكرتون' : 'Carton Cost'} ({currencySymbol})
+                <label className="text-amber-200 mb-1 block text-[14px] font-bold">
+                  {isKu ? 'کڕینی باکەت' : isAr ? 'سعر شراء الباكت' : 'Box Cost'} ({currencySymbol})
                 </label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={cartonPurchasePrice}
+                  placeholder="0.00"
+                  value={purchasePrice}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setCartonPurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[#0a1120] text-amber-300 font-bold h-7 px-2 text-center rounded-lg border border-amber-500/30 text-xs"
+                  onChange={(e) => setPurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-[#0a1120] text-amber-300 font-bold h-8 px-2 text-center rounded-lg border border-amber-500/40 text-xs focus:outline-none focus:border-amber-300"
                 />
               </div>
+
+              {/* 4. سعر بيع الباكت للزبون */}
+              <div>
+                <label className="text-emerald-300 mb-1 block font-bold text-[14px]">
+                  {isKu ? 'فرۆشتنی باکەت' : isAr ? 'سعر بيع الباكت' : 'Box Sale Price'} ({currencySymbol}) <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  placeholder="0.00"
+                  value={singleRetailPrice}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => setSingleRetailBlurred(true)}
+                  onChange={(e) => setSingleRetailPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className={`w-full font-bold h-8 px-2.5 text-center rounded-lg text-xs transition-all focus:outline-none ${
+                    isSingleRetailBelowCost && singleRetailBlurred
+                      ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
+                      : 'bg-[#0a1120] text-emerald-400 border border-emerald-500/40 focus:border-emerald-400'
+                  }`}
+                />
+                {isSingleRetailBelowCost && singleRetailBlurred && (
+                  <div className="mt-1 p-1 rounded bg-rose-500/25 border border-rose-500/50 text-[11px] font-bold text-rose-300 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>{isAr ? `أقل من التكلفة (${formatNumber(costPerUnit)})!` : `Below cost!`}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. سعر بيع الشيت / الشريط */}
+              <div>
+                <label className="text-cyan-200 mb-1 block font-bold text-[14px]">
+                  {isKu ? 'فرۆشتنی شیت (شریت)' : isAr ? 'سعر بيع الشيت' : 'Sheet Sale Price'} ({currencySymbol})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={costPerBlister > 0 ? (costPerBlister * 1.3).toFixed(2) : '0.00'}
+                  value={blisterPrice}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => setBlisterPriceBlurred(true)}
+                  onChange={(e) => setBlisterPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className={`w-full font-bold h-8 px-2.5 text-center rounded-lg text-xs transition-all focus:outline-none ${
+                    isBlisterPriceBelowCost && blisterPriceBlurred
+                      ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
+                      : 'bg-[#0a1120] text-cyan-300 border border-cyan-500/40 focus:border-cyan-400'
+                  }`}
+                />
+                {isBlisterPriceBelowCost && blisterPriceBlurred && (
+                  <div className="mt-1 p-1 rounded bg-rose-500/25 border border-rose-500/50 text-[11px] font-bold text-rose-300 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>{isAr ? `أقل من تكلفة الشيت (${formatNumber(costPerBlister)})!` : `Below sheet cost!`}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between p-1 px-2.5 rounded-lg bg-amber-950/40 border border-amber-500/30 text-[10.5px]">
-              <span className="text-slate-300 font-semibold">
-                {isKu ? 'تێچووی حیسابکراوی یەک قوتوو:' : isAr ? 'تكلفة شراء العلبة الواحدة (تلقائي):' : 'Calculated Unit Box Cost:'}
-              </span>
-              <span className="text-xs font-black text-amber-400 font-mono">
-                {currencySymbol} {formatNumber(costPerUnit)}
-              </span>
-            </div>
-          </div>
+            {/* ROW 2: AUTOMATIC METRICS & REAL-TIME PROFIT DISPLAY CARDS */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
+              {/* 1. تكلفة الشيت التلقائية */}
+              <div className="bg-[#070e1c] p-2 rounded-xl border border-cyan-500/30 flex flex-col justify-center items-center text-center">
+                <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
+                  {isKu ? 'تێچووی شیت' : isAr ? 'تكلفة الشيت التلقائية' : 'Sheet Cost'}
+                </span>
+                <span className="text-xs font-black text-cyan-300 font-mono">
+                  {currencySymbol} {formatNumber(costPerBlister)}
+                </span>
+              </div>
 
-          {/* SECTION 4: SELLING PRICES & PROFIT CALCULATIONS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div>
-              <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                {isKu ? 'نرخی فرۆشتنی تاک (بە کڕیار)' : isAr ? 'سعر بيع العلبة (مفرد للزبون)' : 'Retail Box Price'} ({currencySymbol}) <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={singleRetailPrice}
-                onFocus={(e) => e.target.select()}
-                onBlur={() => setSingleRetailBlurred(true)}
-                onChange={(e) => setSingleRetailPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                className={`w-full font-bold h-7 px-2 text-center rounded-lg text-xs transition-all focus:outline-none ${
-                  isSingleRetailBelowCost && singleRetailBlurred
-                    ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
-                    : 'bg-[#10192d] text-emerald-400 border border-emerald-500/40 focus:border-emerald-400'
-                }`}
-              />
-              {isSingleRetailBelowCost && singleRetailBlurred && (
-                <div className="mt-1 p-0.5 px-1 rounded bg-rose-500/20 border border-rose-500/50 text-[9px] font-bold text-rose-300 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                  <span>{isAr ? `أقل من التكلفة (${formatNumber(costPerUnit)})!` : `Below cost!`}</span>
-                </div>
-              )}
-            </div>
+              {/* 2. إجمالي المخزون */}
+              <div className="bg-[#070e1c] p-2 rounded-xl border border-blue-500/30 flex flex-col justify-center items-center text-center">
+                <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
+                  {isKu ? 'کۆی کۆگا' : isAr ? 'إجمالي المخزون' : 'Total Stock'}
+                </span>
+                <span className="text-xs font-black text-blue-300 font-mono">
+                  {totalUnits} <span className="text-[11px] text-slate-300 font-normal">{pharmacyUnit}</span>
+                  {numBlistersPerBox > 1 && (
+                    <span className="text-[11px] text-amber-300 font-bold mr-1">({totalBlisters} شيت)</span>
+                  )}
+                </span>
+              </div>
 
-            <div>
-              <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                {isKu ? 'نرخی فرۆشتنی کۆ' : isAr ? 'سعر بيع العلبة (بالجملة)' : 'Wholesale Box Price'} ({currencySymbol})
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={wholesalePrice}
-                onFocus={(e) => e.target.select()}
-                onBlur={() => setWholesaleBlurred(true)}
-                onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                className={`w-full font-bold h-7 px-2 text-center rounded-lg text-xs transition-all focus:outline-none ${
-                  isWholesaleBelowCost && wholesaleBlurred
-                    ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
-                    : 'bg-[#10192d] text-cyan-300 border border-cyan-500/30 focus:border-cyan-400'
-                }`}
-              />
-            </div>
-
-            <div>
-              <label className="text-slate-300 mb-0.5 block font-bold text-[10px]">
-                {isKu ? 'نرخی فرۆشتنی کارتۆنی تەواو' : isAr ? 'سعر بيع الكرتون الكامل' : 'Carton Selling Price'} ({currencySymbol})
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={cartonSellingPrice}
-                onFocus={(e) => e.target.select()}
-                onBlur={() => setCartonSellBlurred(true)}
-                onChange={(e) => setCartonSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                className={`w-full font-bold h-7 px-2 text-center rounded-lg text-xs transition-all focus:outline-none ${
-                  isCartonSellBelowCost && cartonSellBlurred
-                    ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
-                    : 'bg-[#10192d] text-purple-300 border border-purple-500/30 focus:border-purple-400'
-                }`}
-              />
-            </div>
-          </div>
-
-          {/* THREE AUTOMATIC PROFIT CARDS */}
-          <div className="bg-[#0b1324] p-1.5 rounded-xl border border-emerald-500/30 space-y-1">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-0.5">
-              <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400">
-                <Sparkles className="w-3 h-3 text-emerald-400" />
-                {isKu ? 'قازانجی حیسابکراو:' : isAr ? 'الأرباح المحسوبة تلقائياً:' : 'Profit Margins:'}
-              </span>
-              <span className="text-[9px] text-slate-400 font-mono">Real-time Margins</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-              <div className="bg-[#050810] p-1 rounded-lg border border-emerald-500/20 text-center">
-                <span className="text-[9px] text-slate-400 font-semibold block">
-                  {isKu ? 'قازانجی تاک' : isAr ? 'ربح المفرد' : 'Single Profit'}
+              {/* 3. صافي ربح الباكت */}
+              <div className="bg-[#070e1c] p-2 rounded-xl border border-emerald-500/30 flex flex-col justify-center items-center text-center">
+                <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
+                  {isKu ? 'قازانجی باکەت' : isAr ? 'صافي ربح الباكت' : 'Box Profit'}
                 </span>
                 <span className={`text-xs font-black font-mono block ${singleProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {currencySymbol}{formatNumber(singleProfit)}
+                  {currencySymbol} {formatNumber(singleProfit)}
+                  {singleProfit > 0 && costPerUnit > 0 && (
+                    <span className="text-[10px] text-emerald-300/80 mr-1 font-normal">({packetProfitPercent}%)</span>
+                  )}
                 </span>
               </div>
 
-              <div className="bg-[#050810] p-1 rounded-lg border border-cyan-500/20 text-center">
-                <span className="text-[9px] text-slate-400 font-semibold block">
-                  {isKu ? 'قازانجی کۆ' : isAr ? 'ربح الجملة' : 'WS Profit'}
+              {/* 4. صافي ربح الشيت */}
+              <div className="bg-[#070e1c] p-2 rounded-xl border border-cyan-500/30 flex flex-col justify-center items-center text-center">
+                <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
+                  {isKu ? 'قازانجی شیت' : isAr ? 'صافي ربح الشيت' : 'Sheet Profit'}
                 </span>
-                <span className={`text-xs font-black font-mono block ${wholesaleProfit >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-                  {currencySymbol}{formatNumber(wholesaleProfit)}
-                </span>
-              </div>
-
-              <div className="bg-[#050810] p-1 rounded-lg border border-purple-500/20 text-center">
-                <span className="text-[9px] text-slate-400 font-semibold block">
-                  {isKu ? 'قازانجی کارتۆن' : isAr ? 'ربح الكرتون' : 'Carton Profit'}
-                </span>
-                <span className={`text-xs font-black font-mono block ${cartonProfit >= 0 ? 'text-purple-400' : 'text-rose-400'}`}>
-                  {currencySymbol}{formatNumber(cartonProfit)}
+                <span className={`text-xs font-black font-mono block ${blisterProfit >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                  {currencySymbol} {formatNumber(blisterProfit)}
+                  {blisterProfit > 0 && costPerBlister > 0 && (
+                    <span className="text-[10px] text-cyan-300/80 mr-1 font-normal">({blisterProfitPercent}%)</span>
+                  )}
                 </span>
               </div>
             </div>
+
           </div>
 
-          {/* SECTION 5: STORAGE & SHELF LOCATION (الحفظ والتخزين والرف) */}
-          <div className="bg-[#10192d] p-2 rounded-xl border border-purple-500/30 space-y-1.5">
-            <h3 className="text-xs font-black text-purple-300 flex items-center gap-1.5 border-b border-slate-800 pb-0.5">
-              <Thermometer className="w-3.5 h-3.5 text-purple-400" />
-              <span>{isKu ? '٤. مەرجەکانی هەڵگرتن و شوێنی ڕەفە لە دەرمانخانە' : isAr ? '4. ظروف الحفظ والتخزين ومكان الرف بالصيدلية' : '4. Storage & Shelf Location'}</span>
-            </h3>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-              <div className="md:col-span-6">
-                <label className="text-slate-300 mb-0.5 block font-semibold text-[10px]">
-                  {isKu ? 'مەرجەکانی پاراستن' : isAr ? 'متطلبات التخزين والحفظ الحراري' : 'Temperature Standard'}
-                </label>
-                <select
-                  value={storageCondition}
-                  onChange={(e) => setStorageCondition(e.target.value)}
-                  className="w-full bg-[#0a1120] text-purple-300 h-7 px-2 rounded-lg border border-purple-500/30 focus:outline-none text-xs font-bold cursor-pointer"
-                >
-                  <option value="room_temp">{isKu ? '🌡️ پلەی گەرمی ژوور (< 25°C)' : isAr ? '🌡️ حرارة الغرفة (أقل من 25°C)' : '🌡️ Room Temp (< 25°C)'}</option>
-                  <option value="refrigerator">{isKu ? '❄️ سەلاجەی دەرمان (2°C - 8°C)' : isAr ? '❄️ ثلاجة دوائية (2°C - 8°C)' : '❄️ Medical Fridge (2°C - 8°C)'}</option>
-                  <option value="protect_light">{isKu ? '🌙 دوور لە ڕووناکی و شێ' : isAr ? '🌙 بعيداً عن الضوء والرطوبة' : '🌙 Protect from Light & Moisture'}</option>
-                  <option value="cool_dry">{isKu ? '🌬️ شوێنی فێنک و وشک (< 20°C)' : isAr ? '🌬️ مكان بارد وجاف (أقل من 20°C)' : '🌬️ Cool & Dry Place (< 20°C)'}</option>
-                  <option value="freezer">{isKu ? '🧊 بەستەری پزیشکی (< 0°C)' : isAr ? '🧊 مجمدة طبية (أقل من 0°C)' : '🧊 Medical Freezer (< 0°C)'}</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-6">
-                <label className="text-slate-300 mb-0.5 block font-semibold text-[10px]">
-                  {isKu ? 'شوێنی هەڵگرتن و ژمارەی ڕەفە' : isAr ? 'مكان التخزين ورقم الرف' : 'Shelf Location'}
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={storageLocation}
-                    onChange={(e) => setStorageLocation(e.target.value)}
-                    placeholder={isKu ? 'نموونە: رف A-03' : isAr ? 'مثال: رف الصيدلية A-03' : 'e.g. Shelf A-03'}
-                    className="w-full bg-[#0a1120] text-slate-100 h-7 px-2 pr-7 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-400 text-xs font-semibold"
-                  />
-                  <MapPin className="w-3.5 h-3.5 text-purple-400 absolute right-2 top-1/2 -translate-y-1/2" />
-                </div>
-              </div>
-            </div>
+        {/* PINNED BOTTOM ACTION FOOTER */}
+        <div className="sticky bottom-0 bg-[#0b1329]/95 backdrop-blur-md p-2.5 rounded-xl border border-cyan-500/30 flex items-center justify-between flex-wrap gap-2.5 mt-3 shadow-xl shrink-0">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-slate-400 font-bold">{isAr ? 'ملخص الإدخال:' : 'Entry Summary:'}</span>
+            <span className="text-cyan-300 font-bold font-mono">{totalUnits} {pharmacyUnit}</span>
+            {numBlistersPerBox > 1 && (
+              <span className="text-amber-300 font-bold font-mono">({totalBlisters} شيت)</span>
+            )}
+            <span className="text-slate-500">|</span>
+            <span className="text-slate-400">{isAr ? 'البيع:' : 'Sell:'}</span>
+            <span className="text-emerald-400 font-black font-mono">{currencySymbol} {formatNumber(singleRetail)}</span>
           </div>
 
-          {/* ACTION BUTTONS */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-700 transition-colors cursor-pointer border border-slate-700"
+              className="px-5 h-8.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-700 transition-colors cursor-pointer border border-slate-700"
             >
               {isKu ? 'پەشیمانبوونەوە' : isAr ? 'إلغاء' : 'Cancel'}
             </button>
 
             <button
               type="submit"
-              className="px-6 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-black text-xs shadow-md shadow-cyan-500/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-cyan-400/40"
+              className="px-8 h-8.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-black text-xs shadow-lg shadow-cyan-500/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95 border border-cyan-400/50"
             >
-              <Package className="w-3.5 h-3.5" />
-              <span>{isKu ? 'پاشەکەوتکردنی دەرمان' : isAr ? 'حفظ وتأكيد بيانات المادة الدوائية' : 'Save Medicine Record'}</span>
+              <Package className="w-4 h-4" />
+              <span>{isKu ? 'پاشەکەوتکردنی دەرمان' : isAr ? 'حفظ وتأكيد بيانات الصنف الدوائي' : 'Save Medicine Record'}</span>
             </button>
           </div>
+        </div>
 
-        </form>
+      </form>
 
-        {/* MODAL: ADD CUSTOM DOSAGE FORM */}
-        {showAddDosageModal && (
-          <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3">
-            <div className="bg-[#0B1120] p-4 rounded-2xl border border-cyan-500/50 max-w-sm w-full space-y-3 shadow-2xl animate-scaleUp">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <h4 className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                  <Pill className="w-4 h-4 text-cyan-400" />
-                  <span>{isAr ? 'إضافة شكل دوائي جديد' : isKu ? 'زیادکردنی شێوەی دەرمانی نوێ' : 'Add New Dosage Form'}</span>
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setShowAddDosageModal(false)}
-                  className="text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+      {/* MODAL: ADD CUSTOM DOSAGE FORM */}
+      {showAddDosageModal && (
+        <div className="fixed inset-0 z-60 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0B1120] p-4 rounded-2xl border border-cyan-500/50 max-w-sm w-full space-y-3.5 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                <Pill className="w-4 h-4 text-cyan-400" />
+                <span>{isAr ? 'إضافة شكل دوائي جديد' : isKu ? 'زیادکردنی شێوەی دەرمانی نوێ' : 'Add New Dosage Form'}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddDosageModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-slate-300 font-semibold block">
-                  {isAr ? 'اسم الشكل الدوائي الجديد:' : isKu ? 'ناوی شێوەی دەرمان:' : 'Dosage Form Name:'}
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={newDosageFormInput}
-                  onChange={(e) => setNewDosageFormInput(e.target.value)}
-                  placeholder={isAr ? 'مثال: لصقات جلدية، غسول فموي، رغوة' : isKu ? 'نموونە: لەزگەی پێست' : 'e.g. Mouthwash, Foam spray'}
-                  className="w-full bg-[#070D1C] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 text-xs focus:outline-none focus:border-cyan-300"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-semibold block">
+                {isAr ? 'اسم الشكل الدوائي الجديد:' : isKu ? 'ناوی شێوەی دەرمان:' : 'Dosage Form Name:'}
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={newDosageFormInput}
+                onChange={(e) => setNewDosageFormInput(e.target.value)}
+                placeholder={isAr ? 'مثال: لصقات جلدية، غسول فموي، رغوة' : isKu ? 'نموونە: لەزگەی پێست' : 'e.g. Mouthwash, Foam spray'}
+                className="w-full bg-[#070D1C] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 text-xs focus:outline-none focus:border-cyan-300"
+              />
+            </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAddDosageModal(false)}
-                  className="px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
-                >
-                  {isAr ? 'إلغاء' : isKu ? 'داخستن' : 'Cancel'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddNewDosageForm}
-                  className="px-4 py-1 text-xs font-bold rounded-lg bg-cyan-600 text-white hover:bg-cyan-500"
-                >
-                  {isAr ? 'إضافة واعتماد' : isKu ? 'زیادکردن' : 'Add & Select'}
-                </button>
-              </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAddDosageModal(false)}
+                className="px-3.5 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+              >
+                {isAr ? 'إلغاء' : isKu ? 'داخستن' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNewDosageForm}
+                className="px-4 py-1 text-xs font-bold rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer"
+              >
+                {isAr ? 'إضافة واعتماد' : isKu ? 'زیادکردن' : 'Add & Select'}
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-      </div>
     </div>
   );
 };
