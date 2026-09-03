@@ -14,26 +14,39 @@
     <title>7amo.pos - Desktop & Offline POS System</title>
   </head>
   <body class="bg-[#0B1120] text-slate-100 antialiased select-none">
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0B1120;color:#e2e8f0;font-family:system-ui,sans-serif;text-align:center;padding:20px;">
+        <div style="width:64px;height:64px;border-radius:20px;background:linear-gradient(135deg,#06b6d4,#2563eb);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px rgba(6,182,212,0.4);margin-bottom:20px;">
+          <span style="font-size:26px;font-weight:900;color:#ffffff;">7P</span>
+        </div>
+        <div style="font-size:18px;font-weight:bold;margin-bottom:8px;color:#ffffff;">7amo.pos</div>
+        <div style="font-size:13px;color:#94a3b8;margin-bottom:24px;">جاري تحميل النظام...</div>
+        <div style="width:36px;height:36px;border:3px solid rgba(6,182,212,0.2);border-top-color:#06b6d4;border-radius:50%;animation:posSpin 0.8s linear infinite;"></div>
+      </div>
+      <style>
+        @keyframes posSpin {
+          to { transform: rotate(360deg); }
+        }
+      </style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(reg => {
-            console.log('Service Worker registered successfully:', reg.scope);
-          }).catch(err => {
-            console.warn('Service Worker registration note (sandboxed/preview environment):', err?.message || err);
-          });
-
-          // Automatically reload if a new service worker takes over
-          let refreshing = false;
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (!refreshing) {
-              refreshing = true;
-              window.location.reload();
+      // Clear any stale Service Workers in sandbox/preview to prevent black screen issues
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (const reg of registrations) {
+            reg.unregister().catch(() => {});
+          }
+        }).catch(() => {});
+        if ('caches' in window) {
+          caches.keys().then(keys => {
+            for (const key of keys) {
+              if (key.includes('7amo-pos')) {
+                caches.delete(key).catch(() => {});
+              }
             }
-          });
-        });
+          }).catch(() => {});
+        }
       }
     </script>
   </body>

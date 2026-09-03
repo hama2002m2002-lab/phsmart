@@ -136,6 +136,7 @@ interface AIInvoiceScannerModalProps {
     discountAmount?: number;
   }) => void;
   onNavigateToTab?: (tab: string) => void;
+  onOpenLegacyScreenMigrator?: () => void;
 }
 
 export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
@@ -146,7 +147,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   existingSuppliers,
   onConfirmImport,
   onTransferToDraft,
-  onNavigateToTab
+  onNavigateToTab,
+  onOpenLegacyScreenMigrator
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -162,6 +164,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
   // Naming Language Mode: 'english' (Default: English Pharmaceutical Name) vs 'raw_invoice' (Exact verbatim text as on receipt)
   const [namingPreference, setNamingPreference] = useState<'english' | 'raw_invoice'>('english');
+  const [languageMode, setLanguageMode] = useState<'all' | 'ku' | 'ar' | 'en'>('all');
 
   // Profit markup multiplier state (default 25%)
   const [defaultProfitMargin, setDefaultProfitMargin] = useState<number>(25);
@@ -300,8 +303,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     }
   };
 
-  // Compress and resize image helper for high-precision multi-item AI OCR
-  const compressImage = (dataUrl: string, maxWidth = 2048, quality = 0.85): Promise<string> => {
+  // Compress and resize image helper for fast high-precision multi-item AI OCR
+  const compressImage = (dataUrl: string, maxWidth = 1600, quality = 0.85): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -330,6 +333,22 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
     });
+  };
+
+  // Helper to normalize Eastern Arabic / Kurdish digits to standard digits
+  const normalizeDigits = (str: string = '') => {
+    return str
+      .replace(/[٠۰]/g, '0')
+      .replace(/[١۱]/g, '1')
+      .replace(/[٢۲]/g, '2')
+      .replace(/[٣۳]/g, '3')
+      .replace(/[٤۴]/g, '4')
+      .replace(/[٥۵]/g, '5')
+      .replace(/[٦۶]/g, '6')
+      .replace(/[٧۷]/g, '7')
+      .replace(/[٨۸]/g, '8')
+      .replace(/[٩۹]/g, '9')
+      .trim();
   };
 
   // AI Invoice Scanner Execution
@@ -529,21 +548,42 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       const response = await fetch('/api/gemini/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: optimizedImage, mimeType: 'image/jpeg' }),
+        body: JSON.stringify({ 
+          imageBase64: optimizedImage, 
+          mimeType: 'image/jpeg',
+          languageMode 
+        }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
-      let result: ScannedInvoiceData;
       if (!response.ok) {
-        // Use resilient fallback data if network or server encounters quota limitation
-        result = fallbackData;
-      } else {
-        result = await response.json();
+        const errData = await response.json().catch(() => ({}));
+        let rawError = errData.error || `Server error: ${response.status}`;
+        try {
+          if (typeof rawError === 'string' && rawError.includes('{')) {
+            const jsonPart = rawError.replace(/^[^{]*(\{.*\}).*$/, '$1');
+            const parsed = JSON.parse(jsonPart);
+            if (parsed?.error?.message) {
+              rawError = parsed.error.message;
+            }
+          }
+        } catch {}
+
+        if (rawError.includes('503') || rawError.includes('high demand') || rawError.includes('UNAVAILABLE')) {
+          rawError = t(
+            'خوادم الذكاء الاصطناعي (Google AI) تشهد ضغطاً مؤقتاً (503 High Demand). يرجى إعادة المحاولة أو تجربة فاتورة العينة الجاهزة.',
+            'سێرڤەرەکانی AI لە ژێر فشاری کاتین (503). تکایە دووبارە هەوڵبدەرەوە.',
+            'AI servers are experiencing temporary high demand (503). Please retry or load the demo invoice.'
+          );
+        }
+        throw new Error(rawError);
       }
+
+      const result: ScannedInvoiceData = await response.json();
       
-      // Auto normalize items: establish rawInvoiceName, englishName, and active name based on namingPreference
-      if (result.items && Array.isArray(result.items)) {
+      // Auto normalize items: establish rawInvoiceName, englishName, barcode digits, and active name based on namingPreference
+      if (result.items && Array.isArray(result.items) && result.items.length > 0) {
         result.items = result.items.map(item => {
           const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
           let engName = item.englishName;
@@ -560,8 +600,11 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
             retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
           }
 
+          const cleanBarcode = normalizeDigits(item.barcode || '');
+
           return {
             ...item,
+            barcode: cleanBarcode,
             rawInvoiceName: rawName,
             englishName: engName,
             name: activeName,
@@ -569,14 +612,15 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
             suggestedRetailPrice: retail
           };
         });
-      }
 
-      setScannedData(result);
-      setSelectedItemIndices(new Set(result.items.map((_, i) => i)));
+        setScannedData(result);
+        setSelectedItemIndices(new Set(result.items.map((_, i) => i)));
+      } else {
+        throw new Error(t('لم يتم العثور على أدوية أو أسطر في هذه الفاتورة. يرجى التقاط صورة أوضح.', 'هیچ کاڵایەک نەدۆزرایەوە لەم پسوولەیەدا.', 'No invoice item rows detected. Please upload a clearer photo.'));
+      }
     } catch (err: any) {
-      console.warn('Invoice scanning error (fallback active):', err);
-      setScannedData(fallbackData);
-      setSelectedItemIndices(new Set(fallbackData.items.map((_, i) => i)));
+      console.warn('Invoice scanning error:', err);
+      setScanError(err.message || t('فشل في معالجة الفاتورة بالذكاء الاصطناعي. يرجى المحاولة مرة أخرى.', 'هەڵە لە خوێندنەوەی پسوولە.', 'Invoice scanning failed. Please try again.'));
     } finally {
       setIsScanning(false);
     }
@@ -1315,6 +1359,22 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
               <Zap className="w-4 h-4 fill-current text-amber-400" />
               <span>{t('⚡ تجربة وصل صيدلية كولاجين النموذجي', '⚡ تاقیکردنەوە بە نموونەی کۆلاجین', '⚡ Test Collagen Invoice')}</span>
             </button>
+
+            {onOpenLegacyScreenMigrator && (
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  onClose();
+                  onOpenLegacyScreenMigrator();
+                }}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600/30 to-blue-600/30 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                title={t('التبديل إلى نافذة نقل شاشات البرامج القديمة (الباركود، أسعار الشيت والكرتون، رصيد القطع)', 'گۆڕین بۆ هاوردەی شاشەی سیستەمی کۆن', 'Switch to Legacy Screen Migrator')}
+              >
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>{t('🖥️ نقل من شاشة برنامج قديم ↗', '🖥️ هاوردە لە شاشەی کۆن ↗', '🖥️ Legacy Screen Migrator ↗')}</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-300 bg-[#060b14] px-3 py-1.5 rounded-xl border border-slate-800">

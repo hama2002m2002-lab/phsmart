@@ -6,7 +6,7 @@ import { DatabaseStorageModal } from './DatabaseStorageModal';
 import { StressTestDataModal } from './StressTestDataModal';
 import { KioskPrintModal } from './KioskPrintModal';
 import { GoogleDriveBackupModal } from './GoogleDriveBackupModal';
-import { downloadKioskPrintingBatchFile } from '../lib/thermalPrinter';
+import { downloadKioskPrintingBatchFile, print80mmCashierReceipt } from '../lib/thermalPrinter';
 import { getTranslation } from '../lib/translations';
 import { exportStoreToExcel, exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
@@ -397,6 +397,117 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 onChange={(e) => handleChange('receiptFooterMsg', e.target.value)}
                 className="w-full bg-[#0B1120] text-slate-200 p-2.5 rounded-xl border border-blue-500/20 focus:border-cyan-400 focus:outline-none"
               />
+            </div>
+          </div>
+
+          {/* 80mm Cashier Paper & Thermal Configuration */}
+          <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-cyan-950/30 to-slate-900 border border-emerald-500/30 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                  <Printer className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>{isKu ? 'تایبەتمەندی چاپی وەرەقەی کاشێر (80 ملم)' : isAr ? 'خاصية طباعة ورق كاشير (80 ملم - 80mm)' : '80mm Cashier Roll Printing'}</span>
+                    <span className="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">Standard 80mm</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {isKu 
+                      ? 'قەبارەی پەسەندکراوی پسوولەی کاشێر بۆ هەموو مارکێت و کۆگاکان لەگەڵ بارکۆدی تەواو' 
+                      : isAr 
+                      ? 'القياس المعتمد لطابعات الفواتير والكاشير (Epson, Xprinter, Rongta, Bixolon) مع إظهار باركود الأصناف والفاتورة بدقة.' 
+                      : 'Standard 80mm thermal roll layout with crisp item and invoice barcodes.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Test Print 80mm Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const sampleSale: SaleTransaction = {
+                    id: 'test-80mm-' + Date.now(),
+                    invoiceNumber: 'INV-80MM-' + Math.floor(1000 + Math.random() * 9000),
+                    cashierName: 'كاشير تجريبي',
+                    customerName: 'زبون عام',
+                    timestamp: new Date().toLocaleString(),
+                    items: [
+                      {
+                        productId: 'sample-1',
+                        productName: 'باراسيتامول 500 ملغ',
+                        productNameAr: 'باراسيتامول 500 ملغ',
+                        productNameKu: 'پاراسیتامۆڵ 500 ملغ',
+                        barcode: '200245819402',
+                        quantity: 2,
+                        saleType: 'retail',
+                        price: 1500,
+                        total: 3000,
+                      },
+                      {
+                        productId: 'sample-2',
+                        productName: 'أمۆکسیسيلين كبسول',
+                        productNameAr: 'أموكسيسيلين كبسول',
+                        productNameKu: 'ئەمۆکسیسلین کەپسول',
+                        barcode: '200245138592',
+                        quantity: 1,
+                        saleType: 'blister',
+                        price: 2500,
+                        total: 2500,
+                      }
+                    ],
+                    subtotal: 5500,
+                    discount: 0,
+                    tax: 0,
+                    total: 5500,
+                    amountTendered: 10000,
+                    changeDue: 4500,
+                    paymentMethod: 'cash',
+                    status: 'completed',
+                  };
+                  print80mmCashierReceipt(sampleSale, settings);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer transition-all active:scale-95 shrink-0"
+              >
+                <Printer className="w-4 h-4 text-slate-950" />
+                <span>{isKu ? 'تاقیکردنەوەی چاپی 80 ملم' : isAr ? 'تجربة طباعة وصل 80 مم' : 'Test 80mm Print'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs pt-1">
+              <div>
+                <label className="text-slate-400 mb-1 block">{isKu ? 'قەبارەی پێشوەختەی پسوولە' : isAr ? 'قياس الورق الافتراضي للكاشير' : 'Default Paper Size'}</label>
+                <select
+                  value={settings.printerType || 'thermal80mm'}
+                  onChange={(e) => handleChange('printerType', e.target.value)}
+                  className="w-full bg-[#0B1120] text-emerald-300 p-2.5 rounded-xl border border-emerald-500/30 focus:border-emerald-400 focus:outline-none font-bold"
+                >
+                  <option value="thermal80mm">🧾 {isKu ? 'وەرەقەی کاشێر 80 ملم (پێشنیارکراو)' : isAr ? 'ورق كاشير 80 مم (الموصى به)' : '80mm Cashier Roll (Recommended)'}</option>
+                  <option value="thermal58mm">🧾 {isKu ? 'وەرەقەی کاشێر 58 ملم (بچووک)' : isAr ? 'ورق كاشير 58 مم (شريط صغير)' : '58mm Cashier Roll'}</option>
+                  <option value="a4">📄 {isKu ? 'قەبارەی A4 (پەڕەی گەورە)' : isAr ? 'ورق A4 كامل' : 'A4 Full Page'}</option>
+                  <option value="a5">📄 {isKu ? 'قەبارەی A5 (نیوە پەڕە)' : isAr ? 'ورق A5 نصف صفحة' : 'A5 Half Page'}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 mb-1 block">{isKu ? 'ژمارەی لەبەرگیراوەکان (نسخ)' : isAr ? 'عدد نسخ الطباعة لكل عملية' : 'Print Copies'}</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={settings.printerCopies || 1}
+                  onChange={(e) => handleChange('printerCopies', Math.max(1, Number(e.target.value)))}
+                  className="w-full bg-[#0B1120] text-slate-200 p-2.5 text-center font-mono font-bold rounded-xl border border-blue-500/20 focus:border-cyan-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 mb-1 block">{isKu ? 'کۆنترۆڵی بارکۆدی پسوولە' : isAr ? 'إظهار باركود الفاتورة والمواد' : 'Show Barcode on Receipts'}</label>
+                <div className="p-2 bg-[#0B1120] rounded-xl border border-emerald-500/20 flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-bold">{isKu ? 'چالاکە' : isAr ? 'مفعل دائماً' : 'Enabled'}</span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold">80mm Ready</span>
+                </div>
+              </div>
             </div>
           </div>
 

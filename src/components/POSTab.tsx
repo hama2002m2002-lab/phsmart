@@ -471,24 +471,52 @@ export const POSTab: React.FC<POSTabProps> = ({
     const len = products.length;
     const indexed = new Array(len);
 
+    const normalizeKey = (str: string = '') => {
+      return str
+        .replace(/[٠۰]/g, '0')
+        .replace(/[١۱]/g, '1')
+        .replace(/[٢۲]/g, '2')
+        .replace(/[٣۳]/g, '3')
+        .replace(/[٤۴]/g, '4')
+        .replace(/[٥۵]/g, '5')
+        .replace(/[٦۶]/g, '6')
+        .replace(/[٧۷]/g, '7')
+        .replace(/[٨۸]/g, '8')
+        .replace(/[٩۹]/g, '9')
+        .trim()
+        .toLowerCase();
+    };
+
     for (let i = 0; i < len; i++) {
       const p = products[i];
-      const barcodeClean = (p.barcode || '').trim().toLowerCase();
-      const idClean = (p.id || '').trim().toLowerCase();
+      const barcodeClean = normalizeKey(p.barcode || '');
+      const idClean = normalizeKey(p.id || '');
+      const skuClean = normalizeKey(p.sku || '');
       const nameClean = (p.name || '').trim().toLowerCase();
       const nameArClean = (p.nameAr || '').trim().toLowerCase();
       const nameKuClean = (p.nameKu || '').trim().toLowerCase();
       const sciClean = (p.scientificName || '').trim().toLowerCase();
 
-      if (barcodeClean) bMap.set(barcodeClean, p);
+      if (barcodeClean) {
+        bMap.set(barcodeClean, p);
+        // Also map without leading zeros if any
+        const noLeadingZero = barcodeClean.replace(/^0+/, '');
+        if (noLeadingZero && !bMap.has(noLeadingZero)) {
+          bMap.set(noLeadingZero, p);
+        }
+      }
       if (idClean) bMap.set(idClean, p);
+      if (skuClean) bMap.set(skuClean, p);
+      if (nameClean && !bMap.has(nameClean)) bMap.set(nameClean, p);
+      if (nameArClean && !bMap.has(nameArClean)) bMap.set(nameArClean, p);
+      if (nameKuClean && !bMap.has(nameKuClean)) bMap.set(nameKuClean, p);
 
       indexed[i] = {
         product: p,
         barcode: barcodeClean,
         category: p.category,
         categoryAr: p.categoryAr,
-        fullSearchStr: `${barcodeClean} ${nameClean} ${nameArClean} ${nameKuClean} ${sciClean}`,
+        fullSearchStr: `${barcodeClean} ${skuClean} ${nameClean} ${nameArClean} ${nameKuClean} ${sciClean}`,
         altSearchStr: `${sciClean} ${nameClean} ${nameArClean} ${nameKuClean}`
       };
     }
@@ -708,6 +736,49 @@ export const POSTab: React.FC<POSTabProps> = ({
     return () => window.removeEventListener('click', handleGlobalClick);
   }, [isBarcodeDisabled, activeWindowId, cart, isBarcodePaused]);
 
+  // Hardware Barcode Scanner Global Listener
+  // Captures rapid keystrokes from USB/Bluetooth handheld barcode scanners even if focus is elsewhere
+  useEffect(() => {
+    let scanBuffer = '';
+    let lastKeypressTime = 0;
+
+    const handleHardwareScan = (e: KeyboardEvent) => {
+      if (isBarcodeDisabled) return;
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      // If user is actively typing in another text field (like customer phone, search, notes) and NOT the barcode input, don't hijack
+      const isOtherInputField = activeEl && activeEl !== barcodeRef.current && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable
+      );
+      if (isOtherInputField) return;
+
+      const now = Date.now();
+      const interval = now - lastKeypressTime;
+      lastKeypressTime = now;
+
+      // Scanners typically send keys at < 65ms intervals
+      if (interval > 75) {
+        scanBuffer = '';
+      }
+
+      if (e.key === 'Enter') {
+        if (scanBuffer.length >= 2) {
+          e.preventDefault();
+          const capturedCode = scanBuffer;
+          scanBuffer = '';
+          processBarcodeOrProduct(capturedCode);
+        }
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        scanBuffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleHardwareScan, true);
+    return () => window.removeEventListener('keydown', handleHardwareScan, true);
+  }, [isBarcodeDisabled, products, barcodeMap, isReturnMode]);
+
   // Helper to calculate exact price depending on unit type (باكت / شيت)
   const getItemUnitPrice = (item: CartItem): number => {
     if (item.saleType === 'blister') {
@@ -759,24 +830,12 @@ export const POSTab: React.FC<POSTabProps> = ({
     }
   };
 
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const processBarcodeOrProduct = (input: string) => {
     if (isBarcodeDisabled) return;
 
-    const rawInput = barcodeInput.trim();
+    // Clean non-printable characters, carriage returns from hardware scanner
+    const rawInput = input.replace(/[\r\n\t\x00-\x1F\x7F-\x9F]/g, '').trim();
     if (!rawInput) return;
-
-    // First check if scanned input matches a sale invoice number (e.g., INV-...)
-    const foundInvoice = salesHistory.find(s => s.invoiceNumber.toLowerCase() === rawInput.toLowerCase());
-    if (foundInvoice && onViewReceipt) {
-      onViewReceipt(foundInvoice);
-      setScanAlert({
-        msg: isKu ? `پسوولە دۆزرایەوە (${foundInvoice.invoiceNumber})` : isAr ? `تم العثور على الوصل (${foundInvoice.invoiceNumber})` : `Found receipt (${foundInvoice.invoiceNumber})`,
-        type: 'success'
-      });
-      setBarcodeInput('');
-      return;
-    }
 
     // Check for Multiplier Pattern in barcode input: e.g. "5*62810023", "62810023*5", "*5", "100*..."
     let parsedQty = 1;
@@ -816,19 +875,99 @@ export const POSTab: React.FC<POSTabProps> = ({
       }
     }
 
-    const cleanKey = cleanCode.trim().toLowerCase();
-    const found = barcodeMap.get(cleanKey) || products.find(p => p.barcode === cleanCode || p.id === cleanCode);
+    const normalizeStr = (str: string = '') => {
+      return str
+        .replace(/[٠۰]/g, '0')
+        .replace(/[١۱]/g, '1')
+        .replace(/[٢۲]/g, '2')
+        .replace(/[٣۳]/g, '3')
+        .replace(/[٤۴]/g, '4')
+        .replace(/[٥۵]/g, '5')
+        .replace(/[٦۶]/g, '6')
+        .replace(/[٧۷]/g, '7')
+        .replace(/[٨۸]/g, '8')
+        .replace(/[٩۹]/g, '9')
+        .trim();
+    };
+
+    const cleanKey = normalizeStr(cleanCode).toLowerCase();
+    const rawKey = cleanCode.trim().toLowerCase();
+    const noLeadingZero = cleanKey.replace(/^0+/, '');
+
+    // Multi-strategy lookup: Priority 1 is ALWAYS Products (Barcode, Batch Barcodes, SKU, ID, Name)
+    const found = 
+      barcodeMap.get(cleanKey) ||
+      (noLeadingZero ? barcodeMap.get(noLeadingZero) : undefined) ||
+      barcodeMap.get(rawKey) ||
+      products.find(p => {
+        const pBarcode = normalizeStr(p.barcode || '').toLowerCase();
+        const pSku = normalizeStr(p.sku || '').toLowerCase();
+        const pId = normalizeStr(p.id || '').toLowerCase();
+        const pName = (p.name || '').trim().toLowerCase();
+        const pNameAr = (p.nameAr || '').trim().toLowerCase();
+        const pNameKu = (p.nameKu || '').trim().toLowerCase();
+        const pScientific = (p.scientificName || '').trim().toLowerCase();
+
+        // Check if barcode or ID matches
+        if (pBarcode && (pBarcode === cleanKey || pBarcode.replace(/^0+/, '') === noLeadingZero)) return true;
+        if (pSku && pSku === cleanKey) return true;
+        if (pId && pId === cleanKey) return true;
+
+        // Check batch numbers/barcodes
+        if (p.batches && p.batches.length > 0) {
+          const hasBatch = p.batches.some(b => 
+            normalizeStr(b.batchNumber || '').toLowerCase() === cleanKey ||
+            (b as any).barcode && normalizeStr((b as any).barcode).toLowerCase() === cleanKey
+          );
+          if (hasBatch) return true;
+        }
+
+        // Exact name match
+        return pName === rawKey || pNameAr === rawKey || pNameKu === rawKey || pScientific === rawKey;
+      }) ||
+      // Fallback: Medicine name starts with rawKey
+      products.find(p => {
+        const pName = (p.name || '').trim().toLowerCase();
+        const pNameAr = (p.nameAr || '').trim().toLowerCase();
+        const pNameKu = (p.nameKu || '').trim().toLowerCase();
+        return (
+          (pName && pName.startsWith(rawKey)) ||
+          (pNameAr && pNameAr.startsWith(rawKey)) ||
+          (pNameKu && pNameKu.startsWith(rawKey))
+        );
+      }) ||
+      // Fallback 2: Medicine name contains rawKey (if at least 3 characters)
+      (rawKey.length >= 3 ? products.find(p => {
+        const pName = (p.name || '').trim().toLowerCase();
+        const pNameAr = (p.nameAr || '').trim().toLowerCase();
+        return (pName && pName.includes(rawKey)) || (pNameAr && pNameAr.includes(rawKey));
+      }) : undefined);
+
     if (found) {
       addToCart(found, 'retail', parsedQty > 0 ? parsedQty : 1);
     } else {
+      // If NOT a product, check if input matches a sales invoice (starts with INV or # or matches invoice number)
+      const isInvoicePattern = rawInput.toUpperCase().startsWith('INV') || rawInput.startsWith('#') || rawInput.toUpperCase().startsWith('REC');
+      const foundInvoice = salesHistory.find(s => s.invoiceNumber.toLowerCase() === rawInput.toLowerCase());
+
+      if ((isInvoicePattern || foundInvoice) && foundInvoice && onViewReceipt) {
+        onViewReceipt(foundInvoice);
+        setScanAlert({
+          msg: isKu ? `پسوولە دۆزرایەوە (${foundInvoice.invoiceNumber})` : isAr ? `تم العثور على الوصل (${foundInvoice.invoiceNumber})` : `Found receipt (${foundInvoice.invoiceNumber})`,
+          type: 'success'
+        });
+        setBarcodeInput('');
+        return;
+      }
+
       playErrorBeep();
       setScanAlert({
-        msg: isKu ? 'ئەم بارکۆدە لە کۆگادا نییە!' : isAr ? 'الباركود غير موجود في المخزن!' : 'This barcode does not exist in inventory!',
+        msg: isKu ? `کاڵا یان بارکۆدی [ ${cleanCode} ] نەدۆزرایەوە!` : isAr ? `لم يتم العثور على المادة أو الباركود [ ${cleanCode} ]!` : `Product or barcode [ ${cleanCode} ] not found!`,
         type: 'error'
       });
     }
 
-    // Always clear/erase the barcode field immediately so it is ready for the next barcode
+    // Always clear barcode field so it is immediately ready for next item
     setBarcodeInput('');
 
     setTimeout(() => {
@@ -840,6 +979,11 @@ export const POSTab: React.FC<POSTabProps> = ({
     setTimeout(() => {
       setScanAlert(prev => prev?.type === 'error' ? null : prev);
     }, 4000);
+  };
+
+  const handleBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    processBarcodeOrProduct(barcodeInput);
   };
 
   const addToCart = (product: Product, initialSaleType: SaleUnitType = 'retail', quantityToAdd: number = 1) => {
@@ -879,12 +1023,14 @@ export const POSTab: React.FC<POSTabProps> = ({
         : ` ⚠️ (Near expiry: ${expirySummary.earliestExpiryDate} - Sell first)`;
     }
 
+    const barcodeSuffix = product.barcode ? ` [ ${product.barcode} ]` : '';
+
     setScanAlert({
       msg: (isKu 
-        ? `✅ [ ${quantityToAdd} ] دانە لە (${itemName}) زیادکرا بۆ سەبەتە` 
+        ? `✅ [ ${quantityToAdd} ] دانە لە (${itemName})${barcodeSuffix} زیادکرا` 
         : isAr 
-        ? `✅ تم إضافة [ ${quantityToAdd} ] قطعة من (${itemName}) للسلة` 
-        : `✅ Added [ ${quantityToAdd} ] of (${itemName}) to cart`) + expiryNoteSuffix,
+        ? `✅ تم إضافة [ ${quantityToAdd} ] من (${itemName})${barcodeSuffix} للسلة` 
+        : `✅ Added [ ${quantityToAdd} ] of (${itemName})${barcodeSuffix} to cart`) + expiryNoteSuffix,
       type: 'success'
     });
   };
@@ -1330,6 +1476,7 @@ export const POSTab: React.FC<POSTabProps> = ({
           productName: i.product.name,
           productNameAr: i.product.nameAr,
           productNameKu: i.product.nameKu || i.product.nameAr,
+          barcode: i.product.barcode || '',
           price: itemUnitPrice,
           quantity: i.quantity,
           saleType: i.saleType,
@@ -2578,17 +2725,24 @@ export const POSTab: React.FC<POSTabProps> = ({
                               {item.product.imageIcon}
                             </span>
                             <div className="min-w-0 flex-1 leading-tight space-y-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="text-xs font-bold text-slate-100 truncate">
-                                  {isAr ? item.product.nameAr : isKu ? (item.product.nameAr || item.product.name) : item.product.name}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-bold text-slate-100">
+                                  {isAr ? (item.product.nameAr || item.product.name) : isKu ? (item.product.nameKu || item.product.nameAr || item.product.name) : item.product.name}
                                 </p>
-                              </div>
-                              <div className="flex items-center gap-1 text-[9px] text-slate-400 flex-wrap">
-                                {item.product.dosageForm && (
-                                  <span className="text-cyan-400 font-semibold">{item.product.dosageForm}</span>
+                                {item.product.barcode && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-950/90 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono font-bold tracking-wide">
+                                    <BarcodeIcon className="w-3 h-3 text-cyan-400 shrink-0" />
+                                    <span>{item.product.barcode}</span>
+                                  </span>
                                 )}
-                                <span>•</span>
-                                <span className="font-mono text-slate-400">{item.product.barcode}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 flex-wrap">
+                                {item.product.dosageForm && (
+                                  <span className="text-cyan-400 font-semibold bg-cyan-950/50 px-1.5 py-0.2 rounded border border-cyan-800/40">{item.product.dosageForm}</span>
+                                )}
+                                {item.product.sku && (
+                                  <span className="font-mono text-slate-400">SKU: {item.product.sku}</span>
+                                )}
                               </div>
 
                               {/* ⚡ EXPIRY & BATCH NOTICE FOR CASHIER (ملاحظة وتنبيه تاريخ الصلاحية والدفعات للكاشير) */}

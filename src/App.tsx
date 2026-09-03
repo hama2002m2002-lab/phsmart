@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
@@ -38,6 +38,8 @@ import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAva
 import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
 import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
+import { AILegacySystemMigratorModal } from './components/AILegacySystemMigratorModal';
+import { findBestFuzzyProductMatch } from './lib/fuzzyMatching';
 
 import {
   initialProducts,
@@ -70,7 +72,7 @@ import {
   localDbFactoryReset
 } from './lib/localDb';
 
-// Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
+// Optimized Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
     try {
@@ -84,21 +86,52 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
     return initialValue;
   });
 
-  // Async IndexedDB hydration check (for large data exceeding 5MB)
+  const isFirstRender = useRef(true);
+
+  // Non-blocking async IndexedDB hydration check (for large data exceeding 5MB)
   useEffect(() => {
-    localDbGetKV<T>(key, initialValue).then((val) => {
-      if (val !== undefined && val !== null) {
-        if (Array.isArray(val) && val.length > 0) {
-          setState((prev) => {
-            if (Array.isArray(prev) && prev.length === 0) return val;
-            return prev;
-          });
-        }
+    const handle = typeof window !== 'undefined' && 'requestIdleCallback' in window
+      ? (window as any).requestIdleCallback(() => {
+          localDbGetKV<T>(key, initialValue).then((val) => {
+            if (val !== undefined && val !== null) {
+              if (Array.isArray(val) && val.length > 0) {
+                setState((prev) => {
+                  if (Array.isArray(prev) && prev.length === 0) return val;
+                  return prev;
+                });
+              }
+            }
+          }).catch(() => {});
+        }, { timeout: 2000 })
+      : setTimeout(() => {
+          localDbGetKV<T>(key, initialValue).then((val) => {
+            if (val !== undefined && val !== null) {
+              if (Array.isArray(val) && val.length > 0) {
+                setState((prev) => {
+                  if (Array.isArray(prev) && prev.length === 0) return val;
+                  return prev;
+                });
+              }
+            }
+          }).catch(() => {});
+        }, 100);
+
+    return () => {
+      if (typeof window !== 'undefined' && 'cancelIdleCallback' in window && typeof handle === 'number') {
+        (window as any).cancelIdleCallback(handle);
+      } else {
+        clearTimeout(handle);
       }
-    }).catch(() => {});
+    };
   }, [key]);
 
+  // Persist mutative updates without blocking initial mount
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
     try {
       if (state === undefined) {
         localStorage.removeItem(key);
@@ -108,8 +141,12 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
         } catch {
           // If localStorage quota (5MB) is exceeded, silently rely on IndexedDB
         }
-        // Always persist in High-Capacity IndexedDB KV store
-        localDbSetKV(key, state);
+        // Save in IndexedDB in background
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+          (window as any).requestIdleCallback(() => localDbSetKV(key, state), { timeout: 1000 });
+        } else {
+          setTimeout(() => localDbSetKV(key, state), 50);
+        }
       }
     } catch (err) {
       console.warn(`Failed to save key "${key}":`, err);
@@ -248,6 +285,7 @@ export function App() {
   const [isReportsFullscreen, setIsReportsFullscreen] = useState(false);
   const [isInventoryAuditOpen, setIsInventoryAuditOpen] = useState(false);
   const [isAIInvoiceScannerOpen, setIsAIInvoiceScannerOpen] = useState(false);
+  const [isLegacyMigratorOpen, setIsLegacyMigratorOpen] = useState(false);
   const [aiDraftImportData, setAiDraftImportData] = useState<any | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -479,9 +517,32 @@ export function App() {
           updatedList[idx] = up;
         }
       });
-      // Prepend brand new products
+      // Prepend brand new products, but protect against subtle spelling duplicates using Fuzzy Matching
       if (data.newProducts.length > 0) {
-        updatedList = [...data.newProducts, ...updatedList];
+        data.newProducts.forEach(newP => {
+          const fuzzyResult = findBestFuzzyProductMatch(newP.name, updatedList, {
+            barcode: newP.barcode,
+            threshold: 0.82
+          });
+          if (fuzzyResult.matchedProduct) {
+            const matchIdx = updatedList.findIndex(p => p.id === fuzzyResult.matchedProduct!.id);
+            if (matchIdx !== -1) {
+              // Merge into existing item to avoid duplicate!
+              updatedList[matchIdx] = {
+                ...updatedList[matchIdx],
+                stock: (updatedList[matchIdx].stock || 0) + (newP.stock || 0),
+                totalUnits: (updatedList[matchIdx].totalUnits || 0) + (newP.totalUnits || 0),
+                costPerUnit: newP.costPerUnit || updatedList[matchIdx].costPerUnit,
+                lastPurchasePrice: newP.lastPurchasePrice || updatedList[matchIdx].lastPurchasePrice,
+                lastPriceUpdate: new Date().toISOString(),
+                expiryDate: newP.expiryDate || updatedList[matchIdx].expiryDate,
+                status: ((updatedList[matchIdx].stock || 0) + (newP.stock || 0)) > 0 ? 'in_stock' : 'out_of_stock'
+              };
+              return;
+            }
+          }
+          updatedList.unshift(newP);
+        });
       }
       try { localStorage.setItem('supermarket_products_v1', JSON.stringify(updatedList)); } catch {}
       localDbBulkPut('products', updatedList);
@@ -589,6 +650,85 @@ export function App() {
     };
     setNotifications(prev => [newNotif, ...prev]);
     syncWriteDocument('notifications', newNotif.id, newNotif);
+  };
+
+  const handleConfirmLegacyMigration = (importedProducts: Product[]) => {
+    if (!importedProducts || importedProducts.length === 0) return;
+
+    setProducts(prev => {
+      const updatedList = [...prev];
+      let newCount = 0;
+      let updatedCount = 0;
+
+      importedProducts.forEach(newP => {
+        let matchIndex = updatedList.findIndex(p => 
+          (newP.barcode && p.barcode && p.barcode.trim() === newP.barcode.trim()) ||
+          p.id === newP.id ||
+          p.name.toLowerCase() === newP.name.toLowerCase()
+        );
+
+        // Fallback: If not matched by exact ID/barcode/name, use intelligent Fuzzy Matching for minor spelling variations
+        if (matchIndex === -1 && newP.name) {
+          const fuzzyMatch = findBestFuzzyProductMatch(newP.name, updatedList, {
+            barcode: newP.barcode,
+            threshold: 0.80
+          });
+          if (fuzzyMatch.matchedProduct) {
+            matchIndex = updatedList.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
+          }
+        }
+
+        if (matchIndex !== -1) {
+          // Update existing inventory item
+          updatedList[matchIndex] = {
+            ...updatedList[matchIndex],
+            name: newP.name || updatedList[matchIndex].name,
+            nameAr: newP.nameAr || newP.name || updatedList[matchIndex].nameAr,
+            nameKu: newP.nameKu || newP.name || updatedList[matchIndex].nameKu,
+            stock: (updatedList[matchIndex].stock || 0) + (newP.stock || 0),
+            totalUnits: (updatedList[matchIndex].totalUnits || 0) + (newP.totalUnits || 0),
+            cartonPurchasePrice: newP.cartonPurchasePrice || updatedList[matchIndex].cartonPurchasePrice,
+            cost: newP.cost || updatedList[matchIndex].cost,
+            costPerUnit: newP.costPerUnit || updatedList[matchIndex].costPerUnit,
+            price: newP.price || updatedList[matchIndex].price,
+            singleRetailPrice: newP.singleRetailPrice || updatedList[matchIndex].singleRetailPrice,
+            cartonSellingPrice: newP.cartonSellingPrice || updatedList[matchIndex].cartonSellingPrice,
+            blisterPrice: newP.blisterPrice || updatedList[matchIndex].blisterPrice,
+            blistersPerBox: newP.blistersPerBox || updatedList[matchIndex].blistersPerBox,
+            expiryDate: newP.expiryDate || updatedList[matchIndex].expiryDate,
+            manufacturer: newP.manufacturer || updatedList[matchIndex].manufacturer,
+            dosageForm: newP.dosageForm || updatedList[matchIndex].dosageForm,
+            lastPriceUpdate: new Date().toISOString()
+          };
+          updatedCount++;
+        } else {
+          // Add as fresh product
+          updatedList.unshift(newP);
+          newCount++;
+        }
+      });
+
+      try { localStorage.setItem('supermarket_products_v1', JSON.stringify(updatedList)); } catch {}
+      localDbBulkPut('products', updatedList);
+      syncBulkWriteCollection('products', updatedList);
+
+      // Notification
+      const newNotif: MarketNotification = {
+        id: `notif-mig-${Date.now()}`,
+        title: 'Legacy System Products Migrated',
+        titleAr: 'تم استيراد المواد من شاشة النظام القديم بنجاح',
+        message: `Successfully imported ${newCount} new products and updated ${updatedCount} existing items.`,
+        messageAr: `تم بنجاح إدراج ${newCount} دواء ومادة جديدة وتحديث رصيد وأسعار ${updatedCount} مادة في المخزن.`,
+        time: 'Just now',
+        priority: 'high',
+        category: 'inventory',
+        read: false
+      };
+      setNotifications(nPrev => [newNotif, ...nPrev]);
+      syncWriteDocument('notifications', newNotif.id, newNotif);
+
+      return updatedList;
+    });
   };
 
   const handleImportBackup = (rawBackup: any) => {
@@ -1036,6 +1176,7 @@ export function App() {
             onOpenInvoices={() => setActiveTab('invoices')}
             onNavigateToReports={() => setActiveTopTab('reports')}
             onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+            onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
           />
         );
 
@@ -1546,145 +1687,183 @@ export function App() {
       )}
 
       {/* Modals */}
-      <ReceiptModal
-        sale={selectedReceipt}
-        onClose={() => setSelectedReceipt(null)}
-        settings={settings}
-      />
+      {selectedReceipt && (
+        <ReceiptModal
+          sale={selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+          settings={settings}
+        />
+      )}
 
-      <ProductModal
-        isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
-        productToEdit={productToEdit}
-        onSave={handleSaveProduct}
-        settings={settings}
-        suppliers={suppliers}
-        initialSupplierName={initialSupplierForNewProduct}
-        existingProducts={products}
-      />
+      {isProductModalOpen && (
+        <ProductModal
+          isOpen={isProductModalOpen}
+          onClose={() => setIsProductModalOpen(false)}
+          productToEdit={productToEdit}
+          onSave={handleSaveProduct}
+          settings={settings}
+          suppliers={suppliers}
+          initialSupplierName={initialSupplierForNewProduct}
+          existingProducts={products}
+        />
+      )}
 
-      <CompletedReceiptsModal
-        isOpen={isCompletedReceiptsOpen}
-        onClose={() => setIsCompletedReceiptsOpen(false)}
-        salesHistory={salesHistory}
-        setSalesHistory={setSalesHistory}
-        userAccounts={userAccounts}
-        onUpdateSaleCashier={(saleId, newCashierName) => {
-          setSalesHistory(prev => prev.map(s => s.id === saleId ? { ...s, cashierName: newCashierName } : s));
-        }}
-        settings={settings}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenReturnForSale={(sale) => {
-          setSalesReturnPreInvoiceNo(sale.invoiceNumber);
-          setIsSalesReturnOpen(true);
-        }}
-        onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-      />
+      {isCompletedReceiptsOpen && (
+        <CompletedReceiptsModal
+          isOpen={isCompletedReceiptsOpen}
+          onClose={() => setIsCompletedReceiptsOpen(false)}
+          salesHistory={salesHistory}
+          setSalesHistory={setSalesHistory}
+          userAccounts={userAccounts}
+          onUpdateSaleCashier={(saleId, newCashierName) => {
+            setSalesHistory(prev => prev.map(s => s.id === saleId ? { ...s, cashierName: newCashierName } : s));
+          }}
+          settings={settings}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenReturnForSale={(sale) => {
+            setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+            setIsSalesReturnOpen(true);
+          }}
+          onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+        />
+      )}
 
-      <SalesReturnModal
-        isOpen={isSalesReturnOpen}
-        onClose={() => setIsSalesReturnOpen(false)}
-        products={products}
-        setProducts={setProducts}
-        salesHistory={salesHistory}
-        setSalesHistory={setSalesHistory}
-        settings={settings}
-        preSelectedInvoiceNo={salesReturnPreInvoiceNo}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-        onOpenInventory={() => {
-          setIsSalesReturnOpen(false);
-          setActiveTab('products');
-        }}
-      />
+      {isSalesReturnOpen && (
+        <SalesReturnModal
+          isOpen={isSalesReturnOpen}
+          onClose={() => setIsSalesReturnOpen(false)}
+          products={products}
+          setProducts={setProducts}
+          salesHistory={salesHistory}
+          setSalesHistory={setSalesHistory}
+          settings={settings}
+          preSelectedInvoiceNo={salesReturnPreInvoiceNo}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+          onOpenInventory={() => {
+            setIsSalesReturnOpen(false);
+            setActiveTab('products');
+          }}
+        />
+      )}
 
-      <CashDrawerModal
-        isOpen={isCashDrawerOpen}
-        onClose={() => setIsCashDrawerOpen(false)}
-        salesHistory={salesHistory}
-        settings={settings}
-        onOpenShiftReport={() => setIsShiftReportOpen(true)}
-      />
+      {isCashDrawerOpen && (
+        <CashDrawerModal
+          isOpen={isCashDrawerOpen}
+          onClose={() => setIsCashDrawerOpen(false)}
+          salesHistory={salesHistory}
+          settings={settings}
+          onOpenShiftReport={() => setIsShiftReportOpen(true)}
+        />
+      )}
 
-      <ShiftReportModal
-        isOpen={isShiftReportOpen}
-        onClose={() => setIsShiftReportOpen(false)}
-        salesHistory={salesHistory}
-        settings={settings}
-        cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenSalesReturn={(invoiceNo) => {
-          setSalesReturnPreInvoiceNo(invoiceNo || null);
-          setIsSalesReturnOpen(true);
-        }}
-      />
+      {isShiftReportOpen && (
+        <ShiftReportModal
+          isOpen={isShiftReportOpen}
+          onClose={() => setIsShiftReportOpen(false)}
+          salesHistory={salesHistory}
+          settings={settings}
+          cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenSalesReturn={(invoiceNo) => {
+            setSalesReturnPreInvoiceNo(invoiceNo || null);
+            setIsSalesReturnOpen(true);
+          }}
+        />
+      )}
 
-      <MobileSyncModal
-        isOpen={isMobileSyncOpen}
-        onClose={() => setIsMobileSyncOpen(false)}
-        settings={settings}
-      />
+      {isMobileSyncOpen && (
+        <MobileSyncModal
+          isOpen={isMobileSyncOpen}
+          onClose={() => setIsMobileSyncOpen(false)}
+          settings={settings}
+        />
+      )}
 
-      <BarcodePrintModal
-        isOpen={isBarcodePrintOpen}
-        onClose={() => setIsBarcodePrintOpen(false)}
-        initialProduct={productForBarcodePrint}
-        products={products}
-        settings={settings}
-      />
+      {isBarcodePrintOpen && (
+        <BarcodePrintModal
+          isOpen={isBarcodePrintOpen}
+          onClose={() => setIsBarcodePrintOpen(false)}
+          initialProduct={productForBarcodePrint}
+          products={products}
+          settings={settings}
+        />
+      )}
 
-      <DesktopAppModal
-        isOpen={isDesktopAppModalOpen}
-        onClose={() => setIsDesktopAppModalOpen(false)}
-        settings={settings}
-        deferredPrompt={deferredPrompt}
-        onTriggerInstall={handleTriggerInstall}
-      />
+      {isDesktopAppModalOpen && (
+        <DesktopAppModal
+          isOpen={isDesktopAppModalOpen}
+          onClose={() => setIsDesktopAppModalOpen(false)}
+          settings={settings}
+          deferredPrompt={deferredPrompt}
+          onTriggerInstall={handleTriggerInstall}
+        />
+      )}
 
-      <CSharpExporterModal
-        isOpen={isCSharpModalOpen}
-        onClose={() => setIsCSharpModalOpen(false)}
-        settings={settings}
-        products={products}
-        sales={salesHistory}
-      />
+      {isCSharpModalOpen && (
+        <CSharpExporterModal
+          isOpen={isCSharpModalOpen}
+          onClose={() => setIsCSharpModalOpen(false)}
+          settings={settings}
+          products={products}
+          sales={salesHistory}
+        />
+      )}
 
-      <CashierAccountsModal
-        isOpen={isAccountsModalOpen}
-        onClose={() => setIsAccountsModalOpen(false)}
-        userAccounts={userAccounts}
-        salesHistory={salesHistory}
-        settings={settings}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenReturnForSale={(sale) => {
-          setSalesReturnPreInvoiceNo(sale.invoiceNumber);
-          setIsSalesReturnOpen(true);
-        }}
-        onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
-        onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
-      />
+      {isAccountsModalOpen && (
+        <CashierAccountsModal
+          isOpen={isAccountsModalOpen}
+          onClose={() => setIsAccountsModalOpen(false)}
+          userAccounts={userAccounts}
+          salesHistory={salesHistory}
+          settings={settings}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenReturnForSale={(sale) => {
+            setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+            setIsSalesReturnOpen(true);
+          }}
+          onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
+          onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
+        />
+      )}
 
-      <InventoryAuditModal
-        isOpen={isInventoryAuditOpen}
-        onClose={() => setIsInventoryAuditOpen(false)}
-        products={products}
-        setProducts={setProducts}
-        settings={settings}
-      />
+      {isInventoryAuditOpen && (
+        <InventoryAuditModal
+          isOpen={isInventoryAuditOpen}
+          onClose={() => setIsInventoryAuditOpen(false)}
+          products={products}
+          setProducts={setProducts}
+          settings={settings}
+        />
+      )}
 
-      <AIInvoiceScannerModal
-        isOpen={isAIInvoiceScannerOpen}
-        onClose={() => setIsAIInvoiceScannerOpen(false)}
-        settings={settings}
-        existingProducts={products}
-        existingSuppliers={suppliers}
-        onConfirmImport={handleConfirmAIInvoiceImport}
-        onTransferToDraft={(draftData) => {
-          setAiDraftImportData(draftData);
-          setActiveTab('purchases');
-        }}
-        onNavigateToTab={(tab) => setActiveTab(tab as any)}
-      />
+      {isAIInvoiceScannerOpen && (
+        <AIInvoiceScannerModal
+          isOpen={isAIInvoiceScannerOpen}
+          onClose={() => setIsAIInvoiceScannerOpen(false)}
+          settings={settings}
+          existingProducts={products}
+          existingSuppliers={suppliers}
+          onConfirmImport={handleConfirmAIInvoiceImport}
+          onTransferToDraft={(draftData) => {
+            setAiDraftImportData(draftData);
+            setActiveTab('purchases');
+          }}
+          onNavigateToTab={(tab) => setActiveTab(tab as any)}
+          onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
+        />
+      )}
+
+      {isLegacyMigratorOpen && (
+        <AILegacySystemMigratorModal
+          isOpen={isLegacyMigratorOpen}
+          onClose={() => setIsLegacyMigratorOpen(false)}
+          settings={settings}
+          existingProducts={products}
+          currentUser={currentUser}
+          onConfirmMigration={handleConfirmLegacyMigration}
+        />
+      )}
 
     </div>
   );

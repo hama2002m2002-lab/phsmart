@@ -3,6 +3,7 @@
 
 import { SaleTransaction, StoreSettings } from '../types';
 import { formatNumber } from './formatUtils';
+import { generateBarcodeSvgString } from './barcodeUtils';
 
 let activeSerialPort: any = null;
 
@@ -318,6 +319,7 @@ export async function sendRawToWebSerialPrinter(buffer: Uint8Array, baudRate = 9
 
 /**
  * Silent Direct Thermal Iframe Printer (Browser native silent fallback)
+ * Injects complete 80mm cashier receipt styles and preserves barcodes & layout
  */
 export function printThermalSilentIframe(printableElementId: string): void {
   const elem = document.getElementById(printableElementId);
@@ -341,40 +343,107 @@ export function printThermalSilentIframe(printableElementId: string): void {
     return;
   }
 
+  // Collect page stylesheets so classes like flex, grid, etc. are properly styled
+  const stylesheets = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map(el => el.outerHTML)
+    .join('\n');
+
   doc.open();
   doc.write(`
     <!DOCTYPE html>
-    <html>
+    <html dir="rtl">
       <head>
-        <title>Thermal Print</title>
+        <meta charset="utf-8" />
+        <title>طباعة ورق كاشير 80 مم</title>
+        ${stylesheets}
         <style>
-          @page { size: auto; margin: 0mm; }
-          body {
-            font-family: monospace;
-            padding: 4px;
+          @page {
+            size: 80mm auto;
             margin: 0;
-            color: #000;
-            background: #fff;
           }
-          * { box-sizing: border-box; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { text-align: left; padding: 2px 0; }
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 2mm 3mm !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: 'Segoe UI', Tahoma, system-ui, -apple-system, sans-serif !important;
+            font-size: 11px !important;
+            line-height: 1.35 !important;
+            width: 78mm !important;
+            max-width: 78mm !important;
+            direction: rtl !important;
+          }
+          /* Ensure all dark-mode text classes turn into high-contrast black for thermal paper */
+          * {
+            color: #000000 !important;
+            background-color: transparent !important;
+            text-shadow: none !important;
+            border-color: #333333 !important;
+          }
+          .bg-white, [class*="bg-white"] {
+            background-color: #ffffff !important;
+          }
+          svg text, text {
+            fill: #000000 !important;
+          }
+          svg rect {
+            fill: #000000 !important;
+          }
+          svg rect[fill="#ffffff"] {
+            fill: #ffffff !important;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+          th, td {
+            padding: 3px 1px !important;
+            color: #000000 !important;
+          }
+          th {
+            border-bottom: 2px solid #000000 !important;
+            font-weight: bold !important;
+          }
+          td {
+            border-bottom: 1px dashed #666666 !important;
+          }
+          .truncate {
+            overflow: visible !important;
+            white-space: normal !important;
+            text-overflow: clip !important;
+          }
         </style>
       </head>
       <body>
-        ${elem.innerHTML}
+        <div style="width: 76mm; margin: 0 auto;">
+          ${elem.innerHTML}
+        </div>
         <script>
           window.onload = function() {
-            window.print();
             setTimeout(function() {
-              window.frameElement.remove();
-            }, 500);
+              window.print();
+              setTimeout(function() {
+                if (window.frameElement) window.frameElement.remove();
+              }, 800);
+            }, 100);
           };
         </script>
       </body>
     </html>
   `);
   doc.close();
+}
+
+/**
+ * Direct Print 80mm Cashier Receipt for a Sale Transaction
+ */
+export function print80mmCashierReceipt(sale: SaleTransaction, settings: StoreSettings): void {
+  renderSilentIframeReceipt(sale, settings);
 }
 
 /**
@@ -399,7 +468,7 @@ export function printSaleReceiptDirect(sale: SaleTransaction, settings: StoreSet
 }
 
 /**
- * Render and trigger print on a hidden iframe
+ * Render and trigger print on a hidden iframe formatted specifically for 80mm thermal cashier paper
  */
 function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSettings): void {
   const lang = settings.language || 'ar';
@@ -434,26 +503,35 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
 
   const itemsList = Array.isArray(sale.items) ? sale.items : (typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : []);
 
-  const itemsRows = itemsList.map((item: any) => {
+  const itemsRows = itemsList.map((item: any, idx: number) => {
     const itemName = isKu ? (item.productNameKu || item.productNameAr || item.productName) : (item.productNameAr || item.productName);
     const saleTypeLabel = item.saleType === 'blister' 
       ? (isKu ? 'شیت' : isAr ? 'شيت' : 'Sheet')
       : (isKu ? 'باکەت' : isAr ? 'باكت' : 'Box');
+    
+    const barcodeDisplay = item.barcode ? `
+      <div style="font-family: monospace; font-size: 9.5px; font-weight: bold; color: #000; margin-top: 1.5px; letter-spacing: 0.5px;">
+        🏷️ <span>${item.barcode}</span>
+      </div>
+    ` : '';
 
     return `
-      <tr style="border-bottom: 1px dashed #ccc;">
-        <td style="padding: 5px 0; font-size: 11px; text-align: ${isAr || isKu ? 'right' : 'left'};">
-          <div style="font-weight: bold; color: #000;">${itemName}</div>
-          <div style="font-size: 9px; color: #333; margin-top: 1px;">
-            <span style="display: inline-block; background: #eee; padding: 1px 4px; border-radius: 3px; font-weight: bold;">
+      <tr style="border-bottom: 1px dashed #444;">
+        <td style="padding: 4px 0; font-size: 11px; text-align: ${isAr || isKu ? 'right' : 'left'}; vertical-align: top;">
+          <div style="font-weight: 800; color: #000; font-size: 11.5px; line-height: 1.25;">
+            ${idx + 1}. ${itemName}
+          </div>
+          ${barcodeDisplay}
+          <div style="font-size: 9px; color: #222; margin-top: 2px;">
+            <span style="display: inline-block; background: #e5e5e5; border: 1px solid #999; padding: 0.5px 4px; border-radius: 3px; font-weight: bold;">
               ${saleTypeLabel}
             </span>
             ${item.dosageInstruction ? `<span style="margin-inline-start: 4px; font-style: italic;">💊 ${item.dosageInstruction}</span>` : ''}
           </div>
         </td>
-        <td style="padding: 5px 0; text-align: center; font-size: 11px; font-weight: bold; font-family: monospace;">${item.quantity}</td>
-        <td style="padding: 5px 0; text-align: ${isAr || isKu ? 'left' : 'right'}; font-size: 11px; font-family: monospace;">${currency}${formatNumber(item.price)}</td>
-        <td style="padding: 5px 0; text-align: ${isAr || isKu ? 'left' : 'right'}; font-size: 11px; font-weight: bold; font-family: monospace;">${currency}${formatNumber(item.total)}</td>
+        <td style="padding: 4px 0; text-align: center; font-size: 11.5px; font-weight: bold; font-family: monospace; vertical-align: top;">${item.quantity}</td>
+        <td style="padding: 4px 0; text-align: ${isAr || isKu ? 'left' : 'right'}; font-size: 10.5px; font-family: monospace; vertical-align: top;">${currency}${formatNumber(item.price)}</td>
+        <td style="padding: 4px 0; text-align: ${isAr || isKu ? 'left' : 'right'}; font-size: 11.5px; font-weight: bold; font-family: monospace; vertical-align: top;">${currency}${formatNumber(item.total)}</td>
       </tr>
     `;
   }).join('');
@@ -483,6 +561,8 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
     ? 'شكراً لزيارتكم! نرجو الاحتفاظ بالوصل' 
     : 'Thank you for your visit!';
 
+  const invoiceBarcodeSvg = generateBarcodeSvgString(sale.invoiceNumber, 42, true);
+
   doc.open();
   doc.write(`
     <!DOCTYPE html>
@@ -491,19 +571,26 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
         <meta charset="utf-8" />
         <title>Receipt #${sale.invoiceNumber}</title>
         <style>
-          @page { size: 80mm auto; margin: 0; }
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           body {
             font-family: 'Segoe UI', Tahoma, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
             width: 76mm;
             margin: 0 auto;
-            padding: 6px;
+            padding: 4px;
             color: #000;
             background: #fff;
             font-size: 11px;
             direction: ${isAr || isKu ? 'rtl' : 'ltr'};
             line-height: 1.35;
           }
-          * { box-sizing: border-box; }
           .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
           .title { font-size: 16px; font-weight: 900; margin: 0; text-transform: uppercase; }
           .subtitle { font-size: 10px; margin-top: 2px; color: #222; }
@@ -515,7 +602,8 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
           .totals { border-top: 2px dashed #000; padding-top: 5px; font-size: 11px; }
           .total-row { display: flex; justify-content: space-between; margin-bottom: 2.5px; }
           .grand-total { font-size: 15px; font-weight: 900; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 4px 0; margin: 4px 0; }
-          .footer { text-align: center; font-size: 10px; margin-top: 8px; border-top: 1px dashed #777; padding-top: 6px; }
+          .barcode-box { text-align: center; margin: 8px auto 4px auto; padding: 4px; }
+          .footer { text-align: center; font-size: 10px; margin-top: 6px; border-top: 1px dashed #777; padding-top: 6px; }
           .font-mono { font-family: monospace, Courier, monospace; }
         </style>
       </head>
@@ -565,9 +653,14 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
           ${sale.changeDue > 0 ? `<div class="total-row"><span>${isKu ? 'ماوە / گەڕاوە:' : isAr ? 'الباقي:' : 'Change Due:'}</span><span class="font-mono">${currency}${formatNumber(sale.changeDue)}</span></div>` : ''}
         </div>
 
+        <!-- 80mm Receipt Barcode Graphic -->
+        <div class="barcode-box">
+          ${invoiceBarcodeSvg}
+        </div>
+
         <div class="footer">
           <div>${settings.receiptFooterMsg || defaultFooterMsg}</div>
-          <div style="font-size: 8px; color: #666; margin-top: 3px;">7amo.pos Offline System</div>
+          <div style="font-size: 8px; color: #666; margin-top: 3px;">7amo.pos • 80mm Thermal Receipt</div>
         </div>
 
         <script>
@@ -575,7 +668,7 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
             window.print();
             setTimeout(function() {
               if (window.frameElement) window.frameElement.remove();
-            }, 600);
+            }, 700);
           };
         </script>
       </body>

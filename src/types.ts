@@ -335,6 +335,10 @@ export interface StoreSettings {
   printerIpAddress?: string;
   labelPrinterName?: string;
   paperSize?: '80mm' | '58mm' | 'A4' | 'A5' | '50x30mm' | '40x20mm' | 'a4';
+  cashierPaperSize?: '80mm' | '58mm';
+  receiptShowItemBarcodes?: boolean;
+  receiptShowInvoiceBarcode?: boolean;
+  receiptBarcodeType?: 'code128' | 'qrcode' | 'both';
   autoPrintPriceLabels?: boolean;
   printerCopies?: number;
   posShortcuts?: POSKeyboardShortcuts;
