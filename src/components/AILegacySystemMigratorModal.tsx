@@ -97,12 +97,10 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Close camera on unmount or modal close; auto-initialize sample dataset on open
+  // Close camera on unmount or modal close
   useEffect(() => {
     if (!isOpen) {
       stopCamera();
-    } else if (extractedItems.length === 0) {
-      loadSampleDatasetSync();
     }
   }, [isOpen]);
 
@@ -265,18 +263,22 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     setSelectedImage(base64Image);
     setIsProcessing(true);
     setErrorMsg(null);
+    setWarningNotice(null);
 
-    // Instant client-side path for sample preset
+    // Instant client-side path for sample demo preset
     if (base64Image === 'demo_legacy_pharmacy_screen' || base64Image.startsWith('demo_')) {
       loadSampleDatasetSync();
       return;
     }
 
+    // Clear previous items so the user gets fresh extraction from their new image
+    setExtractedItems([]);
+
     setProgressStage(t('جاري تحسين صورة الشاشة ومعالجتها بسرعة فائقة...', 'وێنەکە ئامادە دەکرێت بە خێرایی بەرز بۆ AI...', 'Optimizing screen image for fast AI processing...'));
 
     try {
       const optimizedImage = await compressImage(base64Image);
-      setProgressStage(t('الذكاء الاصطناعي يقرأ المواد حرفياً كما هي في الصورة بدون ترجمة...', 'AI ناوەکان دەخوێنێتەوە وەک خۆیان بەبێ وەرگێڕان...', 'AI reading items verbatim without translation...'));
+      setProgressStage(t('الذكاء الاصطناعي يستخرج أسماء المواد والأسعار من صورتك الجديدة...', 'AI ناو و نرخەکان دەردەهێنێت لە وێنە نوێیەکە...', 'AI extracting items and prices from your new photo...'));
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 65000);
@@ -293,15 +295,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.warn('Server response status not ok:', response.status);
-        loadSampleDatasetSync(
-          t(
-            'تم استخراج وتجهيز جدول الأدوية والأسعار والباركود بنجاح (24 مادة) للمراجعة والاستيراد.',
-            'داتاکان بە سەرکەوتوویی ئامادەکران (٢٤ دەرمان) بۆ هاوردەکردن.',
-            'Loaded verified dataset (24 items) ready for migration.'
-          )
-        );
-        return;
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || t('تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التقاط صورة أوضح وإعادة المحاولة.', 'نەتوانرا وێنەکە بخوێنرێتەوە.', 'Failed to process image with AI.'));
       }
 
       const result = await response.json();
@@ -312,14 +307,14 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       }
 
       const rawItems = Array.isArray(result.items) ? result.items : [];
-      setSystemTitle(result.systemTitle || t('جدول المواد المستخرجة من شاشة النظام السابق', 'خشتەی کاڵا دەرهێنراوەکان لە سیستەمی کۆن', 'Extracted Legacy System Items'));
+      setSystemTitle(result.systemTitle || t('جدول المواد المستخرجة من صورتك المرفوعة', 'خشتەی کاڵا دەرهێنراوەکان لە وێنەکەت', 'Items Extracted from Uploaded Photo'));
 
       if (rawItems.length === 0) {
-        loadSampleDatasetSync(
+        setErrorMsg(
           t(
-            'لم يتم التعرف على جدول واضح من الصورة المرفوعة، تم تجهيز جدول الأدوية والأسعار للمراجعة والاستيراد.',
-            'خشتەیەکی ڕوون نەدۆزرایەوە، داتاکان ئامادەکران بۆ هاوردەکردن.',
-            'No clear table detected, loaded safe dataset for review and migration.'
+            'لم يتم العثور على أدوية أو نصوص واضحة في الصورة المرفوعة. يرجى التأكد من التقاط صورة أوضح ومباشرة لشاشة البرنامج أو جدول المواد.',
+            'هیچ دەرمانێک نەدۆزرایەوە لە وێنەکەدا. تکایە بە ڕوونی وێنەکە بگرە.',
+            'No medicines or clear table detected in the uploaded image. Please provide a clearer, direct photo.'
           )
         );
         return;
@@ -371,12 +366,12 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
 
       setExtractedItems(mappedItems);
     } catch (err: any) {
-      console.error('Migration error handled gracefully:', err);
-      loadSampleDatasetSync(
-        t(
-          'تم استرداد وتجهيز جدول الأدوية والأسعار بنجاح (24 مادة) لتتمكن من مراجعتها واستيرادها فوراً.',
-          'داتاکان بە سەرکەوتوویی ئامادەکران (٢٤ دەرمان) بۆ هاوردەکردن.',
-          'Data recovered successfully (24 items) ready for review and migration.'
+      console.error('Migration error in processScreenImage:', err);
+      setErrorMsg(
+        err.message || t(
+          'تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التأكد من جودة الصورة أو إعادة المحاولة.',
+          'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەکەدا.',
+          'Error reading image with AI. Please retry.'
         )
       );
     } finally {
@@ -737,7 +732,7 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                 </span>
               </button>
 
-              {/* 3. Demo Preset Button (Exact User Photo Database) */}
+              {/* 3. Demo Preset Button */}
               <button
                 type="button"
                 onClick={() => processScreenImage('demo_legacy_pharmacy_screen')}
@@ -748,10 +743,10 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                   <Sparkles className="w-4 h-4 text-indigo-300 animate-pulse" />
                 </div>
                 <span className="text-xs font-black text-indigo-200 group-hover:text-white">
-                  {t('شاشة تجريبية (الصورة المرفوعة)', 'شاشەی نموونەیی (دەرمانەکان)', 'Load Sample Screen')}
+                  {t('نموذج تجريبي جاهز (ديمو)', 'شاشەی نموونەیی ئامادەکراو', 'Sample Demo Data')}
                 </span>
                 <span className="text-[10px] text-indigo-300/80 mt-0.5">
-                  {t('24 دواء بأسعار الشيت والباكيت والباركود', '٢٤ دەرمان بە هەموو نرخەکان', '24 items with full pricing')}
+                  {t('استعراض بيانات جاهزة للتجربة', 'تاقیکردنەوە بە داتای ئامادەکراو', 'Try with preloaded sample data')}
                 </span>
               </button>
             </div>
@@ -1164,6 +1159,45 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State - Awaiting Image Upload / Capture */}
+          {extractedItems.length === 0 && !isProcessing && (
+            <div className="py-14 px-6 rounded-2xl bg-slate-800/40 border border-dashed border-slate-700/80 flex flex-col items-center justify-center text-center max-w-xl mx-auto my-6 space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg">
+                <Monitor className="w-8 h-8" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-black text-white">
+                  {t('جاهز لقراءة المواد من صورتك الجديدة', 'ئامادەیە بۆ خوێندنەوەی کاڵاکان لە وێنە نوێیەکەت', 'Ready to Extract Items from Your Photo')}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed max-w-md">
+                  {t(
+                    'قم برفع صورة شاشة البرنامج القديم أو جدول الأسعار (أو التقط صورة بالكاميرا)، وسيقوم الذكاء الاصطناعي بقراءة أسماء المواد الحقيقية من صورتك واستخراجها مباشرة.',
+                    'وێنەی شاشەی سیستەمی کۆن بەرزبکەرەوە یان بە کامێرا بیگرە، AI ناو و نرخە ڕاستەقینەکان دەردەهێنێت لە وێنەکەت.',
+                    'Upload a photo of your legacy system screen or medicine table, and AI will extract the exact items and prices directly from your image.'
+                  )}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>{t('رفع صورة الشاشة الآن', 'بارکردنی وێنە ئێستا', 'Upload Screen Photo Now')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={startCamera}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-2"
+                >
+                  <Camera className="w-4 h-4 text-blue-400" />
+                  <span>{t('تصوير بالكاميرا', 'گرتن بە کامێرا', 'Capture Photo')}</span>
+                </button>
               </div>
             </div>
           )}

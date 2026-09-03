@@ -33,9 +33,9 @@ function getAIClient(): GoogleGenAI {
 
 // Multi-tier resilient model fallback cascade per official Gemini guidelines
 const GEMINI_VISION_MODELS = [
+  "gemini-3.1-flash-lite",
   "gemini-flash-latest",
-  "gemini-3.8-flash",
-  "gemini-3.1-flash-lite"
+  "gemini-3.8-flash"
 ];
 
 async function callGeminiVisionWithFallback(params: {
@@ -940,48 +940,77 @@ CRITICAL: Extract ALL visible rows. Verbatim extraction is mandatory. Do NOT tra
             }
           });
         } catch (geminiErr: any) {
-          console.error("Gemini API legacy screen migrator fallback triggered:", geminiErr);
-          return res.json({
-            ...fallbackScreenData,
-            isFallback: true,
-            warning: "تم استخراج وتجهيز جدول الأدوية والأسعار والباركود بالكامل (24 مادة) لتتمكن من مراجعتها واستيرادها فوراً."
+          console.error("Gemini API legacy screen migrator error:", geminiErr);
+          const isDemo = imageBase64 === "demo_legacy_pharmacy_screen" || imageBase64.startsWith("demo_");
+          if (isDemo) {
+            return res.json(fallbackScreenData);
+          }
+          return res.status(500).json({
+            error: geminiErr?.message || "تعذر معالجة الصورة بالذكاء الاصطناعي، يرجى المحاولة بصورة أوضح.",
+            items: []
           });
         }
 
         const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        let parsedData;
+        let parsedData: any;
         try {
           parsedData = JSON.parse(cleaned);
         } catch {
           const firstBrace = cleaned.indexOf('{');
           const lastBrace = cleaned.lastIndexOf('}');
           if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            parsedData = JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
-          } else {
-            console.warn("Could not parse JSON from model response, using extracted pharmacy dataset");
-            return res.json({
-              ...fallbackScreenData,
-              isFallback: true,
-              warning: "تم استخراج وتجهيز جدول الأدوية والأسعار والباركود بالكامل (24 مادة) لتتمكن من مراجعتها واستيرادها فوراً."
-            });
+            try {
+              parsedData = JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+            } catch {}
+          }
+          if (!parsedData) {
+            const firstBracket = cleaned.indexOf('[');
+            const lastBracket = cleaned.lastIndexOf(']');
+            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+              try {
+                parsedData = JSON.parse(cleaned.substring(firstBracket, lastBracket + 1));
+              } catch {}
+            }
           }
         }
-        res.json(parsedData);
+
+        let extractedItemList: any[] = [];
+        let detectedTitle = "المواد المستخرجة من شاشة النظام السابق";
+
+        if (Array.isArray(parsedData)) {
+          if (parsedData.length > 0 && Array.isArray(parsedData[0]?.items)) {
+            extractedItemList = parsedData[0].items;
+            detectedTitle = parsedData[0].systemTitle || detectedTitle;
+          } else {
+            extractedItemList = parsedData;
+          }
+        } else if (parsedData && typeof parsedData === 'object') {
+          detectedTitle = parsedData.systemTitle || detectedTitle;
+          if (Array.isArray(parsedData.items)) {
+            extractedItemList = parsedData.items;
+          } else if (Array.isArray(parsedData.products)) {
+            extractedItemList = parsedData.products;
+          } else if (Array.isArray(parsedData.medicines)) {
+            extractedItemList = parsedData.medicines;
+          }
+        }
+
+        return res.json({
+          systemTitle: detectedTitle,
+          totalItemsDetected: extractedItemList.length,
+          items: extractedItemList
+        });
       } catch (geminiErr: any) {
-        console.error("Gemini API legacy screen migrator error handled gracefully:", geminiErr);
-        res.json({
-          ...fallbackScreenData,
-          isFallback: true,
-          warning: "تم توفير وتجهيز جدول الأدوية والأسعار والباركود بالكامل (24 مادة) لتتمكن من مراجعتها واستيرادها فوراً."
+        console.error("Gemini API legacy screen migrator error handled:", geminiErr);
+        return res.status(500).json({
+          error: geminiErr?.message || "حدث خطأ أثناء معالجة الصورة.",
+          items: []
         });
       }
     } catch (err: any) {
       console.error("Error in legacy screen migrator handler:", err);
-      res.json({
-        systemTitle: "دەرمانەکان (Pharmacy Management System Table)",
-        totalItemsDetected: 24,
-        isFallback: true,
-        warning: "تم توفير وتجهيز جدول الأدوية والأسعار والباركود بالكامل (24 مادة) لتتمكن من مراجعتها واستيرادها فوراً.",
+      return res.status(500).json({
+        error: "حدث خطأ في الخادم أثناء قراءة الصورة.",
         items: []
       });
     }
