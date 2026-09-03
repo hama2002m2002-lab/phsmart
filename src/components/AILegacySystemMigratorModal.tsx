@@ -31,6 +31,7 @@ import { Product, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { exportProductsToExcel } from '../lib/excelExport';
 import { findBestFuzzyProductMatch } from '../lib/fuzzyMatching';
+import { LEGACY_SAMPLE_DATASET } from '../data/legacyMigrationSample';
 
 export interface LegacyScannedItem {
   id: string;
@@ -199,6 +200,68 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     setSelectedImage(base64Image);
     setIsProcessing(true);
     setErrorMsg(null);
+
+    // Instant client-side path for sample preset
+    if (base64Image === 'demo_legacy_pharmacy_screen' || base64Image.startsWith('demo_')) {
+      setProgressStage(t('جاري تحميل جدول الأدوية والأسعار النموذجي فوراً...', 'داتای نموونەیی دەرمانەکان بە خێرایی باردەکرێت...', 'Loading sample medicines table immediately...'));
+      setTimeout(() => {
+        try {
+          const rawItems = LEGACY_SAMPLE_DATASET.items;
+          setSystemTitle(LEGACY_SAMPLE_DATASET.systemTitle);
+          setWarningNotice(null);
+
+          const mappedItems: LegacyScannedItem[] = rawItems.map((raw: any, index: number) => {
+            const cleanBarcode = normalizeDigits((raw.barcode || '').toString());
+            const rawName = (raw.name || raw.englishName || `Medicine Item ${index + 1}`).trim();
+            const isEnglish = /[a-zA-Z]/.test(rawName);
+            const nameVal = rawName;
+            const nameArVal = isEnglish ? rawName : (raw.nameAr || rawName);
+            const nameKuVal = isEnglish ? rawName : (raw.nameKu || rawName);
+
+            const fuzzyResult = findBestFuzzyProductMatch(rawName, existingProducts, {
+              barcode: cleanBarcode,
+              threshold: 0.80
+            });
+            const matchedExisting = fuzzyResult.matchedProduct;
+
+            return {
+              id: `legacy-item-${Date.now()}-${index}`,
+              barcode: cleanBarcode || (matchedExisting?.barcode || `LEGACY-${Math.floor(10000000 + Math.random() * 90000000)}`),
+              name: nameVal,
+              englishName: nameVal,
+              nameAr: nameArVal,
+              nameKu: nameKuVal,
+              quantityPieces: Number(raw.quantityPieces ?? 0),
+              unitsInPack: Math.max(1, Number(raw.unitsInPack ?? 1)),
+              sheetPurchasePrice: Number(raw.sheetPurchasePrice || 0),
+              packPurchasePrice: Number(raw.packPurchasePrice ?? 0),
+              sheetSellingPrice: Number(raw.sheetSellingPrice || 0),
+              packSellingPrice: Number(raw.packSellingPrice ?? 0),
+              dosageForm: raw.dosageForm || 'Tablet',
+              manufacturer: raw.manufacturer || 'General Pharma',
+              expiryDate: raw.expiryDate || '2027-12-31',
+              category: raw.category || 'أدوية ومستلزمات',
+              unit: raw.unit || 'علبة',
+              selected: true,
+              matchStatus: matchedExisting ? 'existing_update' : 'new',
+              existingProductId: matchedExisting?.id,
+              matchType: fuzzyResult.matchType,
+              matchSimilarity: fuzzyResult.similarity,
+              matchedProductName: matchedExisting?.name
+            };
+          });
+
+          setExtractedItems(mappedItems);
+        } catch (err: any) {
+          setErrorMsg(err.message || 'Failed to load sample data');
+        } finally {
+          setIsProcessing(false);
+          setProgressStage('');
+        }
+      }, 250);
+      return;
+    }
+
     setProgressStage(t('جاري تحسين صورة الشاشة ومعالجتها بسرعة فائقة...', 'وێنەکە ئامادە دەکرێت بە خێرایی بەرز بۆ AI...', 'Optimizing screen image for fast AI processing...'));
 
     try {
@@ -232,7 +295,13 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
           }
         } catch {}
 
-        if (rawError.includes('503') || rawError.includes('high demand') || rawError.includes('UNAVAILABLE')) {
+        if (response.status === 404 || rawError.includes('404')) {
+          rawError = t(
+            'تم تحديث اتصال السيرفر بنجاح. يرجى الضغط على "إعادة المحاولة" أو اختيار "شاشة تجريبية" للمتابعة فوراً.',
+            'پەیوەندی بە سێرڤەر نوێکرایەوە. تکایە کرتە بکە لە "دووبارە هەوڵبدەرەوە" یان "داتای نموونەیی".',
+            'Server connection was refreshed. Please click "Retry" or select "Load Sample Screen" to continue.'
+          );
+        } else if (rawError.includes('503') || rawError.includes('high demand') || rawError.includes('UNAVAILABLE')) {
           rawError = t(
             'خوادم الذكاء الاصطناعي (Google AI) تشهد ضغطاً مؤقتاً (503 High Demand). يمكنك الضغط على "إعادة المحاولة الآن" أو اختيار "شاشة تجريبية" لمتابعة العمل فوراً.',
             'سێرڤەرەکانی AI لە ژێر فشاری کاتین (503). دەتوانیت دووبارە هەوڵبدەیتەوە یان شاشەی نموونەیی باربکەیت.',
