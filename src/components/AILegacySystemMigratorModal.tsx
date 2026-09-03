@@ -30,8 +30,6 @@ import {
 import { Product, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { exportProductsToExcel } from '../lib/excelExport';
-import { findBestFuzzyProductMatch } from '../lib/fuzzyMatching';
-import { LEGACY_SAMPLE_DATASET } from '../data/legacyMigrationSample';
 
 export interface LegacyScannedItem {
   id: string;
@@ -54,9 +52,6 @@ export interface LegacyScannedItem {
   selected: boolean;
   matchStatus: 'new' | 'existing_update';
   existingProductId?: string;
-  matchType?: 'exact_barcode' | 'exact_name' | 'fuzzy_name' | 'none';
-  matchSimilarity?: number;
-  matchedProductName?: string;
 }
 
 interface AILegacySystemMigratorModalProps {
@@ -89,7 +84,6 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
   const [systemTitle, setSystemTitle] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [warningNotice, setWarningNotice] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [previewZoomImage, setPreviewZoomImage] = useState<boolean>(false);
 
@@ -163,71 +157,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       .trim();
   };
 
-  // Synchronous and bulletproof sample dataset loader
-  const loadSampleDatasetSync = (customWarning?: string) => {
-    try {
-      const rawItems = LEGACY_SAMPLE_DATASET.items;
-      setSystemTitle(LEGACY_SAMPLE_DATASET.systemTitle);
-      setSelectedImage('demo_legacy_pharmacy_screen');
-      if (customWarning) {
-        setWarningNotice(customWarning);
-      } else {
-        setWarningNotice(null);
-      }
-      setErrorMsg(null);
-
-      const mappedItems: LegacyScannedItem[] = rawItems.map((raw: any, index: number) => {
-        const cleanBarcode = normalizeDigits((raw.barcode || '').toString());
-        const rawName = (raw.name || raw.englishName || `Medicine Item ${index + 1}`).trim();
-        const isEnglish = /[a-zA-Z]/.test(rawName);
-        const nameVal = rawName;
-        const nameArVal = isEnglish ? rawName : (raw.nameAr || rawName);
-        const nameKuVal = isEnglish ? rawName : (raw.nameKu || rawName);
-
-        const fuzzyResult = findBestFuzzyProductMatch(rawName, existingProducts, {
-          barcode: cleanBarcode,
-          threshold: 0.80
-        });
-        const matchedExisting = fuzzyResult.matchedProduct;
-
-        return {
-          id: `legacy-item-${Date.now()}-${index}`,
-          barcode: cleanBarcode || (matchedExisting?.barcode || `LEGACY-${Math.floor(10000000 + Math.random() * 90000000)}`),
-          name: nameVal,
-          englishName: nameVal,
-          nameAr: nameArVal,
-          nameKu: nameKuVal,
-          quantityPieces: Number(raw.quantityPieces ?? 0),
-          unitsInPack: Math.max(1, Number(raw.unitsInPack ?? 1)),
-          sheetPurchasePrice: Number(raw.sheetPurchasePrice || 0),
-          packPurchasePrice: Number(raw.packPurchasePrice ?? 0),
-          sheetSellingPrice: Number(raw.sheetSellingPrice || 0),
-          packSellingPrice: Number(raw.packSellingPrice ?? 0),
-          dosageForm: raw.dosageForm || 'Tablet',
-          manufacturer: raw.manufacturer || 'General Pharma',
-          expiryDate: raw.expiryDate || '2027-12-31',
-          category: raw.category || 'أدوية ومستلزمات',
-          unit: raw.unit || 'علبة',
-          selected: true,
-          matchStatus: matchedExisting ? 'existing_update' : 'new',
-          existingProductId: matchedExisting?.id,
-          matchType: fuzzyResult.matchType,
-          matchSimilarity: fuzzyResult.similarity,
-          matchedProductName: matchedExisting?.name
-        };
-      });
-
-      setExtractedItems(mappedItems);
-    } catch (err: any) {
-      console.error('Failed to load sample data:', err);
-    } finally {
-      setIsProcessing(false);
-      setProgressStage('');
-    }
-  };
-
-  // Image compressor for fast high OCR accuracy
-  const compressImage = (dataUrl: string, maxWidth = 1400, quality = 0.82): Promise<string> => {
+  // Image compressor for high OCR accuracy
+  const compressImage = (dataUrl: string, maxWidth = 2560, quality = 0.92): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -263,22 +194,11 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     setSelectedImage(base64Image);
     setIsProcessing(true);
     setErrorMsg(null);
-    setWarningNotice(null);
-
-    // Instant client-side path for sample demo preset
-    if (base64Image === 'demo_legacy_pharmacy_screen' || base64Image.startsWith('demo_')) {
-      loadSampleDatasetSync();
-      return;
-    }
-
-    // Clear previous items so the user gets fresh extraction from their new image
-    setExtractedItems([]);
-
-    setProgressStage(t('جاري تحسين صورة الشاشة ومعالجتها بسرعة فائقة...', 'وێنەکە ئامادە دەکرێت بە خێرایی بەرز بۆ AI...', 'Optimizing screen image for fast AI processing...'));
+    setProgressStage(t('جاري تحسين صورة الشاشة بدقة فائقة للذكاء الاصطناعي...', 'وێنەکە ئامادە دەکرێت بە کوالێتی بەرز بۆ AI...', 'Optimizing screen image for AI...'));
 
     try {
       const optimizedImage = await compressImage(base64Image);
-      setProgressStage(t('الذكاء الاصطناعي يستخرج أسماء المواد والأسعار من صورتك الجديدة...', 'AI ناو و نرخەکان دەردەهێنێت لە وێنە نوێیەکە...', 'AI extracting items and prices from your new photo...'));
+      setProgressStage(t('الذكاء الاصطناعي يقرأ جدول المواد، الباركود، والأسعار بدقة...', 'AI خشتە و بارکۆد و نرخەکان دەخوێنێتەوە...', 'AI scanning database table and columns...'));
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 65000);
@@ -286,64 +206,42 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       const response = await fetch('/api/gemini/migrate-legacy-screen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          imageBase64: optimizedImage, 
-          mimeType: 'image/jpeg' 
-        }),
+        body: JSON.stringify({ imageBase64: optimizedImage, mimeType: 'image/jpeg' }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || t('تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التقاط صورة أوضح وإعادة المحاولة.', 'نەتوانرا وێنەکە بخوێنرێتەوە.', 'Failed to process image with AI.'));
+        throw new Error(errorData.error || `Server returned ${response.status}`);
       }
 
       const result = await response.json();
-      if (result.warning) {
-        setWarningNotice(result.warning);
-      } else {
-        setWarningNotice(null);
-      }
-
       const rawItems = Array.isArray(result.items) ? result.items : [];
-      setSystemTitle(result.systemTitle || t('جدول المواد المستخرجة من صورتك المرفوعة', 'خشتەی کاڵا دەرهێنراوەکان لە وێنەکەت', 'Items Extracted from Uploaded Photo'));
+      setSystemTitle(result.systemTitle || t('جدول المواد المستخرجة من شاشة النظام السابق', 'خشتەی کاڵا دەرهێنراوەکان لە سیستەمی کۆن', 'Extracted Legacy System Items'));
 
       if (rawItems.length === 0) {
-        setErrorMsg(
-          t(
-            'لم يتم العثور على أدوية أو نصوص واضحة في الصورة المرفوعة. يرجى التأكد من التقاط صورة أوضح ومباشرة لشاشة البرنامج أو جدول المواد.',
-            'هیچ دەرمانێک نەدۆزرایەوە لە وێنەکەدا. تکایە بە ڕوونی وێنەکە بگرە.',
-            'No medicines or clear table detected in the uploaded image. Please provide a clearer, direct photo.'
-          )
-        );
+        setErrorMsg(t('لم يتم العثور على أدوية أو مواد في الصورة. يرجى تصوير الشاشة بوضوح وبإضاءة جيدة.', 'هیچ دەرمانێک نەدۆزرایەوە لە وێنەکەدا. تکایە بە ڕوونی وێنەکە بگرە.', 'No items detected. Please take a clearer photo of the screen.'));
         return;
       }
 
       // Map raw items into LegacyScannedItem with duplicate detection against existing catalog
       const mappedItems: LegacyScannedItem[] = rawItems.map((raw: any, index: number) => {
         const cleanBarcode = normalizeDigits((raw.barcode || '').toString());
-        // Verbatim rule: keep the exact name from the image. If in English, keep in English!
         const rawName = (raw.name || raw.englishName || `Medicine Item ${index + 1}`).trim();
-        const isEnglish = /[a-zA-Z]/.test(rawName);
-        const nameVal = rawName;
-        const nameArVal = isEnglish ? rawName : (raw.nameAr || rawName);
-        const nameKuVal = isEnglish ? rawName : (raw.nameKu || rawName);
 
-        // Intelligent duplicate prevention: Exact barcode, exact name, or Fuzzy Matching for English/Arabic spelling variations
-        const fuzzyResult = findBestFuzzyProductMatch(rawName, existingProducts, {
-          barcode: cleanBarcode,
-          threshold: 0.80 // 80% similarity threshold for medicines
-        });
-        const matchedExisting = fuzzyResult.matchedProduct;
+        // Check if barcode matches any existing product
+        const matchedExisting = cleanBarcode
+          ? existingProducts.find(p => p.barcode && normalizeDigits(p.barcode) === cleanBarcode)
+          : existingProducts.find(p => p.name.toLowerCase() === rawName.toLowerCase() || p.nameAr === raw.nameAr);
 
         return {
           id: `legacy-item-${Date.now()}-${index}`,
           barcode: cleanBarcode || (matchedExisting?.barcode || `LEGACY-${Math.floor(10000000 + Math.random() * 90000000)}`),
-          name: nameVal,
-          englishName: nameVal,
-          nameAr: nameArVal,
-          nameKu: nameKuVal,
+          name: rawName,
+          englishName: raw.englishName || rawName,
+          nameAr: raw.nameAr || rawName,
+          nameKu: raw.nameKu || rawName,
           quantityPieces: Number(raw.quantityPieces ?? raw.quantity ?? 0),
           unitsInPack: Math.max(1, Number(raw.unitsInPack ?? raw.unitsPerPack ?? 1)),
           sheetPurchasePrice: Number(raw.sheetPurchasePrice || 0),
@@ -357,23 +255,14 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
           unit: raw.unit || 'علبة',
           selected: true,
           matchStatus: matchedExisting ? 'existing_update' : 'new',
-          existingProductId: matchedExisting?.id,
-          matchType: fuzzyResult.matchType,
-          matchSimilarity: fuzzyResult.similarity,
-          matchedProductName: matchedExisting?.name
+          existingProductId: matchedExisting?.id
         };
       });
 
       setExtractedItems(mappedItems);
     } catch (err: any) {
-      console.error('Migration error in processScreenImage:', err);
-      setErrorMsg(
-        err.message || t(
-          'تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التأكد من جودة الصورة أو إعادة المحاولة.',
-          'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەکەدا.',
-          'Error reading image with AI. Please retry.'
-        )
-      );
+      console.error('Migration error:', err);
+      setErrorMsg(err.message || t('حدث خطأ أثناء معالجة صورة الشاشة. يرجى المحاولة مرة أخرى أو اختيار صورة أوضح.', 'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەی شاشەکە.', 'Error processing screen image.'));
     } finally {
       setIsProcessing(false);
       setProgressStage('');
@@ -449,11 +338,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     );
   }, [extractedItems, searchFilter]);
 
-  // Totals & Match counts
+  // Totals
   const selectedCount = extractedItems.filter(i => i.selected).length;
-  const fuzzyMatchCount = extractedItems.filter(i => i.selected && i.matchType === 'fuzzy_name').length;
-  const existingMatchCount = extractedItems.filter(i => i.selected && i.matchStatus === 'existing_update').length;
-  const newMatchCount = extractedItems.filter(i => i.selected && i.matchStatus === 'new').length;
   const totalPiecesCount = extractedItems.filter(i => i.selected).reduce((acc, i) => acc + (i.quantityPieces || 0), 0);
   const totalPackPurchaseValue = extractedItems.filter(i => i.selected).reduce((acc, i) => {
     const packs = i.unitsInPack > 0 ? (i.quantityPieces / i.unitsInPack) : 0;
@@ -479,12 +365,11 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       const singlePrice = item.packSellingPrice > 0 ? item.packSellingPrice : (item.sheetSellingPrice * unitsInPack);
       const blisterPrice = item.sheetSellingPrice > 0 ? item.sheetSellingPrice : (singlePrice / unitsInPack);
 
-      const isEnglish = /[a-zA-Z]/.test(item.name);
       return {
         id: item.existingProductId || `prod-legacy-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
         name: item.name || item.englishName,
-        nameAr: isEnglish ? item.name : (item.nameAr || item.name),
-        nameKu: isEnglish ? item.name : (item.nameKu || item.name),
+        nameAr: item.nameAr || item.name,
+        nameKu: item.nameKu || item.name,
         category: item.category || 'أدوية ومستلزمات',
         categoryAr: item.category || 'أدوية ومستلزمات',
         categoryKu: item.category || 'دەرمان و پێداویستی',
@@ -627,60 +512,11 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {/* Warning Notice (when server pressure fallback was used) */}
-          {warningNotice && (
-            <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-between gap-3 text-amber-200 text-xs font-semibold shadow-sm">
-              <div className="flex items-center gap-2.5">
-                <Sparkles className="w-5 h-5 shrink-0 text-amber-400 animate-pulse" />
-                <span>{warningNotice}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setWarningNotice(null)}
-                className="text-amber-400 hover:text-amber-200 p-1 rounded-lg transition-colors"
-                title={t('إغلاق التنبيه', 'داخستن', 'Close notice')}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          {/* Error Message with Quick Actions */}
+          {/* Error Message */}
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-200 text-xs shadow-sm">
-              <div className="flex items-center gap-2.5">
-                <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
-                <span className="font-semibold leading-relaxed">{errorMsg}</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-                {selectedImage && (
-                  <button
-                    type="button"
-                    onClick={() => processScreenImage(selectedImage)}
-                    disabled={isProcessing}
-                    className="px-3 py-1.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/40 text-white border border-rose-400/40 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>{t('إعادة المحاولة الآن', 'دووبارە هەوڵبدەرەوە', 'Retry Now')}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => processScreenImage('demo_legacy_pharmacy_screen')}
-                  disabled={isProcessing}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                  <span>{t('شاشة تجريبية جاهزة', 'داتای نموونەیی ئامادەکراو', 'Load Sample Screen')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setErrorMsg(null)}
-                  className="p-1 rounded-lg text-rose-400 hover:text-rose-200 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-3 text-rose-300 text-xs font-semibold">
+              <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
@@ -732,7 +568,7 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                 </span>
               </button>
 
-              {/* 3. Demo Preset Button */}
+              {/* 3. Demo Preset Button (Exact User Photo Database) */}
               <button
                 type="button"
                 onClick={() => processScreenImage('demo_legacy_pharmacy_screen')}
@@ -743,10 +579,10 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                   <Sparkles className="w-4 h-4 text-indigo-300 animate-pulse" />
                 </div>
                 <span className="text-xs font-black text-indigo-200 group-hover:text-white">
-                  {t('نموذج تجريبي جاهز (ديمو)', 'شاشەی نموونەیی ئامادەکراو', 'Sample Demo Data')}
+                  {t('شاشة تجريبية (الصورة المرفوعة)', 'شاشەی نموونەیی (دەرمانەکان)', 'Load Sample Screen')}
                 </span>
                 <span className="text-[10px] text-indigo-300/80 mt-0.5">
-                  {t('استعراض بيانات جاهزة للتجربة', 'تاقیکردنەوە بە داتای ئامادەکراو', 'Try with preloaded sample data')}
+                  {t('24 دواء بأسعار الشيت والباكيت والباركود', '٢٤ دەرمان بە هەموو نرخەکان', '24 items with full pricing')}
                 </span>
               </button>
             </div>
@@ -771,33 +607,6 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                   {formatNumber(totalPiecesCount)} {t('قطعة', 'دانە', 'pcs')}
                 </span>
               </div>
-            </div>
-          </div>
-
-          {/* High-Speed Verbatim Direct Transfer Notification Strip */}
-          <div className="bg-slate-800/90 border border-emerald-500/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-sm bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-black text-sm">
-                ⚡
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                  <span>{t('نقل فوري فائق السرعة ومطابق للصورة 100% (بدون ترجمة)', 'هاوردەی خێرا و ڕاستەوخۆ هاوشێوەی وێنەکە بەبێ وەرگێڕان', 'High-Speed Verbatim Migration (No Translation)')}</span>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/40">
-                    {t('مطابق للصورة', 'وەک وێنەکە', 'Exact As Is')}
-                  </span>
-                </span>
-                <span className="text-[11px] text-slate-300 block mt-0.5">
-                  {t('يتم سحب أسماء المواد والأسعار والباركود تماماً كما هي في شاشة البرنامج السابق دون تغيير لغة الاسم أو ترجمته.', 'ناوەکان و نرخەکان و بارکۆدەکان ڕێک وەک شاشەی بەرنامەکە دەهێنرێن بەبێ گۆڕینی زمان یان وەرگێڕان.', 'Names, prices, and barcodes are transferred verbatim exactly as displayed on the screen without translation.')}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600/20 text-emerald-300 border border-emerald-500/40">
-                <Check className="w-4 h-4 text-emerald-400" />
-                {t('جاهز وسريع', 'ئامادە و خێرا', 'Fast & Accurate')}
-              </span>
             </div>
           </div>
 
@@ -903,33 +712,6 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                 </div>
               </div>
 
-              {/* Fuzzy Matching Status Indicator */}
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700/60 text-xs">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-md bg-slate-700 text-slate-200 font-bold text-[11px]">
-                    {t('المواد المحددة:', 'کاڵا دیاریکراوەکان:', 'Selected:')} {selectedCount}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 font-bold text-[11px] border border-emerald-500/30">
-                    {t('مواد جديدة:', 'کاڵای نوێ:', 'New:')} {newMatchCount}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold text-[11px] border border-amber-500/30">
-                    {t('تحديث موجودة:', 'نوێکردنەوە:', 'Existing Update:')} {existingMatchCount}
-                  </span>
-                  {fuzzyMatchCount > 0 && (
-                    <span className="px-2.5 py-0.5 rounded-md bg-purple-500/20 text-purple-300 font-black text-[11px] border border-purple-500/40 flex items-center gap-1 shadow-sm animate-pulse">
-                      <Sparkles className="w-3 h-3 text-purple-400" />
-                      <span>{t('مطابقة مرنة ذكية:', 'هاوتاکردنی زیرەک:', 'Fuzzy Matched:')} {fuzzyMatchCount}</span>
-                    </span>
-                  )}
-                </div>
-
-                {fuzzyMatchCount > 0 && (
-                  <span className="text-[11px] text-purple-300 font-medium">
-                    {t('✨ تم التعرف على فروقات التهجئة البسيطة وربطها تلقائياً بالمواد الموجودة منعاً للتكرار', '✨ جیاوازی بچووکی ڕێنووس دۆزرایەوە و بەستراوەتەوە بە کاڵای هەبوو', 'Spelling variations detected and auto-linked to avoid duplicates')}
-                  </span>
-                )}
-              </div>
-
               {/* Data Table */}
               <div className="border border-slate-700/80 rounded-xl overflow-hidden bg-slate-950/60 shadow-inner">
                 <div className="overflow-x-auto max-h-[50vh]">
@@ -938,7 +720,7 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                       <tr>
                         <th className="p-2.5 text-center w-10">#</th>
                         <th className="p-2.5 text-start min-w-[120px]">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
-                        <th className="p-2.5 text-start min-w-[220px]">{t('اسم المادة (مطابق للصورة تماماً)', 'ناوی دەرمان (وەک وێنەکە)', 'Item Name (Verbatim)')}</th>
+                        <th className="p-2.5 text-start min-w-[200px]">{t('اسم المادة الدوائية', 'ناوی دەرمان', 'Medicine Name')}</th>
                         <th className="p-2.5 text-center min-w-[70px]">{t('الرصيد (عدد)', 'بڕ(عدد)', 'Stock Qty')}</th>
                         <th className="p-2.5 text-center min-w-[80px]">{t('داخل الباكيت', 'بڕی پاکەت', 'Pack In')}</th>
                         <th className="p-2.5 text-center min-w-[90px]">{t('شراء شيت', 'کڕینی شیت', 'Buy Sheet')}</th>
@@ -980,42 +762,21 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                             />
                           </td>
 
-                          {/* Name (Verbatim as in image without translation) */}
-                          <td className="p-2 min-w-[220px]">
-                            <input
-                              type="text"
-                              value={item.name}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                updateItemField(item.id, 'name', val);
-                                updateItemField(item.id, 'englishName', val);
-                                updateItemField(item.id, 'nameAr', val);
-                                updateItemField(item.id, 'nameKu', val);
-                              }}
-                              className="w-full bg-slate-900/90 border border-slate-700/80 rounded px-2.5 py-1.5 text-xs font-bold text-white focus:border-cyan-500 focus:outline-none"
-                              placeholder={t('اسم المادة كما في الصورة تماماً', 'ناوی دەرمان وەک وێنەکە', 'Item Name verbatim')}
-                            />
-                            {item.matchType === 'fuzzy_name' && item.matchedProductName && (
-                              <div className="mt-1 flex items-center justify-between gap-1 text-[10px] text-purple-300 bg-purple-950/50 border border-purple-800/60 rounded px-2 py-0.5">
-                                <div className="flex items-center gap-1 truncate">
-                                  <Sparkles className="w-2.5 h-2.5 text-purple-400 shrink-0" />
-                                  <span>{t('ربط تلقائي مع:', 'بەستراوە بە:', 'Linked with:')} <strong className="text-white">{item.matchedProductName}</strong></span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (item.matchStatus === 'existing_update') {
-                                      updateItemField(item.id, 'matchStatus', 'new');
-                                    } else {
-                                      updateItemField(item.id, 'matchStatus', 'existing_update');
-                                    }
-                                  }}
-                                  className="text-[9px] text-purple-400 hover:text-purple-200 underline shrink-0 cursor-pointer ml-1"
-                                >
-                                  {item.matchStatus === 'existing_update' ? t('فصل كجديد', 'وەک نوێ', 'Unlink') : t('إعادة الربط', 'بەستنەوە', 'Link')}
-                                </button>
-                              </div>
-                            )}
+                          {/* Name */}
+                          <td className="p-2">
+                            <div className="space-y-0.5">
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
+                                className="w-full bg-slate-900/90 border border-slate-700/80 rounded px-2 py-1 text-xs font-bold text-white focus:border-cyan-500 focus:outline-none"
+                              />
+                              {(item.nameAr || item.nameKu) && (
+                                <span className="text-[10px] text-slate-400 block truncate px-1">
+                                  {item.nameAr || item.nameKu}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Quantity Pieces */}
@@ -1121,24 +882,12 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                           {/* Match Status Badge */}
                           <td className="p-2 text-center">
                             {item.matchStatus === 'new' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                                 {t('جديدة', 'نوێ', 'New')}
                               </span>
-                            ) : item.matchType === 'fuzzy_name' ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1 whitespace-nowrap shadow-sm">
-                                  <Sparkles className="w-2.5 h-2.5 text-purple-400" />
-                                  <span>{t('مطابقة مرنة', 'هاوتاکراو', 'Fuzzy')} {Math.round((item.matchSimilarity || 0.8) * 100)}%</span>
-                                </span>
-                                <span className="text-[9px] text-slate-400 max-w-[130px] truncate" title={item.matchedProductName}>
-                                  {t('مع:', 'لەگەڵ:', 'With:')} {item.matchedProductName}
-                                </span>
-                              </div>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap">
-                                {item.matchType === 'exact_barcode'
-                                  ? t('تحديث (باركود)', 'نوێکردنەوە (بارکۆد)', 'Update (Barcode)')
-                                  : t('تحديث (اسم مطابق)', 'نوێکردنەوە (ناو)', 'Update (Exact)')}
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                {t('تحديث', 'نوێکردنەوە', 'Update')}
                               </span>
                             )}
                           </td>
@@ -1159,45 +908,6 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Empty State - Awaiting Image Upload / Capture */}
-          {extractedItems.length === 0 && !isProcessing && (
-            <div className="py-14 px-6 rounded-2xl bg-slate-800/40 border border-dashed border-slate-700/80 flex flex-col items-center justify-center text-center max-w-xl mx-auto my-6 space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg">
-                <Monitor className="w-8 h-8" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-base font-black text-white">
-                  {t('جاهز لقراءة المواد من صورتك الجديدة', 'ئامادەیە بۆ خوێندنەوەی کاڵاکان لە وێنە نوێیەکەت', 'Ready to Extract Items from Your Photo')}
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed max-w-md">
-                  {t(
-                    'قم برفع صورة شاشة البرنامج القديم أو جدول الأسعار (أو التقط صورة بالكاميرا)، وسيقوم الذكاء الاصطناعي بقراءة أسماء المواد الحقيقية من صورتك واستخراجها مباشرة.',
-                    'وێنەی شاشەی سیستەمی کۆن بەرزبکەرەوە یان بە کامێرا بیگرە، AI ناو و نرخە ڕاستەقینەکان دەردەهێنێت لە وێنەکەت.',
-                    'Upload a photo of your legacy system screen or medicine table, and AI will extract the exact items and prices directly from your image.'
-                  )}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-2"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>{t('رفع صورة الشاشة الآن', 'بارکردنی وێنە ئێستا', 'Upload Screen Photo Now')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={startCamera}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-2"
-                >
-                  <Camera className="w-4 h-4 text-blue-400" />
-                  <span>{t('تصوير بالكاميرا', 'گرتن بە کامێرا', 'Capture Photo')}</span>
-                </button>
               </div>
             </div>
           )}

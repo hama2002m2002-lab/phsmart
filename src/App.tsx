@@ -39,7 +39,6 @@ import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
 import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
 import { AILegacySystemMigratorModal } from './components/AILegacySystemMigratorModal';
-import { findBestFuzzyProductMatch } from './lib/fuzzyMatching';
 
 import {
   initialProducts,
@@ -517,32 +516,9 @@ export function App() {
           updatedList[idx] = up;
         }
       });
-      // Prepend brand new products, but protect against subtle spelling duplicates using Fuzzy Matching
+      // Prepend brand new products
       if (data.newProducts.length > 0) {
-        data.newProducts.forEach(newP => {
-          const fuzzyResult = findBestFuzzyProductMatch(newP.name, updatedList, {
-            barcode: newP.barcode,
-            threshold: 0.82
-          });
-          if (fuzzyResult.matchedProduct) {
-            const matchIdx = updatedList.findIndex(p => p.id === fuzzyResult.matchedProduct!.id);
-            if (matchIdx !== -1) {
-              // Merge into existing item to avoid duplicate!
-              updatedList[matchIdx] = {
-                ...updatedList[matchIdx],
-                stock: (updatedList[matchIdx].stock || 0) + (newP.stock || 0),
-                totalUnits: (updatedList[matchIdx].totalUnits || 0) + (newP.totalUnits || 0),
-                costPerUnit: newP.costPerUnit || updatedList[matchIdx].costPerUnit,
-                lastPurchasePrice: newP.lastPurchasePrice || updatedList[matchIdx].lastPurchasePrice,
-                lastPriceUpdate: new Date().toISOString(),
-                expiryDate: newP.expiryDate || updatedList[matchIdx].expiryDate,
-                status: ((updatedList[matchIdx].stock || 0) + (newP.stock || 0)) > 0 ? 'in_stock' : 'out_of_stock'
-              };
-              return;
-            }
-          }
-          updatedList.unshift(newP);
-        });
+        updatedList = [...data.newProducts, ...updatedList];
       }
       try { localStorage.setItem('supermarket_products_v1', JSON.stringify(updatedList)); } catch {}
       localDbBulkPut('products', updatedList);
@@ -661,30 +637,16 @@ export function App() {
       let updatedCount = 0;
 
       importedProducts.forEach(newP => {
-        let matchIndex = updatedList.findIndex(p => 
+        const matchIndex = updatedList.findIndex(p => 
           (newP.barcode && p.barcode && p.barcode.trim() === newP.barcode.trim()) ||
           p.id === newP.id ||
           p.name.toLowerCase() === newP.name.toLowerCase()
         );
 
-        // Fallback: If not matched by exact ID/barcode/name, use intelligent Fuzzy Matching for minor spelling variations
-        if (matchIndex === -1 && newP.name) {
-          const fuzzyMatch = findBestFuzzyProductMatch(newP.name, updatedList, {
-            barcode: newP.barcode,
-            threshold: 0.80
-          });
-          if (fuzzyMatch.matchedProduct) {
-            matchIndex = updatedList.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
-          }
-        }
-
         if (matchIndex !== -1) {
           // Update existing inventory item
           updatedList[matchIndex] = {
             ...updatedList[matchIndex],
-            name: newP.name || updatedList[matchIndex].name,
-            nameAr: newP.nameAr || newP.name || updatedList[matchIndex].nameAr,
-            nameKu: newP.nameKu || newP.name || updatedList[matchIndex].nameKu,
             stock: (updatedList[matchIndex].stock || 0) + (newP.stock || 0),
             totalUnits: (updatedList[matchIndex].totalUnits || 0) + (newP.totalUnits || 0),
             cartonPurchasePrice: newP.cartonPurchasePrice || updatedList[matchIndex].cartonPurchasePrice,

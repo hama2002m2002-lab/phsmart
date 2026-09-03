@@ -164,7 +164,6 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
   // Naming Language Mode: 'english' (Default: English Pharmaceutical Name) vs 'raw_invoice' (Exact verbatim text as on receipt)
   const [namingPreference, setNamingPreference] = useState<'english' | 'raw_invoice'>('english');
-  const [languageMode, setLanguageMode] = useState<'all' | 'ku' | 'ar' | 'en'>('all');
 
   // Profit markup multiplier state (default 25%)
   const [defaultProfitMargin, setDefaultProfitMargin] = useState<number>(25);
@@ -303,8 +302,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     }
   };
 
-  // Compress and resize image helper for fast high-precision multi-item AI OCR
-  const compressImage = (dataUrl: string, maxWidth = 1600, quality = 0.85): Promise<string> => {
+  // Compress and resize image helper for high-precision multi-item AI OCR
+  const compressImage = (dataUrl: string, maxWidth = 2560, quality = 0.92): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -548,36 +547,14 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       const response = await fetch('/api/gemini/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          imageBase64: optimizedImage, 
-          mimeType: 'image/jpeg',
-          languageMode 
-        }),
+        body: JSON.stringify({ imageBase64: optimizedImage, mimeType: 'image/jpeg' }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        let rawError = errData.error || `Server error: ${response.status}`;
-        try {
-          if (typeof rawError === 'string' && rawError.includes('{')) {
-            const jsonPart = rawError.replace(/^[^{]*(\{.*\}).*$/, '$1');
-            const parsed = JSON.parse(jsonPart);
-            if (parsed?.error?.message) {
-              rawError = parsed.error.message;
-            }
-          }
-        } catch {}
-
-        if (rawError.includes('503') || rawError.includes('high demand') || rawError.includes('UNAVAILABLE')) {
-          rawError = t(
-            'خوادم الذكاء الاصطناعي (Google AI) تشهد ضغطاً مؤقتاً (503 High Demand). يرجى إعادة المحاولة أو تجربة فاتورة العينة الجاهزة.',
-            'سێرڤەرەکانی AI لە ژێر فشاری کاتین (503). تکایە دووبارە هەوڵبدەرەوە.',
-            'AI servers are experiencing temporary high demand (503). Please retry or load the demo invoice.'
-          );
-        }
-        throw new Error(rawError);
+        throw new Error(errData.error || `Server error: ${response.status}`);
       }
 
       const result: ScannedInvoiceData = await response.json();
