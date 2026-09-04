@@ -41,6 +41,7 @@ import { exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport'
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
 import { FastSearchInput } from './FastSearchInput';
 import { parseDate } from '../lib/dateUtils';
+import { findBestFuzzyProductMatch } from '../lib/fuzzyMatching';
 
 interface ProductsTabProps {
   products: Product[];
@@ -913,16 +914,49 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                   if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
                     const excelParsed = await parseExcelBackupFile(file);
                     if (excelParsed.products && excelParsed.products.length > 0) {
-                      const merged = [...excelParsed.products];
-                      products.forEach((p) => {
-                        if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                          merged.push(p);
+                      const merged = [...products];
+                      let newCount = 0;
+                      let updatedCount = 0;
+
+                      excelParsed.products.forEach((importedP) => {
+                        let matchIdx = merged.findIndex(p =>
+                          (importedP.barcode && p.barcode && p.barcode.trim() === importedP.barcode.trim()) ||
+                          p.id === importedP.id ||
+                          p.name.toLowerCase() === importedP.name.toLowerCase()
+                        );
+
+                        // Fuzzy Matching check for slight spelling variations
+                        if (matchIdx === -1 && importedP.name) {
+                          const fuzzyMatch = findBestFuzzyProductMatch(importedP.name, merged, {
+                            barcode: importedP.barcode,
+                            threshold: 0.82
+                          });
+                          if (fuzzyMatch.matchedProduct) {
+                            matchIdx = merged.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
+                          }
+                        }
+
+                        if (matchIdx !== -1) {
+                          // Update existing item to avoid duplicate
+                          merged[matchIdx] = {
+                            ...merged[matchIdx],
+                            stock: (merged[matchIdx].stock || 0) + (importedP.stock || 0),
+                            totalUnits: (merged[matchIdx].totalUnits || 0) + (importedP.totalUnits || 0),
+                            price: importedP.price || merged[matchIdx].price,
+                            cost: importedP.cost || merged[matchIdx].cost,
+                            lastPriceUpdate: new Date().toISOString()
+                          };
+                          updatedCount++;
+                        } else {
+                          merged.unshift(importedP);
+                          newCount++;
                         }
                       });
+
                       setProducts(merged);
                       localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
                       syncBulkWriteCollection('products', merged);
-                      setImportBanner(isAr ? `✅ تم استيراد وترتيب ${excelParsed.products.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${excelParsed.products.length} products!`);
+                      setImportBanner(isAr ? `✅ تم استيراد وترتيب المواد بنجاح (${newCount} مادة جديدة، وتحديث ${updatedCount} مادة موجودة بدون تكرار)!` : `✅ Successfully imported products (${newCount} new, ${updatedCount} updated without duplicates)!`);
                       setTimeout(() => setImportBanner(''), 6000);
                     } else {
                       alert(isAr ? 'لم يتم العثور على ورقة مواد صالحة في ملف الإكسل!' : 'No valid products sheet found in Excel file!');
@@ -938,16 +972,48 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                           : (parsedData.products && Array.isArray(parsedData.products) ? parsedData.products : []);
 
                         if (importedProds.length > 0) {
-                          const merged = [...importedProds];
-                          products.forEach((p) => {
-                            if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                              merged.push(p);
+                          const merged = [...products];
+                          let newCount = 0;
+                          let updatedCount = 0;
+
+                          importedProds.forEach((importedP) => {
+                            let matchIdx = merged.findIndex(p =>
+                              (importedP.barcode && p.barcode && p.barcode.trim() === importedP.barcode.trim()) ||
+                              p.id === importedP.id ||
+                              p.name.toLowerCase() === importedP.name.toLowerCase()
+                            );
+
+                            // Fuzzy Matching check for slight spelling variations
+                            if (matchIdx === -1 && importedP.name) {
+                              const fuzzyMatch = findBestFuzzyProductMatch(importedP.name, merged, {
+                                barcode: importedP.barcode,
+                                threshold: 0.82
+                              });
+                              if (fuzzyMatch.matchedProduct) {
+                                matchIdx = merged.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
+                              }
+                            }
+
+                            if (matchIdx !== -1) {
+                              merged[matchIdx] = {
+                                ...merged[matchIdx],
+                                stock: (merged[matchIdx].stock || 0) + (importedP.stock || 0),
+                                totalUnits: (merged[matchIdx].totalUnits || 0) + (importedP.totalUnits || 0),
+                                price: importedP.price || merged[matchIdx].price,
+                                cost: importedP.cost || merged[matchIdx].cost,
+                                lastPriceUpdate: new Date().toISOString()
+                              };
+                              updatedCount++;
+                            } else {
+                              merged.unshift(importedP);
+                              newCount++;
                             }
                           });
+
                           setProducts(merged);
                           localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
                           syncBulkWriteCollection('products', merged);
-                          setImportBanner(isAr ? `✅ تم استيراد وترتيب ${importedProds.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${importedProds.length} products!`);
+                          setImportBanner(isAr ? `✅ تم استيراد وترتيب المواد بنجاح (${newCount} مادة جديدة، وتحديث ${updatedCount} مادة موجودة بدون تكرار)!` : `✅ Successfully imported products (${newCount} new, ${updatedCount} updated without duplicates)!`);
                           setTimeout(() => setImportBanner(''), 6000);
                         } else {
                           alert(isAr ? 'لم يتم العثور على قائمة مواد صالحة في ملف JSON!' : 'No valid products list found in JSON!');

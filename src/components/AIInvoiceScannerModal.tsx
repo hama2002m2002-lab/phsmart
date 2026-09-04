@@ -36,7 +36,8 @@ import {
   ShoppingCart,
   Truck,
   Languages,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Key
 } from 'lucide-react';
 import { Product, Supplier, PurchaseInvoice, StoreSettings, ProductBatch } from '../types';
 import { generateUniqueBarcode200245 } from '../lib/barcodeUtils';
@@ -161,9 +162,13 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedData, setScannedData] = useState<ScannedInvoiceData | null>(null);
+  const [showKeyInputInModal, setShowKeyInputInModal] = useState(false);
+  const [modalApiKey, setModalApiKey] = useState(settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '');
+  const [keySavedMsg, setKeySavedMsg] = useState(false);
 
   // Naming Language Mode: 'english' (Default: English Pharmaceutical Name) vs 'raw_invoice' (Exact verbatim text as on receipt)
   const [namingPreference, setNamingPreference] = useState<'english' | 'raw_invoice'>('english');
+  const [languageMode, setLanguageMode] = useState<'all' | 'ku' | 'ar' | 'en'>('all');
 
   // Profit markup multiplier state (default 25%)
   const [defaultProfitMargin, setDefaultProfitMargin] = useState<number>(25);
@@ -302,8 +307,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     }
   };
 
-  // Compress and resize image helper for high-precision multi-item AI OCR
-  const compressImage = (dataUrl: string, maxWidth = 2560, quality = 0.92): Promise<string> => {
+  // Compress and resize image helper for fast high-precision multi-item AI OCR
+  const compressImage = (dataUrl: string, maxWidth = 1600, quality = 0.85): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -544,17 +549,58 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
 
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const activeGeminiKey = settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '';
+      if (activeGeminiKey) {
+        headers['x-gemini-api-key'] = activeGeminiKey;
+      }
+
       const response = await fetch('/api/gemini/scan-invoice', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: optimizedImage, mimeType: 'image/jpeg' }),
+        headers,
+        body: JSON.stringify({ 
+          imageBase64: optimizedImage, 
+          mimeType: 'image/jpeg',
+          languageMode,
+          apiKey: activeGeminiKey || undefined
+        }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Server error: ${response.status}`);
+        let rawError = errData.error || `Server error: ${response.status}`;
+        try {
+          if (typeof rawError === 'string' && rawError.includes('{')) {
+            const jsonPart = rawError.replace(/^[^{]*(\{.*\}).*$/, '$1');
+            const parsed = JSON.parse(jsonPart);
+            if (parsed?.error?.message) {
+              rawError = parsed.error.message;
+            }
+          }
+        } catch {}
+
+        if (response.status === 404) {
+          rawError = t(
+            'تعذر الاتصال بمسار الذكاء الاصطناعي على الخادم (خطأ 404). تم تحديث إعدادات الاستضافة (vercel.json)، ويمكنك الآن تجربة الفاتورة النموذجية الجاهزة فوراً دون أي عائق.',
+            'نەتوانرا پەیوەندی بە سێرڤەری زیرەکی دەستکرد بکرێت (404). دەتوانیت ئێستا پسوولەی نموونەیی ئامادەکراو تاقی بکەیتەوە.',
+            'AI Invoice Scanner endpoint not reachable on server (404). You can test with the ready sample invoice right now.'
+          );
+        } else if (rawError.includes('GEMINI_API_KEY')) {
+          rawError = t(
+            'مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير معين في متغيرات بيئة الخادم. يمكنك تجربة الفاتورة النموذجية الجاهزة فوراً.',
+            'کلیلی GEMINI_API_KEY لە ڕێکخستنی سێرڤەر دانەنراوە. دەتوانیت پسوولەی نموونەیی بەکاربهێنیت.',
+            'GEMINI_API_KEY is not configured in server environment. You can try the demo invoice.'
+          );
+        } else if (rawError.includes('503') || rawError.includes('high demand') || rawError.includes('UNAVAILABLE')) {
+          rawError = t(
+            'خوادم الذكاء الاصطناعي (Google AI) تشهد ضغطاً مؤقتاً (503 High Demand). يرجى إعادة المحاولة أو تجربة فاتورة العينة الجاهزة.',
+            'سێرڤەرەکانی AI لە ژێر فشاری کاتین (503). تکایە دووبارە هەوڵبدەرەوە.',
+            'AI servers are experiencing temporary high demand (503). Please retry or load the demo invoice.'
+          );
+        }
+        throw new Error(rawError);
       }
 
       const result: ScannedInvoiceData = await response.json();
@@ -1396,9 +1442,118 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
         )}
 
         {scanError && (
-          <div className="p-3.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-            <span>{scanError}</span>
+          <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs space-y-3 shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <span className="leading-relaxed font-medium">{scanError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScanError(null)}
+                className="p-1 rounded-lg text-rose-400 hover:text-white hover:bg-rose-900/60 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Actions & Inline Gemini Key Input */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-800/40">
+              {imageSrc && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScanError(null);
+                    processInvoiceImage(imageSrc);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-600/20 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>{t('إعادة فحص الصورة الحالية', 'دووبارە پشکنینەوەی وێنەکە', 'Retry Current Photo')}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowKeyInputInModal(!showKeyInputInModal)}
+                className="px-3 py-1.5 rounded-xl bg-purple-900/60 hover:bg-purple-800/60 text-purple-200 border border-purple-500/40 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Key className="w-3.5 h-3.5 text-purple-300" />
+                <span>{t('تعديل مفتاح Gemini AI المخصص', 'دەستکاریکردنی کلیلی Gemini API', 'Set Gemini API Key')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScanError(null);
+                  handleLoadDemoInvoice();
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span>{t('تحميل الفاتورة النموذجية الجاهزة (كولاجين)', 'تاقیکردنەوە بە پسوولەی نموونەیی (کۆلاجین)', 'Load Sample Demo Invoice')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScanError(null);
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                <span>{t('إدخال المواد يدوياً في المشتريات', 'زیادکردنی دەرمان بە دەست', 'Add Manually')}</span>
+              </button>
+            </div>
+
+            {/* Inline Key Configuration Panel */}
+            {showKeyInputInModal && (
+              <div className="p-3 rounded-xl bg-[#090D1A] border border-purple-500/40 space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-200 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-400" />
+                    <span>{t('أدخل مفتاح Google Gemini API ليعمل الفحص:', 'کلیلی Gemini API بنووسە بۆ کارکردنی پشکنین:', 'Enter Google Gemini API Key:')}</span>
+                  </span>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>{t('احصل على مفتاح مجاني', 'کلیل بەخۆڕایی وەرگرە', 'Get free key')}</span>
+                    <ArrowUpRight className="w-3 h-3" />
+                  </a>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={modalApiKey}
+                    onChange={(e) => setModalApiKey(e.target.value.trim())}
+                    placeholder="AIzaSy..."
+                    className="flex-1 bg-[#050811] text-slate-200 px-3 py-2 text-xs font-mono rounded-lg border border-purple-500/30 focus:border-cyan-400 focus:outline-none"
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('gemini_api_key_override', modalApiKey);
+                      if (settings) {
+                        settings.geminiApiKey = modalApiKey;
+                      }
+                      setKeySavedMsg(true);
+                      setTimeout(() => setKeySavedMsg(false), 3000);
+                    }}
+                    className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                  >
+                    {keySavedMsg ? t('تم الحفظ!', 'پاشەکەوتکرا!', 'Saved!') : t('حفظ المفتاح', 'پاشەکەوت', 'Save Key')}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {t('المفتاح يُحفظ في المتصفح ويُستخدم فوراً عند إعادة الفحص، أو عند نشر البرنامج على أي استضافة.', 'کلیلەکە لە براوسەر پاشەکەوت دەبێت و دەستبەجێ بەکاردێت لە کاتی پشکنین یان بڵاوکردنەوەی بەرنامەکە.', 'Key is stored in browser and used immediately upon retry or when deployed.')}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

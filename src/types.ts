@@ -342,6 +342,7 @@ export interface StoreSettings {
   autoPrintPriceLabels?: boolean;
   printerCopies?: number;
   posShortcuts?: POSKeyboardShortcuts;
+  geminiApiKey?: string;
 }
 
 export interface UserPermissions {

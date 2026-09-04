@@ -7,44 +7,169 @@ import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: "50mb" }));
 
-// Lazy GoogleGenAI initialization (fails fast if key is missing when endpoint is used)
-let aiClient: GoogleGenAI | null = null;
-function getAIClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not set in the environment.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+// Dynamic GoogleGenAI client resolver (supports server env and client-provided key)
+function resolveApiKey(req?: express.Request): string | undefined {
+  const headerKey = req?.headers?.['x-gemini-api-key'];
+  if (typeof headerKey === 'string' && headerKey.trim()) {
+    return headerKey.trim();
   }
-  return aiClient;
+  const bodyKey = req?.body?.apiKey;
+  if (typeof bodyKey === 'string' && bodyKey.trim()) {
+    return bodyKey.trim();
+  }
+  const envKey = process.env.GEMINI_API_KEY;
+  if (envKey && envKey !== 'MY_GEMINI_API_KEY') {
+    return envKey.trim();
+  }
+  return undefined;
 }
 
-async function startServer() {
-  // Health check
-  app.get("/api/health", (_req, res) => {
-    res.json({
-      status: "ok",
-      mode: "100% Isolated Standalone Client POS",
-      timestamp: new Date().toISOString()
-    });
+function getAIClient(customApiKey?: string): GoogleGenAI {
+  const apiKey = customApiKey || resolveApiKey();
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    throw new Error("GEMINI_API_KEY_MISSING: No valid Gemini API key found in server environment or request headers.");
+  }
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
   });
+}
 
-  // Gemini AI Invoice / Image Scanner Endpoint
-  app.post("/api/gemini/scan-invoice", async (req, res) => {
+// Multi-tier resilient model fallback cascade per official Gemini guidelines
+const GEMINI_VISION_MODELS = [
+  "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
+  "gemini-3.8-flash"
+];
+
+async function callGeminiVisionWithFallback(params: {
+  prompt: string;
+  imagePart: {
+    inlineData: {
+      mimeType: string;
+      data: string;
+    };
+  };
+  config?: any;
+  apiKey?: string;
+}): Promise<string> {
+  const ai = getAIClient(params.apiKey);
+  let lastError: any = null;
+
+  for (let i = 0; i < GEMINI_VISION_MODELS.length; i++) {
+    const model = GEMINI_VISION_MODELS[i];
     try {
-      const { imageBase64, mimeType } = req.body;
+      console.log(`[Gemini Vision] Attempting model "${model}" (${i + 1}/${GEMINI_VISION_MODELS.length})...`);
+      const response = await ai.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            params.imagePart,
+            { text: params.prompt }
+          ]
+        },
+        config: params.config || {
+          responseMimeType: "application/json",
+          temperature: 0.1
+        }
+      });
+
+      if (response.text) {
+        console.log(`[Gemini Vision] Successfully processed request with model "${model}"`);
+        return response.text;
+      }
+    } catch (err: any) {
+      lastError = err;
+      const errStr = err?.message || String(err);
+      console.warn(`[Gemini Vision] Model "${model}" returned error: ${errStr}`);
+      // If 503 (high demand), 429 (rate limit), or RESOURCE_EXHAUSTED / quota, pause briefly before trying next fallback model
+      if (errStr.includes("503") || errStr.includes("429") || errStr.includes("UNAVAILABLE") || errStr.includes("high demand") || errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("quota") || errStr.includes("Quota")) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  }
+
+  throw lastError || new Error("All AI vision models are currently experiencing high demand.");
+}
+
+// Health check
+app.get(["/api/health", "/health"], (_req, res) => {
+  res.json({
+    status: "ok",
+    mode: "100% Isolated Standalone Client POS",
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Gemini AI Status & Test Key Endpoint
+app.all(["/api/gemini/test-key", "/gemini/test-key"], async (req, res) => {
+  try {
+    const key = resolveApiKey(req);
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        configured: false,
+        error: "لم يتم العثور على مفتاح Gemini API. يرجى إدخال مفتاح الذكاء الاصطناعي في الإعدادات أو تعيين متغير GEMINI_API_KEY في بيئة الخادم."
+      });
+    }
+
+    const ai = getAIClient(key);
+    let workingModel = "";
+    let lastErr = "";
+
+    for (const model of GEMINI_VISION_MODELS) {
+      try {
+        const testRes = await ai.models.generateContent({
+          model,
+          contents: "ping"
+        });
+        if (testRes.text) {
+          workingModel = model;
+          break;
+        }
+      } catch (err: any) {
+        lastErr = err?.message || String(err);
+      }
+    }
+
+    if (workingModel) {
+      const isCustom = !!(req.headers['x-gemini-api-key'] || req.body?.apiKey);
+      return res.json({
+        success: true,
+        configured: true,
+        model: workingModel,
+        source: isCustom ? "custom_key" : "server_env",
+        maskedKey: key.length > 8 ? `${key.substring(0, 4)}...${key.substring(key.length - 4)}` : "configured",
+        message: `تم التحقق بنجاح! الذكاء الاصطناعي متصل وجاهز للعمل عبر موديل (${workingModel}). الفحص الذكي للصور والفواتير جاهز 100%.`
+      });
+    } else {
+      return res.status(502).json({
+        success: false,
+        configured: true,
+        error: `تعذر الاتصال بخوادم Gemini بالمفتاح المزود: ${lastErr}`
+      });
+    }
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      configured: false,
+      error: err.message || "حدث خطأ أثناء فحص المفتاح"
+    });
+  }
+});
+
+// Gemini AI Invoice / Image Scanner Endpoint
+app.post(["/api/gemini/scan-invoice", "/gemini/scan-invoice"], async (req, res) => {
+  try {
+    const { imageBase64, mimeType, languageMode = 'all' } = req.body;
       if (!imageBase64) {
         return res.status(400).json({ error: "No image provided" });
       }
@@ -211,19 +336,27 @@ async function startServer() {
         ]
       };
 
+      // Fast path for preset sample demo
+      if (typeof imageBase64 === 'string' && (imageBase64.startsWith('demo_') || imageBase64 === 'demo_collagen_invoice')) {
+        return res.json(defaultDemoData);
+      }
+
       try {
-        const ai = getAIClient();
         const detectedMimeType = mimeType || "image/jpeg";
         const cleanData = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-        const prompt = `You are an elite optical character recognition (OCR) and document intelligence AI specialized in pharmaceutical bills, medicine invoices, wholesale drug receipts, and POS receipts in English, Arabic, and Kurdish.
-Analyze this invoice or receipt image with extreme precision and extract ALL product lines and metadata into structured JSON.
+        const prompt = `You are an ultra-fast, elite OCR and document intelligence AI specialized in pharmaceutical bills, medicine invoices, wholesale drug receipts, and POS receipts across Kurdish (سۆرانی و بادینی), Arabic (عربي), and English.
+TARGET LANGUAGE FOCUS MODE: ${languageMode} (Process rapidly and populate tri-lingual names: English, Kurdish Sorani, Arabic).
 
-CRITICAL EXTRACTION GUIDELINES FOR PHARMACEUTICAL ITEMS AND BARCODES:
-1. "rawInvoiceName": The EXACT, verbatim product/medicine name as printed on the physical receipt without alteration.
+KURDISH RECEIPT VOCABULARY & RECOGNITION (سۆرانی و بادینی):
+- Recognize warehouse terms: "كۆگای دەرمان" (Drug Store / Warehouse), "پسوولەی کڕین" / "پسوولەی فرۆشتن" (Purchase/Sales Bill), "هه‌ولێر", "سلێمانی", "دهۆك", "ژمارەی پسوولە" (Invoice #), "کڕیار" (Customer), "بەروار" (Date).
+- Item and quantity terms: "ناوی دەرمان / کاڵا" (Medicine Name), "بڕ / عەدەد / دانە" (Quantity), "بەلاش / بۆنەس" (Free/Bonus), "نرخی کڕین" (Cost Price), "نرخی فرۆشتن" (Retail Price), "داشکاندن" (Discount).
+
+MANDATORY RULES:
+1. "rawInvoiceName": The EXACT verbatim product/medicine name as printed on the physical receipt without alteration.
 2. "name" & "englishName": The clean, standardized English pharmaceutical/trade name (e.g., "Panadol Extra 500mg Tab", "Amoxicillin 500mg Cap", "Cefixime 400mg").
-3. "nameAr": Arabic translation or transcription of the medicine name.
-4. "nameKu": Kurdish translation or transcription of the medicine name.
+3. "nameKu": Standard Kurdish Sorani translation/transliteration (e.g., "پانادۆڵ ئێکسـترا 500 ملغ", "ئەمۆکسیسیلین 500 ملغ", "سیفیکسیم 400 ملغ").
+4. "nameAr": Standard Arabic translation (e.g., "بانادول إكسترا 500 ملغ", "أموكسيسيلين 500 ملغ", "سيفيكسيم 400 ملغ").
 5. "barcode": Look very carefully for any barcode numbers, GTIN, EAN-13, UPC, SKU, item code, or numbers printed under barcode stripes or in a dedicated "Barcode / Code / باركود / کۆد" column. Convert any Eastern Arabic numerals (٠١٢٣٤٥٦٧٨٩) to standard English digits (0123456789). If no barcode number is visible, generate a clean consistent code formatted as "MED-" followed by the brand or sequence.
 6. "quantity": Total units or packs purchased.
 7. "bonus": Bonus/free units if indicated (+1, +2, بونص, بەلاش).
@@ -292,21 +425,35 @@ MANDATORY RULES:
           }
         };
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.7-flash",
-          contents: {
-            parts: [
-              imagePart,
-              { text: prompt }
-            ]
-          },
-          config: {
-            responseMimeType: "application/json",
-            temperature: 0.1
+        let rawText = "";
+        try {
+          const resolvedApiKey = resolveApiKey(req);
+          rawText = await callGeminiVisionWithFallback({
+            prompt,
+            imagePart,
+            apiKey: resolvedApiKey,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.1
+            }
+          });
+        } catch (geminiErr: any) {
+          console.error("Gemini API invoice scanning failed across models:", geminiErr);
+          const errStr = geminiErr?.message || "";
+          let userMessage = geminiErr?.message || "فشل فحص الفاتورة بواسطة الذكاء الاصطناعي";
+          if (errStr.includes("GEMINI_API_KEY_MISSING")) {
+            userMessage = "مفتاح الذكاء الاصطناعي (Gemini API Key) غير محدد. يرجى إدخال مفتاح Gemini الخاص بك في الإعدادات أو في نافذة الفحص.";
+          } else if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("quota") || errStr.includes("Quota")) {
+            userMessage = "تم تجاوز حد الاستخدام المؤقت (Quota Exceeded) لمفتاح الذكاء الاصطناعي. يرجى إدخال مفتاح Gemini جديد من Google AI Studio في الإعدادات.";
+          } else if (errStr.includes("API_KEY_INVALID") || errStr.includes("API key not valid")) {
+            userMessage = "مفتاح Gemini API غير صالح. يرجى التأكد من نسخه بدقة من Google AI Studio.";
           }
-        });
+          return res.status(500).json({
+            error: userMessage,
+            details: "Please ensure your Gemini API key is valid and image is clear."
+          });
+        }
 
-        const rawText = response.text || "{}";
         const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
         let parsedData;
         try {
@@ -323,8 +470,18 @@ MANDATORY RULES:
         res.json(parsedData);
       } catch (geminiErr: any) {
         console.error("Gemini API invoice scanning error:", geminiErr);
+        let errorMsg = geminiErr.message || "Failed to parse invoice with AI";
+        try {
+          if (typeof errorMsg === 'string' && errorMsg.includes('{')) {
+            const jsonPart = errorMsg.replace(/^[^{]*(\{.*\}).*$/, '$1');
+            const parsed = JSON.parse(jsonPart);
+            if (parsed?.error?.message) {
+              errorMsg = parsed.error.message;
+            }
+          }
+        } catch {}
         res.status(500).json({ 
-          error: geminiErr.message || "Failed to parse invoice with AI",
+          error: errorMsg,
           details: "Please ensure the image is clear and well lit."
         });
       }
@@ -335,9 +492,9 @@ MANDATORY RULES:
   });
 
   // Legacy System & Desktop Screen AI Migrator Endpoint (نقل المواد من شاشات البرامج القديمة)
-  app.post("/api/gemini/migrate-legacy-screen", async (req, res) => {
+  app.post(["/api/gemini/migrate-legacy-screen", "/gemini/migrate-legacy-screen"], async (req, res) => {
     try {
-      const { imageBase64, mimeType } = req.body;
+      const { imageBase64, mimeType, languageMode = 'all' } = req.body;
       if (!imageBase64) {
         return res.status(400).json({ error: "No image provided" });
       }
@@ -351,8 +508,8 @@ MANDATORY RULES:
             barcode: "6291107470269",
             name: "Plego",
             englishName: "Plego",
-            nameAr: "بليغو",
-            nameKu: "پلێگۆ",
+            nameAr: "Plego",
+            nameKu: "Plego",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -369,8 +526,8 @@ MANDATORY RULES:
             barcode: "6251599000139",
             name: "B-cor 10mg",
             englishName: "B-cor 10mg",
-            nameAr: "بي كور 10 ملغ",
-            nameKu: "بی کۆر ١٠مگ",
+            nameAr: "B-cor 10mg",
+            nameKu: "B-cor 10mg",
             quantityPieces: 24,
             unitsInPack: 3,
             sheetPurchasePrice: 2013.683,
@@ -380,15 +537,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Joswe",
             expiryDate: "2028-06-01",
-            category: "أدوية القلب والضغط",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "4031571068850",
             name: "Toras-denk 5mg",
             englishName: "Toras-denk 5mg",
-            nameAr: "توراس دينك 5 ملغ",
-            nameKu: "تۆراس دێنک ٥مگ",
+            nameAr: "Toras-denk 5mg",
+            nameKu: "Toras-denk 5mg",
             quantityPieces: 2,
             unitsInPack: 3,
             sheetPurchasePrice: 2454.167,
@@ -398,15 +555,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Denk",
             expiryDate: "2027-01-01",
-            category: "أدوية القلب والضغط",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "9008732006759",
             name: "Thrombo Ass 100mg",
             englishName: "Thrombo Ass 100mg",
-            nameAr: "ثرومبو اس 100 ملغ مميع للدم",
-            nameKu: "ترۆمبۆ ئاس ١٠٠مگ",
+            nameAr: "Thrombo Ass 100mg",
+            nameKu: "Thrombo Ass 100mg",
             quantityPieces: 27,
             unitsInPack: 3,
             sheetPurchasePrice: 687.1667,
@@ -416,15 +573,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Gerot",
             expiryDate: "2027-03-01",
-            category: "أدوية القلب والضغط",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "3594452600521",
             name: "Diamicron MR 60mg Asly",
             englishName: "Diamicron MR 60mg Asly",
-            nameAr: "داياميكرون ام ار 60 ملغ أصلي للسكر",
-            nameKu: "دیامیکرۆن ٦٠مگ ئەسڵی",
+            nameAr: "Diamicron MR 60mg Asly",
+            nameKu: "Diamicron MR 60mg Asly",
             quantityPieces: 6,
             unitsInPack: 2,
             sheetPurchasePrice: 2567.85,
@@ -434,15 +591,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Francia",
             expiryDate: "2027-09-22",
-            category: "أدوية السكري",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "6251107424754",
             name: "Mixif 400mg",
             englishName: "Mixif 400mg",
-            nameAr: "مكسيف 400 ملغ مضاد حيوي",
-            nameKu: "میکسف ٤٠٠مگ",
+            nameAr: "Mixif 400mg",
+            nameKu: "Mixif 400mg",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 1640,
@@ -452,15 +609,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Jordan",
             expiryDate: "2027-06-01",
-            category: "مضادات حيوية",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "6251060001689",
             name: "Caldex Drops",
             englishName: "Caldex Drops",
-            nameAr: "كالديكس نقط بالفم",
-            nameKu: "کالدێکس قەترە",
+            nameAr: "Caldex Drops",
+            nameKu: "Caldex Drops",
             quantityPieces: 14,
             unitsInPack: 1,
             sheetPurchasePrice: 2040,
@@ -470,15 +627,15 @@ MANDATORY RULES:
             dosageForm: "Drops",
             manufacturer: "Syria",
             expiryDate: "2027-07-01",
-            category: "أدوية أطفال وفيتامينات",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "6251159037308",
             name: "Dentagyl Tab",
             englishName: "Dentagyl Tab",
-            nameAr: "دينتاجيل حبوب لالتهاب الأسنان",
-            nameKu: "دێنتاجیل حەب",
+            nameAr: "Dentagyl Tab",
+            nameKu: "Dentagyl Tab",
             quantityPieces: 12,
             unitsInPack: 2,
             sheetPurchasePrice: 3000,
@@ -488,15 +645,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Hikma",
             expiryDate: "2027-08-01",
-            category: "مضادات حيوية وأسنان",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "8904134917420",
             name: "Freefil 200mg Tab",
             englishName: "Freefil 200mg Tab",
-            nameAr: "فريفيل 200 ملغ",
-            nameKu: "فریفیل ٢٠٠مگ",
+            nameAr: "Freefil 200mg Tab",
+            nameKu: "Freefil 200mg Tab",
             quantityPieces: 0,
             unitsInPack: 10,
             sheetPurchasePrice: 1060.8,
@@ -513,8 +670,8 @@ MANDATORY RULES:
             barcode: "5906395089154",
             name: "Kelonil 15mg Cream",
             englishName: "Kelonil 15mg Cream",
-            nameAr: "كيلونيل 15 ملغ كريم للندبات",
-            nameKu: "کێلۆنیل ١٥مگ کرێم",
+            nameAr: "Kelonil 15mg Cream",
+            nameKu: "Kelonil 15mg Cream",
             quantityPieces: 3,
             unitsInPack: 1,
             sheetPurchasePrice: 14652,
@@ -524,15 +681,15 @@ MANDATORY RULES:
             dosageForm: "Cream",
             manufacturer: "Polanda",
             expiryDate: "2027-08-01",
-            category: "مراهم وكريمات جلدية",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "8699536092393",
             name: "Cardofix Plus 5/160/25",
             englishName: "Cardofix Plus 5/160/25",
-            nameAr: "كاردوفيكس بلس 5/160/25 كبسول",
-            nameKu: "کاردۆفیکس پڵەس",
+            nameAr: "Cardofix Plus 5/160/25",
+            nameKu: "Cardofix Plus 5/160/25",
             quantityPieces: 0,
             unitsInPack: 4,
             sheetPurchasePrice: 3912.278,
@@ -542,15 +699,15 @@ MANDATORY RULES:
             dosageForm: "Capsule",
             manufacturer: "Sanovel",
             expiryDate: "2026-12-01",
-            category: "أدوية القلب والضغط",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "4260393340145",
             name: "Zinc-oxide Plaster Roller",
             englishName: "Zinc-oxide Plaster Roller",
-            nameAr: "لاصق طبي زنك اوكسايد رول",
-            nameKu: "پلاستەری زینک ئۆکساید",
+            nameAr: "Zinc-oxide Plaster Roller",
+            nameKu: "Zinc-oxide Plaster Roller",
             quantityPieces: 2,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -560,15 +717,15 @@ MANDATORY RULES:
             dosageForm: "Plaster",
             manufacturer: "India",
             expiryDate: "2027-11-22",
-            category: "مستلزمات طبية وإسعافات",
+            category: "أدوية ومستلزمات",
             unit: "قطعة"
           },
           {
             barcode: "852510005170",
             name: "Colon Cleanser Tab",
             englishName: "Colon Cleanser Tab",
-            nameAr: "منظف القولون حبوب",
-            nameKu: "کۆلۆن کلینسەر",
+            nameAr: "Colon Cleanser Tab",
+            nameKu: "Colon Cleanser Tab",
             quantityPieces: 101,
             unitsInPack: 100,
             sheetPurchasePrice: 155.7099,
@@ -578,15 +735,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "UK",
             expiryDate: "2027-12-01",
-            category: "أدوية الجهاز الهضمي",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "047",
             name: "Codom Corolet Cap",
             englishName: "Codom Corolet Cap",
-            nameAr: "كودوم كوروليت كبسول",
-            nameKu: "کۆدۆم کۆرۆلێت",
+            nameAr: "Codom Corolet Cap",
+            nameKu: "Codom Corolet Cap",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 750,
@@ -603,8 +760,8 @@ MANDATORY RULES:
             barcode: "6932951807589",
             name: "Open Patella Knee Support",
             englishName: "Open Patella Knee Support",
-            nameAr: "مشد ركبة مفتوح طبي",
-            nameKu: "مەشدەی ئەژنۆ کراوە",
+            nameAr: "Open Patella Knee Support",
+            nameKu: "Open Patella Knee Support",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -614,15 +771,15 @@ MANDATORY RULES:
             dosageForm: "Support",
             manufacturer: "China",
             expiryDate: "2026-11-26",
-            category: "مستلزمات ومشدات طبية",
+            category: "أدوية ومستلزمات",
             unit: "قطعة"
           },
           {
             barcode: "8697462452281",
             name: "Sah Baby Tablets",
             englishName: "Sah Baby Tablets",
-            nameAr: "صح بيبي أطفال",
-            nameKu: "ساە بەیبی",
+            nameAr: "Sah Baby Tablets",
+            nameKu: "Sah Baby Tablets",
             quantityPieces: 158,
             unitsInPack: 24,
             sheetPurchasePrice: 660.6667,
@@ -632,15 +789,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "China",
             expiryDate: "2026-11-26",
-            category: "عناية وأطفال",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "6932951807336",
             name: "Knee Support with Stays",
             englishName: "Knee Support with Stays",
-            nameAr: "مشد ركبة مقوى بدعامات",
-            nameKu: "مەشدەی ئەژنۆی دەعامەدار",
+            nameAr: "Knee Support with Stays",
+            nameKu: "Knee Support with Stays",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -650,15 +807,15 @@ MANDATORY RULES:
             dosageForm: "Support",
             manufacturer: "China",
             expiryDate: "2026-11-26",
-            category: "مستلزمات ومشدات طبية",
+            category: "أدوية ومستلزمات",
             unit: "قطعة"
           },
           {
             barcode: "7640154980785",
             name: "Meratrum Tablet",
             englishName: "Meratrum Tablet",
-            nameAr: "ميراترم حبوب سويسري",
-            nameKu: "مێراترۆم حەب",
+            nameAr: "Meratrum Tablet",
+            nameKu: "Meratrum Tablet",
             quantityPieces: 11,
             unitsInPack: 1,
             sheetPurchasePrice: 4502.05,
@@ -675,8 +832,8 @@ MANDATORY RULES:
             barcode: "8906103241512",
             name: "Vitacomplex Multivitamin",
             englishName: "Vitacomplex Multivitamin",
-            nameAr: "فيتاكومبلكس مكمل فيتامينات",
-            nameKu: "ڤیتاکۆمپلێکس ڤیتامین",
+            nameAr: "Vitacomplex Multivitamin",
+            nameKu: "Vitacomplex Multivitamin",
             quantityPieces: 1,
             unitsInPack: 10,
             sheetPurchasePrice: 241.864,
@@ -686,15 +843,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "India",
             expiryDate: "2027-11-01",
-            category: "فيتامينات ومكملات غذائية",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "8696871293669",
             name: "Nano Yuz Ampoule",
             englishName: "Nano Yuz Ampoule",
-            nameAr: "نانو يوز امبولات",
-            nameKu: "نانۆ یوز ئەمپوول",
+            nameAr: "Nano Yuz Ampoule",
+            nameKu: "Nano Yuz Ampoule",
             quantityPieces: 1,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -704,15 +861,15 @@ MANDATORY RULES:
             dosageForm: "Ampoule",
             manufacturer: "China",
             expiryDate: "2026-11-01",
-            category: "أمبولات وحقن",
+            category: "أدوية ومستلزمات",
             unit: "أمبولة"
           },
           {
             barcode: "8054487661003",
             name: "Nano Yuz Ampoule Extra",
             englishName: "Nano Yuz Ampoule Extra",
-            nameAr: "نانو يوز امبولات اكسترا",
-            nameKu: "نانۆ یوز ئەمپوول ٢",
+            nameAr: "Nano Yuz Ampoule Extra",
+            nameKu: "Nano Yuz Ampoule Extra",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -722,15 +879,15 @@ MANDATORY RULES:
             dosageForm: "Ampoule",
             manufacturer: "China",
             expiryDate: "2026-11-26",
-            category: "أمبولات وحقن",
+            category: "أدوية ومستلزمات",
             unit: "أمبولة"
           },
           {
             barcode: "6251875000471",
             name: "Laritin Tab 5mg Pioneer",
             englishName: "Laritin Tab 5mg Pioneer",
-            nameAr: "لاريتين 5 ملغ حبوب حساسية بايونير",
-            nameKu: "لاریتین ٥مگ پایۆنێر",
+            nameAr: "Laritin Tab 5mg Pioneer",
+            nameKu: "Laritin Tab 5mg Pioneer",
             quantityPieces: 104,
             unitsInPack: 3,
             sheetPurchasePrice: 308.75,
@@ -740,15 +897,15 @@ MANDATORY RULES:
             dosageForm: "Tablet",
             manufacturer: "Pioneer",
             expiryDate: "2027-12-01",
-            category: "أدوية الحساسية والجهاز التنفسي",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "9504000086220",
             name: "Omeprazol 40mg Cap",
             englishName: "Omeprazol 40mg Cap",
-            nameAr: "اوميبرازول 40 ملغ كبسول للمعدة",
-            nameKu: "ئۆمیپرازۆڵ ٤٠مگ",
+            nameAr: "Omeprazol 40mg Cap",
+            nameKu: "Omeprazol 40mg Cap",
             quantityPieces: 0,
             unitsInPack: 1,
             sheetPurchasePrice: 0,
@@ -758,15 +915,15 @@ MANDATORY RULES:
             dosageForm: "Capsule",
             manufacturer: "Awamedica",
             expiryDate: "2025-07-28",
-            category: "أدوية الجهاز الهضمي والمعدة",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           },
           {
             barcode: "8901111985113",
             name: "Aprazol 40mg Cap",
             englishName: "Aprazol 40mg Cap",
-            nameAr: "ابرازول 40 ملغ كبسول",
-            nameKu: "ئاپرازۆڵ ٤٠مگ",
+            nameAr: "Aprazol 40mg Cap",
+            nameKu: "Aprazol 40mg Cap",
             quantityPieces: 10,
             unitsInPack: 1,
             sheetPurchasePrice: 1292.62,
@@ -776,65 +933,68 @@ MANDATORY RULES:
             dosageForm: "Capsule",
             manufacturer: "Ajanta",
             expiryDate: "2028-09-01",
-            category: "أدوية الجهاز الهضمي والمعدة",
+            category: "أدوية ومستلزمات",
             unit: "علبة"
           }
         ]
       };
 
+      // Fast path for preset sample demo
+      if (typeof imageBase64 === 'string' && (imageBase64.startsWith('demo_') || imageBase64 === 'demo_legacy_pharmacy_screen')) {
+        return res.json(fallbackScreenData);
+      }
+
       try {
-        const ai = getAIClient();
         const detectedMimeType = mimeType || "image/jpeg";
         const cleanData = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-        const prompt = `You are an expert AI vision system specialized in reading legacy pharmacy, medical clinic, and POS software computer screens, database tables, Excel grids, and printed tabular sheets in Kurdish, Arabic, and English.
-Analyze this computer monitor photo or screenshot table and extract ALL visible rows with extreme precision.
+        const prompt = `You are a high-speed, high-accuracy OCR vision system specialized in extracting medicines, stock, and product items from computer screens, legacy software tables, Excel sheets, and POS grids.
 
-TABLE COLUMN MAPPINGS TO DETECT IN KURDISH, ARABIC, AND ENGLISH:
-1. BARCODE / CODE: "بارکۆد", "کۆد", "الباركود", "كود", "Barcode", "Code", "Item Code".
-   - Extract the full numerical barcode sequence (e.g. 6291107470269, 8680001004312, 047). Convert any Eastern Arabic numerals (٠١٢٣٤٥٦٧٨٩) to standard English digits (0123456789). Do not truncate digits.
-2. MEDICINE / ITEM NAME: "ناوی دەرمان", "اسم المادة", "اسم الدواء", "Medicine Name", "Item Name", "Description".
-   - Extract the EXACT name as shown, plus provide the standardized pharmaceutical name, English name, Arabic name, and Kurdish name.
-3. QUANTITY / PIECES: "بڕ(عدد)", "بڕ", "العدد", "الكمية", "الرصيد", "Quantity", "Qty", "Stock".
-4. UNITS IN PACK / STRIPS PER BOX: "بڕی ناو پاکەت", "العدد بالباكيت", "عدد الأشرطة", "Units in Pack", "Pack Strips". (If not stated, default to 1).
-5. PURCHASE PRICE SHEET: "نرخی کڕینی شیت", "سعر شراء الشريط", "Sheet Purchase Price".
-6. PURCHASE PRICE PACK: "نرخی کڕینی پاکەت", "سعر شراء الباكيت", "Pack Purchase Price".
-7. SELLING PRICE SHEET: "نرخی فرۆشتنی شیت", "سعر بيع الشريط", "Sheet Retail Price".
-8. SELLING PRICE PACK: "نرخی فرۆشتنی", "سعر بيع الباكيت", "سعر المفرد", "Pack Retail Price".
-9. DOSAGE FORM: "جۆری دەرمان", "شكل الدواء", "Form" (Tablet, Capsule, Syrup, Drops, Cream, Ointment, Ampoule, Plaster, Spray, Gel, Support, etc.).
-10. MANUFACTURER: "کۆمپانیا", "الشركة", "Company", "Manufacturer" (e.g., Julphar, Joswe, Denk, Gerot, Francia, Jordan, Pioneer, Awamedica, Ajanta, Sanovel, etc.).
-11. EXPIRY DATE: "بەرواری بەسەرچوون", "تاريخ الانتهاء", "صلاحية", "Expiry Date". Convert any format (DD/MM/YYYY, D/M/YYYY) to standardized "YYYY-MM-DD".
+CRITICAL MANDATORY INSTRUCTIONS - NEVER TRANSLATE NAMES:
+1. "name": EXTRACT THE EXACT VERBATIM NAME AS DISPLAYED IN THE IMAGE.
+   - ABSOLUTE PROHIBITION ON TRANSLATION:
+     If the name in the image is written in English (e.g., "Panadol Extra 500mg", "Amoxicillin 500mg Cap", "Cataflam 50mg", "Augmentin 625mg", "FLAGYL 500mg", "B-cor 10mg", "Omeprazol 40mg Cap"):
+     IT MUST REMAIN 100% IN ENGLISH EXACTLY AS WRITTEN!
+     UNDER NO CIRCUMSTANCES should you translate or transliterate English medicine names into Arabic (do NOT write "بنادول" for Panadol or "أموكسيسيلين" for Amoxicillin). Keep English characters as English!
+   - If the name in the image is written in Arabic: keep it in Arabic as printed.
+   - If the name in the image is written in Kurdish: keep it in Kurdish as printed.
+   - Output ONLY the verbatim string in the "name" property. Do NOT output "nameAr", "nameKu", or any translation fields.
+2. "barcode": Numerical barcode sequence from barcode/code column (e.g. 6291107470269). Convert Eastern Arabic/Kurdish numerals (٠١٢٣٤٥٦٧٨٩) to standard digits 0-9. If no barcode is visible, generate a unique code formatted as "LEGACY-" + sequential digits.
+3. "quantityPieces": Stock balance or quantity count. Default 0 if empty.
+4. "unitsInPack": Units/strips per pack/box if indicated (default 1).
+5. "sheetPurchasePrice": Cost price per strip/sheet if indicated.
+6. "packPurchasePrice": Cost price per pack/box if indicated.
+7. "sheetSellingPrice": Retail selling price per strip/sheet if indicated.
+8. "packSellingPrice": Retail selling price per pack/box.
+9. "dosageForm": Form (Tablet, Syrup, Capsule, Drops, Injection, Cream, etc.).
+10. "manufacturer": Company or supplier name if visible.
+11. "expiryDate": Normalize to "YYYY-MM-DD" if date is visible.
+12. "category": Category if visible, otherwise "أدوية ومستلزمات".
 
-OUTPUT VALID JSON FOLLOWING THIS STRUCTURE:
+OUTPUT CLEAN MINIMAL JSON (DO NOT TRANSLATE ANY NAME):
 {
   "systemTitle": "Detected screen or table title",
   "totalItemsDetected": 0,
   "items": [
     {
-      "barcode": "Clean digit barcode string (e.g. 6291107470269)",
-      "name": "Standard English trade/scientific name",
-      "englishName": "Standard English pharmaceutical name",
-      "nameAr": "Arabic translation or description",
-      "nameKu": "Kurdish translation or description",
+      "barcode": "Barcode digits",
+      "name": "Verbatim text exactly as in image. English MUST stay English, never Arabic.",
       "quantityPieces": 0,
       "unitsInPack": 1,
       "sheetPurchasePrice": 0,
       "packPurchasePrice": 0,
       "sheetSellingPrice": 0,
       "packSellingPrice": 0,
-      "dosageForm": "Tablet, Syrup, Drops, Cream, Capsule, Ampoule, etc.",
-      "manufacturer": "Company / Manufacturer",
+      "dosageForm": "Tablet",
+      "manufacturer": "Company",
       "expiryDate": "YYYY-MM-DD",
-      "category": "Category name",
+      "category": "أدوية ومستلزمات",
       "unit": "علبة"
     }
   ]
 }
 
-CRITICAL RULES:
-- Extract ALL visible rows in the table without skipping.
-- Digits must be in standard 0-9 format.
-- If barcode column is empty for a row, generate a clean unique barcode like "LEGACY-XXXXX".`;
+CRITICAL: Extract ALL visible rows. Verbatim extraction is mandatory. Do NOT translate English names into Arabic.`;
 
         const imagePart = {
           inlineData: {
@@ -843,21 +1003,198 @@ CRITICAL RULES:
           }
         };
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.7-flash",
-          contents: {
-            parts: [
-              imagePart,
-              { text: prompt }
-            ]
-          },
-          config: {
-            responseMimeType: "application/json",
-            temperature: 0.1
+        let rawText = "";
+        try {
+          const resolvedApiKey = resolveApiKey(req);
+          rawText = await callGeminiVisionWithFallback({
+            prompt,
+            imagePart,
+            apiKey: resolvedApiKey,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.1
+            }
+          });
+        } catch (geminiErr: any) {
+          console.error("Gemini API legacy screen migrator error:", geminiErr);
+          const isDemo = imageBase64 === "demo_legacy_pharmacy_screen" || imageBase64.startsWith("demo_");
+          if (isDemo) {
+            return res.json(fallbackScreenData);
           }
-        });
+          return res.status(500).json({
+            error: geminiErr?.message || "تعذر معالجة الصورة بالذكاء الاصطناعي، يرجى المحاولة بصورة أوضح.",
+            items: []
+          });
+        }
 
-        const rawText = response.text || "{}";
+        const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        let parsedData: any;
+        try {
+          parsedData = JSON.parse(cleaned);
+        } catch {
+          const firstBrace = cleaned.indexOf('{');
+          const lastBrace = cleaned.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            try {
+              parsedData = JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+            } catch {}
+          }
+          if (!parsedData) {
+            const firstBracket = cleaned.indexOf('[');
+            const lastBracket = cleaned.lastIndexOf(']');
+            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+              try {
+                parsedData = JSON.parse(cleaned.substring(firstBracket, lastBracket + 1));
+              } catch {}
+            }
+          }
+        }
+
+        let extractedItemList: any[] = [];
+        let detectedTitle = "المواد المستخرجة من شاشة النظام السابق";
+
+        if (Array.isArray(parsedData)) {
+          if (parsedData.length > 0 && Array.isArray(parsedData[0]?.items)) {
+            extractedItemList = parsedData[0].items;
+            detectedTitle = parsedData[0].systemTitle || detectedTitle;
+          } else {
+            extractedItemList = parsedData;
+          }
+        } else if (parsedData && typeof parsedData === 'object') {
+          detectedTitle = parsedData.systemTitle || detectedTitle;
+          if (Array.isArray(parsedData.items)) {
+            extractedItemList = parsedData.items;
+          } else if (Array.isArray(parsedData.products)) {
+            extractedItemList = parsedData.products;
+          } else if (Array.isArray(parsedData.medicines)) {
+            extractedItemList = parsedData.medicines;
+          }
+        }
+
+        return res.json({
+          systemTitle: detectedTitle,
+          totalItemsDetected: extractedItemList.length,
+          items: extractedItemList
+        });
+      } catch (geminiErr: any) {
+        console.error("Gemini API legacy screen migrator error handled:", geminiErr);
+        return res.status(500).json({
+          error: geminiErr?.message || "حدث خطأ أثناء معالجة الصورة.",
+          items: []
+        });
+      }
+    } catch (err: any) {
+      console.error("Error in legacy screen migrator handler:", err);
+      return res.status(500).json({
+        error: "حدث خطأ في الخادم أثناء قراءة الصورة.",
+        items: []
+      });
+    }
+  });
+
+  // Single Product / Medicine Box AI Scanner Endpoint (فحص وقراءة علبة الدواء بالكاميرا والصورة)
+  app.post(["/api/gemini/scan-product-box", "/gemini/scan-product-box"], async (req, res) => {
+    try {
+      const { imageBase64, mimeType, languageMode = 'all' } = req.body;
+      if (!imageBase64) {
+        return res.status(400).json({ error: "No image provided" });
+      }
+
+      const defaultDemoProduct = {
+        name: "Panadol Extra 500mg/65mg",
+        englishName: "Panadol Extra Tablets",
+        nameKu: "پانادۆڵ ئێکسـترا 500 ملغ",
+        nameAr: "بانادول إكسترا 500 ملغ",
+        scientificName: "Paracetamol 500mg + Caffeine 65mg",
+        dosageForm: "حبوب / أقراص (Tablet)",
+        dosageStrength: "500mg / 65mg",
+        barcode: "5000347060124",
+        manufacturer: "GSK (GlaxoSmithKline)",
+        countryOfOrigin: "بريطانيا (UK)",
+        expiryDate: "2028-06-01",
+        batchNumber: "GSK2028",
+        unitsPerPack: 24,
+        suggestedPurchasePrice: 1500,
+        suggestedRetailPrice: 2000,
+        category: "مسكنات وخافض حرارة"
+      };
+
+      if (typeof imageBase64 === 'string' && (imageBase64.startsWith('demo_') || imageBase64 === 'demo_panadol_box')) {
+        return res.json(defaultDemoProduct);
+      }
+
+      try {
+        const detectedMimeType = mimeType || "image/jpeg";
+        const cleanData = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+        const prompt = `You are a lightning-fast pharmaceutical AI vision expert. Analyze this photo of a medicine box, packaging, bottle, blister strip, or product label.
+Target Language Focus: ${languageMode} (Must provide accurate tri-lingual names: English, Kurdish Sorani, and Arabic).
+
+Extract all key pharmaceutical specifications with extreme accuracy:
+1. "name": Standard English trade & strength name (e.g. "Panadol Extra 500mg", "Amoxicillin 500mg").
+2. "nameKu": Native Kurdish Sorani name & strength (e.g. "پانادۆڵ ئێکسـترا 500 ملغ", "ئەمۆکسیسیلین 500 ملغ").
+3. "nameAr": Native Arabic name & strength (e.g. "بانادول إكسترا 500 ملغ", "أموكسيسيلين 500 ملغ").
+4. "scientificName": Active chemical ingredient / scientific name (e.g. "Paracetamol + Caffeine").
+5. "dosageForm": Dosage form (e.g. "حبوب / أقراص (Tablet)", "كبسولات (Capsule)", "شراب (Syrup)", "قطرة (Drops)", "مرهم / كريم (Ointment/Cream)", "حقن / أمبول (Ampoule)").
+6. "dosageStrength": Strength / concentration (e.g. "500mg", "1g", "250mg/5ml", "200mg").
+7. "barcode": Numerical barcode digits printed on package (EAN-13, GTIN, UPC). Convert Eastern Arabic/Kurdish numerals to 0-9 digits. If none visible, leave empty string "".
+8. "manufacturer": Pharma company name (e.g. "GSK", "Pioneer", "Awamedica", "SDI", "Julphar", "Sanofi", "Novartis").
+9. "countryOfOrigin": Country of manufacture (e.g. "العراق (Iraq)", "بريطانيا (UK)", "الأردن (Jordan)", "تركيا (Turkey)").
+10. "expiryDate": Normalize expiration date to "YYYY-MM-DD" format.
+11. "batchNumber": Lot / Batch number printed on box if visible.
+12. "unitsPerPack": Count of strips, blisters, or tablets in the box (e.g. 20, 24, 30, 2). Default 1 or 2 if not stated.
+13. "category": Appropriate pharmaceutical category (e.g. "مسكنات وخافض حرارة", "مضادات حيوية", "أدوية السكري", "فيتامينات ومكملات").
+
+OUTPUT VALID JSON STRICTLY:
+{
+  "name": "Panadol Extra 500mg",
+  "nameKu": "پانادۆڵ ئێکسـترا 500 ملغ",
+  "nameAr": "بانادول إكسترا 500 ملغ",
+  "scientificName": "Paracetamol + Caffeine",
+  "dosageForm": "حبوب / أقراص (Tablet)",
+  "dosageStrength": "500mg",
+  "barcode": "5000347060124",
+  "manufacturer": "GSK",
+  "countryOfOrigin": "بريطانيا (UK)",
+  "expiryDate": "YYYY-MM-DD",
+  "batchNumber": "BN123",
+  "unitsPerPack": 2,
+  "category": "مسكنات وخافض حرارة",
+  "suggestedPurchasePrice": 1500,
+  "suggestedRetailPrice": 2000
+}`;
+
+        const imagePart = {
+          inlineData: {
+            mimeType: detectedMimeType,
+            data: cleanData
+          }
+        };
+
+        let rawText = "";
+        try {
+          const resolvedApiKey = resolveApiKey(req);
+          rawText = await callGeminiVisionWithFallback({
+            prompt,
+            imagePart,
+            apiKey: resolvedApiKey,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.1
+            }
+          });
+        } catch (geminiErr: any) {
+          console.error("Gemini API product box scan failed:", geminiErr);
+          const errStr = geminiErr?.message || "";
+          let userMessage = geminiErr?.message || "فشل فحص علبة الدواء بواسطة الذكاء الاصطناعي";
+          if (errStr.includes("GEMINI_API_KEY_MISSING")) {
+            userMessage = "مفتاح الذكاء الاصطناعي (Gemini API Key) غير محدد. يرجى إدخاله في الإعدادات.";
+          } else if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("quota")) {
+            userMessage = "تم تجاوز حد الاستخدام لمفتاح الذكاء الاصطناعي. يرجى إدخال مفتاح Gemini شخصي في الإعدادات.";
+          }
+          return res.status(500).json({ error: userMessage });
+        }
+
         const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
         let parsedData;
         try {
@@ -868,24 +1205,21 @@ CRITICAL RULES:
           if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
             parsedData = JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
           } else {
-            throw new Error("Unable to parse structured JSON from model response");
+            throw new Error("Unable to parse structured JSON from product scan");
           }
         }
         res.json(parsedData);
       } catch (geminiErr: any) {
-        console.error("Gemini API legacy screen migrator error:", geminiErr);
-        res.status(500).json({
-          error: geminiErr.message || "Failed to process legacy screen image",
-          details: "Please ensure the monitor screen is clearly visible."
-        });
+        console.error("Gemini API product box error:", geminiErr);
+        res.status(500).json({ error: geminiErr.message || "Failed to recognize medicine box" });
       }
     } catch (err: any) {
-      console.error("Error in legacy screen migrator handler:", err);
-      res.status(500).json({ error: err.message || "Failed to process legacy screen image" });
+      res.status(500).json({ error: err.message || "Failed to process medicine box image" });
     }
   });
 
-  // Vite middleware for development
+// Vite middleware and static serving for standalone server
+async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -905,4 +1239,9 @@ CRITICAL RULES:
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+export { app };
