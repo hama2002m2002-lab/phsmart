@@ -258,14 +258,114 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     });
   };
 
-  // Process the screen image via server endpoint
+  // Direct client-side Gemini Vision fallback for offline / standalone desktop / static hosting
+  const callGeminiScreenDirectly = async (apiKey: string, base64Image: string): Promise<any> => {
+    const cleanData = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const prompt = `You are an expert AI system for pharmaceutical inventory migration and legacy desktop POS software screen OCR.
+Analyze this photo of a pharmacy desktop management software table, medicines list screen, or inventory window.
+
+CRITICAL RULES:
+1. Extract EVERY SINGLE ROW visible in the table. Do not skip or truncate.
+2. For each row extract:
+   - "barcode": Barcode digits (0-9). Convert Arabic numerals (٠١٢٣٤٥٦٧٨٩) to standard English digits.
+   - "name": Exact medicine name as shown (e.g. "Plego", "B-cor 10mg", "Toras-denk 5mg", "Diamicron MR 60mg").
+   - "englishName": Standard English trade name.
+   - "nameAr": Arabic name or transliteration.
+   - "nameKu": Kurdish Sorani transliteration.
+   - "quantityPieces": Stock pieces/units.
+   - "unitsInPack": Pack unit multiplier (e.g. strips per pack, default 1).
+   - "sheetPurchasePrice": Purchase cost per strip/sheet.
+   - "packPurchasePrice": Purchase cost per pack/box.
+   - "sheetSellingPrice": Retail price per strip/sheet.
+   - "packSellingPrice": Retail price per pack/box.
+   - "dosageForm": Tablet, Capsule, Syrup, Drops, Cream, etc.
+   - "manufacturer": Manufacturer or origin (e.g. Julphar, Denk, Joswe).
+   - "expiryDate": YYYY-MM-DD format if visible, or valid future date.
+   - "category": e.g. "أدوية ومستلزمات".
+   - "unit": "علبة" or "قطعة".
+
+Output STRICT valid JSON:
+{
+  "systemTitle": "Extracted Pharmacy Table",
+  "totalItemsDetected": 10,
+  "items": [
+    {
+      "barcode": "string",
+      "name": "string",
+      "englishName": "string",
+      "nameAr": "string",
+      "nameKu": "string",
+      "quantityPieces": 10,
+      "unitsInPack": 1,
+      "sheetPurchasePrice": 0,
+      "packPurchasePrice": 1000,
+      "sheetSellingPrice": 0,
+      "packSellingPrice": 1500,
+      "dosageForm": "Tablet",
+      "manufacturer": "Pharma",
+      "expiryDate": "2027-12-31",
+      "category": "أدوية ومستلزمات",
+      "unit": "علبة"
+    }
+  ]
+}`;
+
+    const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+    let lastErr: any = null;
+
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inline_data: {
+                      mime_type: 'image/jpeg',
+                      data: cleanData
+                    }
+                  },
+                  { text: prompt }
+                ]
+              }
+            ],
+            generationConfig: {
+              response_mime_type: 'application/json',
+              temperature: 0.1
+            }
+          })
+        });
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson?.error?.message || `HTTP ${res.status}`);
+        }
+
+        const resData = await res.json();
+        const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('Empty response from model');
+        const cleanJson = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        return JSON.parse(cleanJson);
+      } catch (e: any) {
+        lastErr = e;
+      }
+    }
+
+    throw lastErr || new Error('Failed to connect to Gemini API directly');
+  };
+
+  // Process the screen image via server endpoint with client-side fallback
   const processScreenImage = async (base64Image: string) => {
     setSelectedImage(base64Image);
     setIsProcessing(true);
     setErrorMsg(null);
     setWarningNotice(null);
 
-    // Instant client-side path for sample demo preset
+    // Instant client-side path for sample demo preset (Zero network requests, 100% reliable)
     if (base64Image === 'demo_legacy_pharmacy_screen' || base64Image.startsWith('demo_')) {
       loadSampleDatasetSync();
       return;
@@ -278,7 +378,7 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
 
     try {
       const optimizedImage = await compressImage(base64Image);
-      setProgressStage(t('الذكاء الاصطناعي يستخرج أسماء المواد والأسعار من صورتك الجديدة...', 'AI ناو و نرخەکان دەردەهێنێت لە وێنە نوێیەکە...', 'AI extracting items and prices from your new photo...'));
+      setProgressStage(t('الذكاء الاصطناعي يستخرج أسماء المواد والأسعار من صورتك...', 'AI ناو و نرخەکان دەردەهێنێت لە وێنە نوێیەکە...', 'AI extracting items and prices from your photo...'));
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 65000);
@@ -289,46 +389,58 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
         headers['x-gemini-api-key'] = activeGeminiKey;
       }
 
-      const response = await fetch('/api/gemini/migrate-legacy-screen', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ 
-          imageBase64: optimizedImage, 
-          mimeType: 'image/jpeg',
-          apiKey: activeGeminiKey || undefined
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      let result: any = null;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        let errMsg = errorData.error || `Server error: ${response.status}`;
-        if (response.status === 404) {
-          errMsg = t(
-            'مسار استخراج المواد غير متوفر على الخادم (404). تم تحديث vercel.json ويمكنك تجربة "نموذج تجريبي جاهز" فوراً.',
-            'ڕێڕەوی خوێندنەوەی کاڵاکان لەسەر سێرڤەر بەردەست نییە (404). دەتوانیت نموونەی ئامادەکراو تاقی بکەیتەوە.',
-            'Endpoint not found on server (404). You can test with preloaded sample demo.'
-          );
-        } else if (errMsg.includes('GEMINI_API_KEY')) {
-          errMsg = t(
-            'مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير معين في متغيرات بيئة الخادم.',
-            'کلیلی GEMINI_API_KEY لە ژینگەی سێرڤەر دیاری نەکراوە.',
-            'GEMINI_API_KEY is not configured in server environment.'
-          );
+      try {
+        const response = await fetch('/api/gemini/migrate-legacy-screen', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ 
+            imageBase64: optimizedImage, 
+            mimeType: 'image/jpeg',
+            apiKey: activeGeminiKey || undefined
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          result = await response.json();
+        } else if (response.status === 404) {
+          // If server is 404 (static deployment / offline / vite without server running)
+          if (activeGeminiKey) {
+            setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
+            result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
+          } else {
+            throw new Error('SERVER_404_NO_KEY');
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Server error: ${response.status}`);
         }
-        throw new Error(errMsg);
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        // Fallback: If network failed or server returned 404 and we have a key in Settings, try direct client AI
+        if (activeGeminiKey && !result && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
+          try {
+            setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
+            result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
+          } catch (directErr: any) {
+            throw new Error(directErr.message || fetchErr.message);
+          }
+        } else {
+          throw fetchErr;
+        }
       }
 
-      const result = await response.json();
-      if (result.warning) {
+      if (result?.warning) {
         setWarningNotice(result.warning);
       } else {
         setWarningNotice(null);
       }
 
-      const rawItems = Array.isArray(result.items) ? result.items : [];
-      setSystemTitle(result.systemTitle || t('جدول المواد المستخرجة من صورتك المرفوعة', 'خشتەی کاڵا دەرهێنراوەکان لە وێنەکەت', 'Items Extracted from Uploaded Photo'));
+      const rawItems = Array.isArray(result?.items) ? result.items : [];
+      setSystemTitle(result?.systemTitle || t('جدول المواد المستخرجة من صورتك المرفوعة', 'خشتەی کاڵا دەرهێنراوەکان لە وێنەکەت', 'Items Extracted from Uploaded Photo'));
 
       if (rawItems.length === 0) {
         setErrorMsg(
@@ -388,13 +500,24 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       setExtractedItems(mappedItems);
     } catch (err: any) {
       console.error('Migration error in processScreenImage:', err);
-      setErrorMsg(
-        err.message || t(
-          'تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التأكد من جودة الصورة أو إعادة المحاولة.',
-          'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەکەدا.',
-          'Error reading image with AI. Please retry.'
-        )
-      );
+      const errStr = err?.message || String(err);
+      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
+        setErrorMsg(
+          t(
+            'الخادم المحلي غير متصل (خطأ 404 / وضع غير متصل). لتشغيل الذكاء الاصطناعي على حاسوبك الشخصي: أضف مفتاح Gemini API المجاني في الإعدادات للاتصال المباشر، أو اضغط زر "شاشة تجريبية جاهزة" لاستعراض واستيراد 24 دواء فوراً.',
+            'سێرڤەری لۆکاڵ بەردەست نییە (404). دەتوانیت کلیلی Gemini لە ڕێکخستنەکان دابنێیت، یان شاشەی نموونەیی ئامادەکراو (24 دەرمان) باربکەیت.',
+            'Local backend not reachable (404/Offline). Please configure your free Gemini API key in Settings for direct browser AI, or click "Load Sample Screen" to import 24 demo medicines immediately.'
+          )
+        );
+      } else {
+        setErrorMsg(
+          errStr || t(
+            'تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التأكد من جودة الصورة أو إعادة المحاولة.',
+            'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەکەدا.',
+            'Error reading image with AI. Please retry.'
+          )
+        );
+      }
     } finally {
       setIsProcessing(false);
       setProgressStage('');

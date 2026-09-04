@@ -524,6 +524,92 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       ]
     };
 
+    // Direct client-side Gemini Vision fallback for invoice scanning (Offline / Standalone / Static hosting)
+    const callGeminiInvoiceDirectly = async (apiKey: string, base64Img: string): Promise<ScannedInvoiceData> => {
+      const cleanData = base64Img.replace(/^data:image\/\w+;base64,/, '');
+      const prompt = `You are an expert AI pharmacist specializing in reading Iraqi and Middle Eastern pharmaceutical warehouse supply invoices and receipts.
+Carefully extract supplier info, invoice header, and every single medicine line item.
+
+CRITICAL EXTRACTION RULES:
+1. Extract EVERY SINGLE medicine line item in the table without omission.
+2. For each medicine line extract:
+   - "rawInvoiceName": verbatim name on the paper
+   - "name": standard English pharmaceutical trade name
+   - "englishName": English trade name
+   - "nameAr": Arabic medicine name or transliteration
+   - "nameKu": Kurdish Sorani name or transliteration
+   - "category": e.g. "أدوية ومستلزمات"
+   - "dosageForm": Tablet, Capsule, Syrup, Drops, Cream, Injection, etc.
+   - "manufacturer": Company / Origin
+   - "barcode": standard numeric barcode if printed (convert Arabic digits to 0-9)
+   - "expiryDate": YYYY-MM-DD
+   - "batchNumber": Batch #
+   - "quantity": numeric quantity
+   - "bonus": bonus quantity (0 if none)
+   - "originalPrice": unit list price
+   - "discountAmount": discount per unit
+   - "discountPercent": discount percentage
+   - "unitPurchasePrice": net cost per unit
+   - "totalPrice": total cost
+   - "suggestedRetailPrice": retail selling price
+   - "unitsPerPack": packaging multiplier
+   - "unit": "علبة"
+
+Output strictly valid JSON with this structure:
+{
+  "supplier": { "name": "string", "phone": "string", "address": "string" },
+  "invoice": { "invoiceNumber": "string", "date": "YYYY-MM-DD", "currency": "IQD", "netInvoiceAmount": 0 },
+  "items": []
+}`;
+
+      const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+      let lastErr: any = null;
+
+      for (const model of models) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      inline_data: {
+                        mime_type: 'image/jpeg',
+                        data: cleanData
+                      }
+                    },
+                    { text: prompt }
+                  ]
+                }
+              ],
+              generationConfig: {
+                response_mime_type: 'application/json',
+                temperature: 0.1
+              }
+            })
+          });
+
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson?.error?.message || `HTTP ${res.status}`);
+          }
+
+          const resData = await res.json();
+          const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) throw new Error('Empty response from model');
+          const cleanJson = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+          return JSON.parse(cleanJson);
+        } catch (e: any) {
+          lastErr = e;
+        }
+      }
+
+      throw lastErr || new Error('Failed to connect to Gemini API directly');
+    };
+
     try {
       if (base64Image === 'demo_collagen_invoice') {
         const demoProcessed = {
@@ -555,55 +641,46 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
         headers['x-gemini-api-key'] = activeGeminiKey;
       }
 
-      const response = await fetch('/api/gemini/scan-invoice', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ 
-          imageBase64: optimizedImage, 
-          mimeType: 'image/jpeg',
-          languageMode,
-          apiKey: activeGeminiKey || undefined
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      let result: ScannedInvoiceData;
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        let rawError = errData.error || `Server error: ${response.status}`;
-        try {
-          if (typeof rawError === 'string' && rawError.includes('{')) {
-            const jsonPart = rawError.replace(/^[^{]*(\{.*\}).*$/, '$1');
-            const parsed = JSON.parse(jsonPart);
-            if (parsed?.error?.message) {
-              rawError = parsed.error.message;
-            }
+      try {
+        const response = await fetch('/api/gemini/scan-invoice', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ 
+            imageBase64: optimizedImage, 
+            mimeType: 'image/jpeg',
+            languageMode,
+            apiKey: activeGeminiKey || undefined
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          result = await response.json();
+        } else if (response.status === 404) {
+          if (activeGeminiKey) {
+            result = await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
+          } else {
+            throw new Error('SERVER_404_NO_KEY');
           }
-        } catch {}
-
-        if (response.status === 404) {
-          rawError = t(
-            'تعذر الاتصال بمسار الذكاء الاصطناعي على الخادم (خطأ 404). تم تحديث إعدادات الاستضافة (vercel.json)، ويمكنك الآن تجربة الفاتورة النموذجية الجاهزة فوراً دون أي عائق.',
-            'نەتوانرا پەیوەندی بە سێرڤەری زیرەکی دەستکرد بکرێت (404). دەتوانیت ئێستا پسوولەی نموونەیی ئامادەکراو تاقی بکەیتەوە.',
-            'AI Invoice Scanner endpoint not reachable on server (404). You can test with the ready sample invoice right now.'
-          );
-        } else if (rawError.includes('GEMINI_API_KEY')) {
-          rawError = t(
-            'مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير معين في متغيرات بيئة الخادم. يمكنك تجربة الفاتورة النموذجية الجاهزة فوراً.',
-            'کلیلی GEMINI_API_KEY لە ڕێکخستنی سێرڤەر دانەنراوە. دەتوانیت پسوولەی نموونەیی بەکاربهێنیت.',
-            'GEMINI_API_KEY is not configured in server environment. You can try the demo invoice.'
-          );
-        } else if (rawError.includes('503') || rawError.includes('high demand') || rawError.includes('UNAVAILABLE')) {
-          rawError = t(
-            'خوادم الذكاء الاصطناعي (Google AI) تشهد ضغطاً مؤقتاً (503 High Demand). يرجى إعادة المحاولة أو تجربة فاتورة العينة الجاهزة.',
-            'سێرڤەرەکانی AI لە ژێر فشاری کاتین (503). تکایە دووبارە هەوڵبدەرەوە.',
-            'AI servers are experiencing temporary high demand (503). Please retry or load the demo invoice.'
-          );
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Server error: ${response.status}`);
         }
-        throw new Error(rawError);
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (activeGeminiKey && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
+          try {
+            result = await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
+          } catch (directErr: any) {
+            throw new Error(directErr.message || fetchErr.message);
+          }
+        } else {
+          throw fetchErr;
+        }
       }
-
-      const result: ScannedInvoiceData = await response.json();
       
       // Auto normalize items: establish rawInvoiceName, englishName, barcode digits, and active name based on namingPreference
       if (result.items && Array.isArray(result.items) && result.items.length > 0) {
@@ -643,7 +720,18 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       }
     } catch (err: any) {
       console.warn('Invoice scanning error:', err);
-      setScanError(err.message || t('فشل في معالجة الفاتورة بالذكاء الاصطناعي. يرجى المحاولة مرة أخرى.', 'هەڵە لە خوێندنەوەی پسوولە.', 'Invoice scanning failed. Please try again.'));
+      const errStr = err?.message || String(err);
+      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
+        setScanError(
+          t(
+            'الخادم المحلي غير متصل (خطأ 404 / وضع غير متصل). لتشغيل فحص الفواتير على حاسوبك الشخصي: أضف مفتاح Gemini API المجاني في الإعدادات للاتصال المباشر، أو جرب الفاتورة النموذجية الجاهزة فوراً.',
+            'سێرڤەری لۆکاڵ بەردەست نییە (404). دەتوانیت کلیلی Gemini لە ڕێکخستنەکان دابنێیت، یان پسوولەی نموونەیی تاقی بکەیتەوە.',
+            'Local backend not reachable (404/Offline). Please configure your free Gemini API key in Settings for direct AI scanning, or load the preloaded sample demo invoice.'
+          )
+        );
+      } else {
+        setScanError(errStr || t('فشل في معالجة الفاتورة بالذكاء الاصطناعي. يرجى المحاولة مرة أخرى.', 'هەڵە لە خوێندنەوەی پسوولە.', 'Invoice scanning failed. Please try again.'));
+      }
     } finally {
       setIsScanning(false);
     }

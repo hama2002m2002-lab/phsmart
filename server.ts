@@ -167,7 +167,7 @@ app.all(["/api/gemini/test-key", "/gemini/test-key"], async (req, res) => {
 });
 
 // Gemini AI Invoice / Image Scanner Endpoint
-app.post(["/api/gemini/scan-invoice", "/gemini/scan-invoice"], async (req, res) => {
+app.post(["/api/gemini/scan-invoice", "/gemini/scan-invoice", "/api/scan-invoice", "/scan-invoice"], async (req, res) => {
   try {
     const { imageBase64, mimeType, languageMode = 'all' } = req.body;
       if (!imageBase64) {
@@ -492,7 +492,7 @@ MANDATORY RULES:
   });
 
   // Legacy System & Desktop Screen AI Migrator Endpoint (نقل المواد من شاشات البرامج القديمة)
-  app.post(["/api/gemini/migrate-legacy-screen", "/gemini/migrate-legacy-screen"], async (req, res) => {
+  app.post(["/api/gemini/migrate-legacy-screen", "/gemini/migrate-legacy-screen", "/api/migrate-legacy-screen", "/migrate-legacy-screen"], async (req, res) => {
     try {
       const { imageBase64, mimeType, languageMode = 'all' } = req.body;
       if (!imageBase64) {
