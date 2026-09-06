@@ -562,7 +562,7 @@ Output strictly valid JSON with this structure:
   "items": []
 }`;
 
-      const models = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const models = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
       let lastErr: any = null;
 
       for (const model of models) {

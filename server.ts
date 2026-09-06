@@ -45,6 +45,8 @@ function getAIClient(customApiKey?: string): GoogleGenAI {
 
 // Multi-tier resilient model fallback cascade per official Gemini guidelines
 const GEMINI_VISION_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
   "gemini-3.6-flash",
   "gemini-3.8-flash",
   "gemini-flash-latest"
@@ -948,53 +950,48 @@ MANDATORY RULES:
         const detectedMimeType = mimeType || "image/jpeg";
         const cleanData = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-        const prompt = `You are a high-speed, high-accuracy OCR vision system specialized in extracting medicines, stock, and product items from computer screens, legacy software tables, Excel sheets, and POS grids.
+        const prompt = `You are an expert AI vision system specialized in extracting medicines, stock tables, pharmacy inventory grids, invoices, receipts, and product lists from computer screens, smartphone photos of monitors, Excel sheets, and legacy POS tables.
 
-CRITICAL MANDATORY INSTRUCTIONS - NEVER TRANSLATE NAMES:
-1. "name": EXTRACT THE EXACT VERBATIM NAME AS DISPLAYED IN THE IMAGE.
-   - ABSOLUTE PROHIBITION ON TRANSLATION:
-     If the name in the image is written in English (e.g., "Panadol Extra 500mg", "Amoxicillin 500mg Cap", "Cataflam 50mg", "Augmentin 625mg", "FLAGYL 500mg", "B-cor 10mg", "Omeprazol 40mg Cap"):
-     IT MUST REMAIN 100% IN ENGLISH EXACTLY AS WRITTEN!
-     UNDER NO CIRCUMSTANCES should you translate or transliterate English medicine names into Arabic (do NOT write "بنادول" for Panadol or "أموكسيسيلين" for Amoxicillin). Keep English characters as English!
-   - If the name in the image is written in Arabic: keep it in Arabic as printed.
-   - If the name in the image is written in Kurdish: keep it in Kurdish as printed.
-   - Output ONLY the verbatim string in the "name" property. Do NOT output "nameAr", "nameKu", or any translation fields.
-2. "barcode": Numerical barcode sequence from barcode/code column (e.g. 6291107470269). Convert Eastern Arabic/Kurdish numerals (٠١٢٣٤٥٦٧٨٩) to standard digits 0-9. If no barcode is visible, generate a unique code formatted as "LEGACY-" + sequential digits.
-3. "quantityPieces": Stock balance or quantity count. Default 0 if empty.
-4. "unitsInPack": Units/strips per pack/box if indicated (default 1).
-5. "sheetPurchasePrice": Cost price per strip/sheet if indicated.
-6. "packPurchasePrice": Cost price per pack/box if indicated.
-7. "sheetSellingPrice": Retail selling price per strip/sheet if indicated.
-8. "packSellingPrice": Retail selling price per pack/box.
-9. "dosageForm": Form (Tablet, Syrup, Capsule, Drops, Injection, Cream, etc.).
-10. "manufacturer": Company or supplier name if visible.
-11. "expiryDate": Normalize to "YYYY-MM-DD" if date is visible.
-12. "category": Category if visible, otherwise "أدوية ومستلزمات".
+MANDATORY INSTRUCTIONS:
+1. Examine the image carefully. Look at every row, column, text line, and product entry.
+2. Extract EVERY SINGLE medicine/product visible in the image.
+3. For each item:
+   - "name": Verbatim medicine or product name as seen in the image. If written in English, keep it 100% in English (e.g. "Panadol Extra", "Amoxicillin 500mg"). If Arabic/Kurdish, keep as printed.
+   - "barcode": Any barcode number or product code visible (convert Arabic/Persian digits to 0-9). If not visible, set to "".
+   - "quantityPieces": Number of pieces, units, or stock balance. Number (default 0).
+   - "unitsInPack": Units per pack/box if shown (default 1).
+   - "sheetPurchasePrice": Cost per strip/sheet if shown (number).
+   - "packPurchasePrice": Cost or purchase price per box/pack (number).
+   - "sheetSellingPrice": Selling/retail price per strip/sheet if shown (number).
+   - "packSellingPrice": Selling/retail price per box/pack (number).
+   - "dosageForm": Dosage form (Tablet, Capsule, Syrup, Drops, Injection, Cream, Ointment, etc.).
+   - "manufacturer": Manufacturer or company if visible.
+   - "expiryDate": Expiration date in YYYY-MM-DD or MM/YY if visible, else "".
+   - "category": Category (e.g. "أدوية ومستلزمات").
+   - "unit": "علبة" or "قطعة".
 
-OUTPUT CLEAN MINIMAL JSON (DO NOT TRANSLATE ANY NAME):
+Output STRICT valid JSON format only:
 {
   "systemTitle": "Detected screen or table title",
   "totalItemsDetected": 0,
   "items": [
     {
-      "barcode": "Barcode digits",
-      "name": "Verbatim text exactly as in image. English MUST stay English, never Arabic.",
-      "quantityPieces": 0,
+      "barcode": "",
+      "name": "Medicine Name",
+      "quantityPieces": 10,
       "unitsInPack": 1,
       "sheetPurchasePrice": 0,
-      "packPurchasePrice": 0,
+      "packPurchasePrice": 1000,
       "sheetSellingPrice": 0,
-      "packSellingPrice": 0,
+      "packSellingPrice": 1500,
       "dosageForm": "Tablet",
-      "manufacturer": "Company",
-      "expiryDate": "YYYY-MM-DD",
+      "manufacturer": "",
+      "expiryDate": "",
       "category": "أدوية ومستلزمات",
       "unit": "علبة"
     }
   ]
-}
-
-CRITICAL: Extract ALL visible rows. Verbatim extraction is mandatory. Do NOT translate English names into Arabic.`;
+}`;
 
         const imagePart = {
           inlineData: {
@@ -1015,6 +1012,7 @@ CRITICAL: Extract ALL visible rows. Verbatim extraction is mandatory. Do NOT tra
               temperature: 0.1
             }
           });
+          console.log("[Legacy Screen OCR] Raw response length:", rawText.length, "Snippet:", rawText.slice(0, 300));
         } catch (geminiErr: any) {
           console.error("Gemini API legacy screen migrator error:", geminiErr);
           const isDemo = imageBase64 === "demo_legacy_pharmacy_screen" || imageBase64.startsWith("demo_");
@@ -1069,6 +1067,18 @@ CRITICAL: Extract ALL visible rows. Verbatim extraction is mandatory. Do NOT tra
           } else if (Array.isArray(parsedData.medicines)) {
             extractedItemList = parsedData.medicines;
           }
+        }
+
+        console.log(`[Legacy Screen OCR] Extracted ${extractedItemList.length} items from image.`);
+
+        // If no items were detected by the model and this is not a demo, return 500 so client fallback can try alternative models / direct processing
+        if (extractedItemList.length === 0 && !imageBase64.startsWith("demo_")) {
+          return res.status(500).json({
+            error: "EMPTY_EXTRACTION",
+            details: "No items detected in response",
+            systemTitle: detectedTitle,
+            items: []
+          });
         }
 
         return res.json({

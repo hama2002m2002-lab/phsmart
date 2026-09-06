@@ -201,8 +201,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     }
   };
 
-  // Image compressor for fast high OCR accuracy
-  const compressImage = (dataUrl: string, maxWidth = 1400, quality = 0.82): Promise<string> => {
+  // Image compressor for fast high OCR accuracy - keeps high resolution for small text & tables
+  const compressImage = (dataUrl: string, maxWidth = 2048, quality = 0.92): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -285,7 +285,7 @@ Output STRICT valid JSON:
   ]
 }`;
 
-    const models = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const models = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
     let lastErr: any = null;
 
     for (const model of models) {
@@ -376,13 +376,26 @@ Output STRICT valid JSON:
 
         if (response.ok) {
           result = await response.json();
+          // If server succeeded with 200 OK but returned 0 items, and client has activeGeminiKey, attempt direct browser extraction as a smart fallback
+          if ((!result?.items || result.items.length === 0) && activeGeminiKey && !optimizedImage.startsWith('demo_')) {
+            try {
+              setProgressStage(t('جاري إعادة المحاولة بالذكاء الاصطناعي المباشر من المتصفح...', 'هەوڵدانەوەی ڕاستەوخۆ بە زیرەکی دەستکرد...', 'Retrying with direct client AI engine...'));
+              const directResult = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
+              if (directResult && Array.isArray(directResult.items) && directResult.items.length > 0) {
+                result = directResult;
+              }
+            } catch (fallbackDirectErr) {
+              console.warn("Direct client fallback attempt:", fallbackDirectErr);
+            }
+          }
         } else if (response.status === 404 || response.status === 500) {
-          // If server is 404 (static deployment / offline / vite without server running)
+          // If server is 404 / 500 (static deployment / offline / extraction error)
           if (activeGeminiKey) {
             setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
             result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
           } else {
-            throw new Error('SERVER_404_NO_KEY');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
           }
         } else {
           const errorData = await response.json().catch(() => ({}));
