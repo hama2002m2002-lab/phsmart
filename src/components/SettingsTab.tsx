@@ -695,7 +695,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type={showApiKey ? 'text' : 'password'}
                   value={settings.geminiApiKey || ''}
                   onChange={(e) => handleChange('geminiApiKey', e.target.value.trim())}
-                  placeholder={isKu ? 'نموونە: AIzaSy...' : isAr ? 'مثال: AIzaSy...' : 'e.g. AIzaSy...'}
+                  placeholder={isKu ? 'نموونە: AIzaSy... یان AQ.Ab8...' : isAr ? 'مثال: AIzaSy... أو AQ.Ab8...' : 'e.g. AIzaSy... or AQ.Ab8...'}
                   className="w-full bg-[#070A14] text-slate-200 px-4 py-3 pl-11 pr-24 text-xs font-mono rounded-xl border border-purple-500/30 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                   dir="ltr"
                 />

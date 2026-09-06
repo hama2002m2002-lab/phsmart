@@ -1862,6 +1862,7 @@ export function App() {
           existingProducts={products}
           currentUser={currentUser}
           onConfirmMigration={handleConfirmLegacyMigration}
+          onUpdateSettings={setSettings}
         />
       )}
 

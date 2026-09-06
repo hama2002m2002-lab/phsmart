@@ -25,13 +25,15 @@ import {
   Eye,
   Info,
   Check,
-  Edit2
+  Edit2,
+  Key,
+  ExternalLink
 } from 'lucide-react';
 import { Product, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { exportProductsToExcel } from '../lib/excelExport';
 import { findBestFuzzyProductMatch } from '../lib/fuzzyMatching';
-import { LEGACY_SAMPLE_DATASET } from '../data/legacyMigrationSample';
+import { getCustomGeminiKey, saveCustomGeminiKey } from '../lib/geminiKey';
 
 export interface LegacyScannedItem {
   id: string;
@@ -66,6 +68,7 @@ interface AILegacySystemMigratorModalProps {
   existingProducts: Product[];
   currentUser?: UserAccount | null;
   onConfirmMigration: (importedProducts: Product[]) => void;
+  onUpdateSettings?: (settings: StoreSettings) => void;
 }
 
 export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalProps> = ({
@@ -74,7 +77,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
   settings,
   existingProducts,
   currentUser,
-  onConfirmMigration
+  onConfirmMigration,
+  onUpdateSettings
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -163,66 +167,37 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
       .trim();
   };
 
-  // Synchronous and bulletproof sample dataset loader
-  const loadSampleDatasetSync = (customWarning?: string) => {
-    try {
-      const rawItems = LEGACY_SAMPLE_DATASET.items;
-      setSystemTitle(LEGACY_SAMPLE_DATASET.systemTitle);
-      setSelectedImage('demo_legacy_pharmacy_screen');
-      if (customWarning) {
-        setWarningNotice(customWarning);
-      } else {
-        setWarningNotice(null);
-      }
-      setErrorMsg(null);
+  const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(false);
+  const [tempApiKeyInput, setTempApiKeyInput] = useState('');
 
-      const mappedItems: LegacyScannedItem[] = rawItems.map((raw: any, index: number) => {
-        const cleanBarcode = normalizeDigits((raw.barcode || '').toString());
-        const rawName = (raw.name || raw.englishName || `Medicine Item ${index + 1}`).trim();
-        const isEnglish = /[a-zA-Z]/.test(rawName);
-        const nameVal = rawName;
-        const nameArVal = isEnglish ? rawName : (raw.nameAr || rawName);
-        const nameKuVal = isEnglish ? rawName : (raw.nameKu || rawName);
+  // Helper to retrieve user Gemini key from various local storages / settings
+  const getActiveGeminiKey = (): string => {
+    return (
+      getCustomGeminiKey() ||
+      settings?.geminiApiKey ||
+      localStorage.getItem('gemini_api_key_override') ||
+      localStorage.getItem('gemini_api_key') ||
+      (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+      ''
+    ).trim();
+  };
 
-        const fuzzyResult = findBestFuzzyProductMatch(rawName, existingProducts, {
-          barcode: cleanBarcode,
-          threshold: 0.80
-        });
-        const matchedExisting = fuzzyResult.matchedProduct;
-
-        return {
-          id: `legacy-item-${Date.now()}-${index}`,
-          barcode: cleanBarcode || (matchedExisting?.barcode || `LEGACY-${Math.floor(10000000 + Math.random() * 90000000)}`),
-          name: nameVal,
-          englishName: nameVal,
-          nameAr: nameArVal,
-          nameKu: nameKuVal,
-          quantityPieces: Number(raw.quantityPieces ?? 0),
-          unitsInPack: Math.max(1, Number(raw.unitsInPack ?? 1)),
-          sheetPurchasePrice: Number(raw.sheetPurchasePrice || 0),
-          packPurchasePrice: Number(raw.packPurchasePrice ?? 0),
-          sheetSellingPrice: Number(raw.sheetSellingPrice || 0),
-          packSellingPrice: Number(raw.packSellingPrice ?? 0),
-          dosageForm: raw.dosageForm || 'Tablet',
-          manufacturer: raw.manufacturer || 'General Pharma',
-          expiryDate: raw.expiryDate || '2027-12-31',
-          category: raw.category || 'أدوية ومستلزمات',
-          unit: raw.unit || 'علبة',
-          selected: true,
-          matchStatus: matchedExisting ? 'existing_update' : 'new',
-          existingProductId: matchedExisting?.id,
-          matchType: fuzzyResult.matchType,
-          matchSimilarity: fuzzyResult.similarity,
-          matchedProductName: matchedExisting?.name
-        };
+  const handleSaveApiKeyAndProcess = () => {
+    const key = tempApiKeyInput.trim();
+    if (!key) return;
+    saveCustomGeminiKey(key);
+    localStorage.setItem('gemini_api_key_override', key);
+    localStorage.setItem('gemini_api_key', key);
+    if (onUpdateSettings) {
+      onUpdateSettings({
+        ...settings,
+        geminiApiKey: key
       });
-
-      setExtractedItems(mappedItems);
-    } catch (err: any) {
-      console.error('Failed to load sample data:', err);
-    } finally {
-      setIsProcessing(false);
-      setProgressStage('');
+    }
+    setShowApiKeyPrompt(false);
+    setErrorMsg(null);
+    if (selectedImage) {
+      processScreenImage(selectedImage);
     }
   };
 
@@ -310,7 +285,7 @@ Output STRICT valid JSON:
   ]
 }`;
 
-    const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+    const models = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
     let lastErr: any = null;
 
     for (const model of models) {
@@ -364,12 +339,7 @@ Output STRICT valid JSON:
     setIsProcessing(true);
     setErrorMsg(null);
     setWarningNotice(null);
-
-    // Instant client-side path for sample demo preset (Zero network requests, 100% reliable)
-    if (base64Image === 'demo_legacy_pharmacy_screen' || base64Image.startsWith('demo_')) {
-      loadSampleDatasetSync();
-      return;
-    }
+    setShowApiKeyPrompt(false);
 
     // Clear previous items so the user gets fresh extraction from their new image
     setExtractedItems([]);
@@ -380,11 +350,8 @@ Output STRICT valid JSON:
       const optimizedImage = await compressImage(base64Image);
       setProgressStage(t('الذكاء الاصطناعي يستخرج أسماء المواد والأسعار من صورتك...', 'AI ناو و نرخەکان دەردەهێنێت لە وێنە نوێیەکە...', 'AI extracting items and prices from your photo...'));
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 65000);
-
+      const activeGeminiKey = getActiveGeminiKey();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      const activeGeminiKey = settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '';
       if (activeGeminiKey) {
         headers['x-gemini-api-key'] = activeGeminiKey;
       }
@@ -392,6 +359,9 @@ Output STRICT valid JSON:
       let result: any = null;
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65000);
+
         const response = await fetch('/api/gemini/migrate-legacy-screen', {
           method: 'POST',
           headers,
@@ -406,7 +376,7 @@ Output STRICT valid JSON:
 
         if (response.ok) {
           result = await response.json();
-        } else if (response.status === 404) {
+        } else if (response.status === 404 || response.status === 500) {
           // If server is 404 (static deployment / offline / vite without server running)
           if (activeGeminiKey) {
             setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
@@ -419,8 +389,7 @@ Output STRICT valid JSON:
           throw new Error(errorData.error || `Server error: ${response.status}`);
         }
       } catch (fetchErr: any) {
-        clearTimeout(timeoutId);
-        // Fallback: If network failed or server returned 404 and we have a key in Settings, try direct client AI
+        // Fallback: If network failed or server returned 404 and we have a key, try direct client AI
         if (activeGeminiKey && !result && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
           try {
             setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
@@ -501,12 +470,20 @@ Output STRICT valid JSON:
     } catch (err: any) {
       console.error('Migration error in processScreenImage:', err);
       const errStr = err?.message || String(err);
-      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
+      if (
+        errStr === 'SERVER_404_NO_KEY' ||
+        errStr.includes('404') ||
+        errStr.includes('500') ||
+        errStr.includes('Failed to fetch') ||
+        errStr.toLowerCase().includes('gemini_api_key') ||
+        errStr.toLowerCase().includes('api key')
+      ) {
+        setShowApiKeyPrompt(true);
         setErrorMsg(
           t(
-            'الخادم المحلي غير متصل (خطأ 404 / وضع غير متصل). لتشغيل الذكاء الاصطناعي على حاسوبك الشخصي: أضف مفتاح Gemini API المجاني في الإعدادات للاتصال المباشر، أو اضغط زر "شاشة تجريبية جاهزة" لاستعراض واستيراد 24 دواء فوراً.',
-            'سێرڤەری لۆکاڵ بەردەست نییە (404). دەتوانیت کلیلی Gemini لە ڕێکخستنەکان دابنێیت، یان شاشەی نموونەیی ئامادەکراو (24 دەرمان) باربکەیت.',
-            'Local backend not reachable (404/Offline). Please configure your free Gemini API key in Settings for direct browser AI, or click "Load Sample Screen" to import 24 demo medicines immediately.'
+            'لتشغيل فحص وقراءة صور الأدوية بالذكاء الاصطناعي: يرجى إدخال مفتاح Google Gemini API المجاني أدناه.',
+            'بۆ کارکردنی پشکنینی وێنە بە زیرەکی دەستکرد، تکایە کلیلی بەخۆڕایی Google Gemini لە خوارەوە دابنێ.',
+            'To enable AI photo recognition, please enter your free Google Gemini API key below.'
           )
         );
       } else {
@@ -808,15 +785,16 @@ Output STRICT valid JSON:
                     <span>{t('إعادة المحاولة الآن', 'دووبارە هەوڵبدەرەوە', 'Retry Now')}</span>
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => processScreenImage('demo_legacy_pharmacy_screen')}
-                  disabled={isProcessing}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                  <span>{t('شاشة تجريبية جاهزة', 'داتای نموونەیی ئامادەکراو', 'Load Sample Screen')}</span>
-                </button>
+                {!getActiveGeminiKey() && (
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKeyPrompt(true)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 border border-amber-400/40 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Key className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{t('إدخال مفتاح Gemini API', 'دانانی کلیلی Gemini', 'Enter API Key')}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setErrorMsg(null)}
@@ -828,25 +806,83 @@ Output STRICT valid JSON:
             </div>
           )}
 
+          {/* Inline Gemini API Key Setup Card when needed */}
+          {showApiKeyPrompt && (
+            <div className="p-4 rounded-xl bg-slate-800 border border-cyan-500/40 shadow-lg shadow-cyan-950/20">
+              <div className="flex items-start justify-between gap-3 mb-2.5">
+                <div className="flex items-center gap-2">
+                  <Key className="w-5 h-5 text-cyan-400 shrink-0" />
+                  <span className="font-bold text-sm text-cyan-200">
+                    {t('تفعيل فحص الصور المباشر (Google Gemini API)', 'چالاککردنی پشکنینی ڕاستەوخۆ بە Gemini API', 'Activate Direct AI Photo OCR')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyPrompt(false)}
+                  className="text-slate-400 hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed mb-3">
+                {t(
+                  'أدخل مفتاح Google Gemini API المجاني الخاص بك لتمكين قراءة صور الشاشات والفواتير بدقة عالية وفورية من المتصفح:',
+                  'کلیلی بەخۆڕایی Google Gemini API لێرە دابنێ بۆ دەرهێنانی دەرمان و کاڵاکان لە وێنە بەشێوەی ڕاستەوخۆ:',
+                  'Enter your free Google Gemini API key to enable instant direct photo OCR right in your browser:'
+                )}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={tempApiKeyInput}
+                  onChange={(e) => setTempApiKeyInput(e.target.value)}
+                  placeholder="AIzaSy... / AQ.Ab8..."
+                  className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveApiKeyAndProcess}
+                  disabled={!tempApiKeyInput.trim()}
+                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shrink-0"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{t('حفظ ومتابعة فحص الصورة', 'پاشەکەوت و دەستپێکردن', 'Save & Start Scan')}</span>
+                </button>
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+                <span>{t('يتم حفظ المفتاح محلياً في متصفحك بأمان تام.', 'کلیلەکە بە پارێزراوی لە مۆبایل/کۆمپیوتەرەکەت پاشەکەوت دەبێت.', 'Saved securely in your local browser storage.')}</span>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-cyan-400 hover:underline flex items-center gap-1"
+                >
+                  <span>{t('الحصول على مفتاح مجاني (Google AI Studio)', 'وەرگرتنی کلیلی خۆڕایی', 'Get free key')}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          )}
+
           {/* Top Upload & Camera Control Strip */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
             {/* Input Action Cards */}
-            <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* 1. Upload File Button */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessing}
-                className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/70 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-center cursor-pointer group disabled:opacity-50"
+                className="flex flex-col items-center justify-center p-4 rounded-xl bg-slate-800/80 border border-slate-700/70 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-center cursor-pointer group disabled:opacity-50 shadow-sm"
               >
-                <div className="w-9 h-9 rounded-lg bg-cyan-500/15 group-hover:bg-cyan-500/25 flex items-center justify-center mb-1.5 transition-colors">
-                  <Upload className="w-4 h-4 text-cyan-400" />
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/15 group-hover:bg-cyan-500/25 flex items-center justify-center mb-2 transition-colors">
+                  <Upload className="w-5 h-5 text-cyan-400" />
                 </div>
                 <span className="text-xs font-black text-slate-200 group-hover:text-cyan-300">
-                  {t('رفع صورة الشاشة / الجدول', 'بارکردنی وێنەی شاشە', 'Upload Screen Photo')}
+                  {t('رفع صورة الشاشة / جدول المواد', 'بارکردنی وێنەی شاشە یان خشتە', 'Upload Screen Photo / Table')}
                 </span>
                 <span className="text-[10px] text-slate-400 mt-0.5">
-                  {t('JPG, PNG أو لصق Ctrl+V', 'وێنە یان Ctrl+V', 'Image or Ctrl+V')}
+                  {t('JPG, PNG أو لصق من الحافظة Ctrl+V', 'وێنە یان لە کلیلە ڕاستەوخۆ Ctrl+V', 'Image or Paste Ctrl+V')}
                 </span>
               </button>
 
@@ -863,34 +899,16 @@ Output STRICT valid JSON:
                 type="button"
                 onClick={startCamera}
                 disabled={isProcessing || isCameraActive}
-                className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/70 hover:border-blue-500/60 hover:bg-slate-800 transition-all text-center cursor-pointer group disabled:opacity-50"
+                className="flex flex-col items-center justify-center p-4 rounded-xl bg-slate-800/80 border border-slate-700/70 hover:border-blue-500/60 hover:bg-slate-800 transition-all text-center cursor-pointer group disabled:opacity-50 shadow-sm"
               >
-                <div className="w-9 h-9 rounded-lg bg-blue-500/15 group-hover:bg-blue-500/25 flex items-center justify-center mb-1.5 transition-colors">
-                  <Camera className="w-4 h-4 text-blue-400" />
+                <div className="w-10 h-10 rounded-xl bg-blue-500/15 group-hover:bg-blue-500/25 flex items-center justify-center mb-2 transition-colors">
+                  <Camera className="w-5 h-5 text-blue-400" />
                 </div>
                 <span className="text-xs font-black text-slate-200 group-hover:text-blue-300">
                   {t('تصوير الشاشة بالكاميرا', 'گرتنی وێنە بە کامێرا', 'Capture from Camera')}
                 </span>
                 <span className="text-[10px] text-slate-400 mt-0.5">
-                  {t('تصوير مباشر لشاشة اللابتوب القديم', 'ڕاستەوخۆ لە شاشە', 'Direct laptop screen snap')}
-                </span>
-              </button>
-
-              {/* 3. Demo Preset Button */}
-              <button
-                type="button"
-                onClick={() => processScreenImage('demo_legacy_pharmacy_screen')}
-                disabled={isProcessing}
-                className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-gradient-to-br from-indigo-950/80 to-purple-950/80 border border-indigo-500/40 hover:border-indigo-400 transition-all text-center cursor-pointer group disabled:opacity-50 shadow-md shadow-indigo-950/40"
-              >
-                <div className="w-9 h-9 rounded-lg bg-indigo-500/20 group-hover:bg-indigo-500/35 flex items-center justify-center mb-1.5 transition-colors">
-                  <Sparkles className="w-4 h-4 text-indigo-300 animate-pulse" />
-                </div>
-                <span className="text-xs font-black text-indigo-200 group-hover:text-white">
-                  {t('نموذج تجريبي جاهز (ديمو)', 'شاشەی نموونەیی ئامادەکراو', 'Sample Demo Data')}
-                </span>
-                <span className="text-[10px] text-indigo-300/80 mt-0.5">
-                  {t('استعراض بيانات جاهزة للتجربة', 'تاقیکردنەوە بە داتای ئامادەکراو', 'Try with preloaded sample data')}
+                  {t('تصوير مباشر لشاشة اللابتوب القديم أو الورقة', 'ڕاستەوخۆ لە شاشەی کۆن یان کاغەز', 'Direct laptop screen or paper snap')}
                 </span>
               </button>
             </div>

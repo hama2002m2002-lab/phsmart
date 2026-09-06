@@ -562,7 +562,7 @@ Output strictly valid JSON with this structure:
   "items": []
 }`;
 
-      const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+      const models = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
       let lastErr: any = null;
 
       for (const model of models) {
@@ -611,26 +611,6 @@ Output strictly valid JSON with this structure:
     };
 
     try {
-      if (base64Image === 'demo_collagen_invoice') {
-        const demoProcessed = {
-          ...fallbackData,
-          items: fallbackData.items.map(item => {
-            const raw = item.rawInvoiceName || item.name;
-            const english = item.englishName || toPharmaceuticalEnglish(item.name || raw, item.nameAr, item.dosageForm);
-            return {
-              ...item,
-              rawInvoiceName: raw,
-              englishName: english,
-              name: namingPreference === 'english' ? english : raw
-            };
-          })
-        };
-        setScannedData(demoProcessed);
-        setSelectedItemIndices(new Set(demoProcessed.items.map((_, i) => i)));
-        setIsScanning(false);
-        return;
-      }
-
       const optimizedImage = await compressImage(base64Image);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
@@ -659,7 +639,7 @@ Output strictly valid JSON with this structure:
 
         if (response.ok) {
           result = await response.json();
-        } else if (response.status === 404) {
+        } else if (response.status === 404 || response.status === 500) {
           if (activeGeminiKey) {
             result = await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
           } else {
@@ -722,11 +702,12 @@ Output strictly valid JSON with this structure:
       console.warn('Invoice scanning error:', err);
       const errStr = err?.message || String(err);
       if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
+        setShowKeyInputInModal(true);
         setScanError(
           t(
-            'الخادم المحلي غير متصل (خطأ 404 / وضع غير متصل). لتشغيل فحص الفواتير على حاسوبك الشخصي: أضف مفتاح Gemini API المجاني في الإعدادات للاتصال المباشر، أو جرب الفاتورة النموذجية الجاهزة فوراً.',
-            'سێرڤەری لۆکاڵ بەردەست نییە (404). دەتوانیت کلیلی Gemini لە ڕێکخستنەکان دابنێیت، یان پسوولەی نموونەیی تاقی بکەیتەوە.',
-            'Local backend not reachable (404/Offline). Please configure your free Gemini API key in Settings for direct AI scanning, or load the preloaded sample demo invoice.'
+            'الخادم المحلي غير متصل. لتشغيل فحص الفواتير مباشرة على حاسوبك: يرجى إدخال مفتاح Gemini API المجاني أدناه.',
+            'سێرڤەری لۆکاڵ بەردەست نییە. تکایە کلیلی Gemini لە خوارەوە دابنێ بۆ پشکنینی ڕاستەوخۆی وێنە.',
+            'Local backend not reachable. Please enter your free Gemini API key below to enable direct photo OCR.'
           )
         );
       } else {
@@ -735,11 +716,6 @@ Output strictly valid JSON with this structure:
     } finally {
       setIsScanning(false);
     }
-  };
-
-  // Load Preset / Demo Collagen Drug Store Invoice
-  const handleLoadDemoInvoice = () => {
-    processInvoiceImage('demo_collagen_invoice');
   };
 
   // Global Toggle for Product Names: English Medical vs Exact Invoice Text
@@ -1461,16 +1437,6 @@ Output strictly valid JSON with this structure:
               <span>{t('📁 اختيار صورة من المعرض', '📁 هەڵبژاردنی وێنە لە گەلەری', 'Upload from Gallery')}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleLoadDemoInvoice}
-              disabled={isScanning}
-              className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-            >
-              <Zap className="w-4 h-4 fill-current text-amber-400" />
-              <span>{t('⚡ تجربة وصل صيدلية كولاجين النموذجي', '⚡ تاقیکردنەوە بە نموونەی کۆلاجین', '⚡ Test Collagen Invoice')}</span>
-            </button>
-
             {onOpenLegacyScreenMigrator && (
               <button
                 type="button"
@@ -1574,18 +1540,6 @@ Output strictly valid JSON with this structure:
                 type="button"
                 onClick={() => {
                   setScanError(null);
-                  handleLoadDemoInvoice();
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-              >
-                <Zap className="w-3.5 h-3.5 fill-current" />
-                <span>{t('تحميل الفاتورة النموذجية الجاهزة (كولاجين)', 'تاقیکردنەوە بە پسوولەی نموونەیی (کۆلاجین)', 'Load Sample Demo Invoice')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setScanError(null);
                   onClose();
                 }}
                 className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
@@ -1618,7 +1572,7 @@ Output strictly valid JSON with this structure:
                     type="password"
                     value={modalApiKey}
                     onChange={(e) => setModalApiKey(e.target.value.trim())}
-                    placeholder="AIzaSy..."
+                    placeholder="AIzaSy... / AQ.Ab8..."
                     className="flex-1 bg-[#050811] text-slate-200 px-3 py-2 text-xs font-mono rounded-lg border border-purple-500/30 focus:border-cyan-400 focus:outline-none"
                     dir="ltr"
                   />
