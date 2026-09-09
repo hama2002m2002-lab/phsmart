@@ -27,7 +27,10 @@ import {
   Check,
   Edit2,
   Key,
-  ExternalLink
+  ExternalLink,
+  Files,
+  Images,
+  StopCircle
 } from 'lucide-react';
 import { Product, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -96,6 +99,17 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
   const [warningNotice, setWarningNotice] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [previewZoomImage, setPreviewZoomImage] = useState<boolean>(false);
+
+  // Bulk / Multi-image batch processing state (supporting up to 500 images)
+  const [batchStats, setBatchStats] = useState<{
+    totalImages: number;
+    processedImages: number;
+    currentImageName: string;
+    totalExtractedItems: number;
+    failedImages: number;
+  } | null>(null);
+
+  const abortBatchRef = useRef<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -333,7 +347,137 @@ Output STRICT valid JSON:
     throw lastErr || new Error('Failed to connect to Gemini API directly');
   };
 
-  // Process the screen image via server endpoint with client-side fallback
+  // Helper to process one single image and return array of LegacyScannedItem
+  const extractItemsFromSingleImage = async (
+    base64Image: string,
+    existingList: LegacyScannedItem[]
+  ): Promise<{ items: LegacyScannedItem[]; systemTitle?: string; warning?: string }> => {
+    const optimizedImage = await compressImage(base64Image);
+    const activeGeminiKey = getActiveGeminiKey();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (activeGeminiKey) {
+      headers['x-gemini-api-key'] = activeGeminiKey;
+    }
+
+    let result: any = null;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 65000);
+
+      const response = await fetch('/api/gemini/migrate-legacy-screen', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          imageBase64: optimizedImage, 
+          mimeType: 'image/jpeg',
+          apiKey: activeGeminiKey || undefined
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        result = await response.json();
+        if ((!result?.items || result.items.length === 0) && activeGeminiKey && !optimizedImage.startsWith('demo_')) {
+          try {
+            const directResult = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
+            if (directResult && Array.isArray(directResult.items) && directResult.items.length > 0) {
+              result = directResult;
+            }
+          } catch (fallbackDirectErr) {
+            console.warn("Direct client fallback attempt:", fallbackDirectErr);
+          }
+        }
+      } else if (response.status === 404 || response.status === 500) {
+        if (activeGeminiKey) {
+          result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+    } catch (fetchErr: any) {
+      if (activeGeminiKey && !result && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
+        try {
+          result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
+        } catch (directErr: any) {
+          throw new Error(directErr.message || fetchErr.message);
+        }
+      } else {
+        throw fetchErr;
+      }
+    }
+
+    const rawItems = Array.isArray(result?.items) ? result.items : [];
+    if (rawItems.length === 0) {
+      return { items: [], systemTitle: result?.systemTitle, warning: result?.warning };
+    }
+
+    // Merge existing list and pharmacy inventory for duplicate matching
+    const mappedItems: LegacyScannedItem[] = rawItems.map((raw: any, index: number) => {
+      const cleanBarcode = normalizeDigits((raw.barcode || '').toString());
+      const rawName = (raw.name || raw.englishName || `Medicine Item ${index + 1}`).trim();
+      const isEnglish = /[a-zA-Z]/.test(rawName);
+      const nameVal = rawName;
+      const nameArVal = isEnglish ? rawName : (raw.nameAr || rawName);
+      const nameKuVal = isEnglish ? rawName : (raw.nameKu || rawName);
+
+      // Match against existing store products
+      const fuzzyResult = findBestFuzzyProductMatch(rawName, existingProducts, {
+        barcode: cleanBarcode,
+        threshold: 0.80
+      });
+      const matchedExisting = fuzzyResult.matchedProduct;
+
+      return {
+        id: `legacy-item-${Date.now()}-${Math.floor(Math.random() * 10000)}-${index}`,
+        barcode: cleanBarcode || (matchedExisting?.barcode || `LEGACY-${Math.floor(10000000 + Math.random() * 90000000)}`),
+        name: nameVal,
+        englishName: nameVal,
+        nameAr: nameArVal,
+        nameKu: nameKuVal,
+        quantityPieces: Number(raw.quantityPieces ?? raw.quantity ?? 0),
+        unitsInPack: Math.max(1, Number(raw.unitsInPack ?? raw.unitsPerPack ?? 1)),
+        sheetPurchasePrice: Number(raw.sheetPurchasePrice || 0),
+        packPurchasePrice: Number(raw.packPurchasePrice ?? raw.cartonPurchasePrice ?? raw.originalPrice ?? 0),
+        sheetSellingPrice: Number(raw.sheetSellingPrice || 0),
+        packSellingPrice: Number(raw.packSellingPrice ?? raw.singleRetailPrice ?? raw.price ?? 0),
+        dosageForm: raw.dosageForm || 'Tablet',
+        manufacturer: raw.manufacturer || 'General Pharma',
+        expiryDate: raw.expiryDate || '2027-12-31',
+        category: raw.category || 'أدوية ومستلزمات',
+        unit: raw.unit || 'علبة',
+        selected: true,
+        matchStatus: matchedExisting ? 'existing_update' : 'new',
+        existingProductId: matchedExisting?.id,
+        matchType: fuzzyResult.matchType,
+        matchSimilarity: fuzzyResult.similarity,
+        matchedProductName: matchedExisting?.name
+      };
+    });
+
+    return {
+      items: mappedItems,
+      systemTitle: result?.systemTitle,
+      warning: result?.warning
+    };
+  };
+
+  // Helper to read File into base64 DataURL
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Process a single image (from camera or single paste/select)
   const processScreenImage = async (base64Image: string) => {
     setSelectedImage(base64Image);
     setIsProcessing(true);
@@ -341,90 +485,14 @@ Output STRICT valid JSON:
     setWarningNotice(null);
     setShowApiKeyPrompt(false);
 
-    // Clear previous items so the user gets fresh extraction from their new image
-    setExtractedItems([]);
-
     setProgressStage(t('جاري تحسين صورة الشاشة ومعالجتها بسرعة فائقة...', 'وێنەکە ئامادە دەکرێت بە خێرایی بەرز بۆ AI...', 'Optimizing screen image for fast AI processing...'));
 
     try {
-      const optimizedImage = await compressImage(base64Image);
-      setProgressStage(t('الذكاء الاصطناعي يستخرج أسماء المواد والأسعار من صورتك...', 'AI ناو و نرخەکان دەردەهێنێت لە وێنە نوێیەکە...', 'AI extracting items and prices from your photo...'));
+      const { items, systemTitle: extractedTitle, warning } = await extractItemsFromSingleImage(base64Image, extractedItems);
+      if (warning) setWarningNotice(warning);
+      if (extractedTitle) setSystemTitle(extractedTitle);
 
-      const activeGeminiKey = getActiveGeminiKey();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (activeGeminiKey) {
-        headers['x-gemini-api-key'] = activeGeminiKey;
-      }
-
-      let result: any = null;
-
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 65000);
-
-        const response = await fetch('/api/gemini/migrate-legacy-screen', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ 
-            imageBase64: optimizedImage, 
-            mimeType: 'image/jpeg',
-            apiKey: activeGeminiKey || undefined
-          }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          result = await response.json();
-          // If server succeeded with 200 OK but returned 0 items, and client has activeGeminiKey, attempt direct browser extraction as a smart fallback
-          if ((!result?.items || result.items.length === 0) && activeGeminiKey && !optimizedImage.startsWith('demo_')) {
-            try {
-              setProgressStage(t('جاري إعادة المحاولة بالذكاء الاصطناعي المباشر من المتصفح...', 'هەوڵدانەوەی ڕاستەوخۆ بە زیرەکی دەستکرد...', 'Retrying with direct client AI engine...'));
-              const directResult = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
-              if (directResult && Array.isArray(directResult.items) && directResult.items.length > 0) {
-                result = directResult;
-              }
-            } catch (fallbackDirectErr) {
-              console.warn("Direct client fallback attempt:", fallbackDirectErr);
-            }
-          }
-        } else if (response.status === 404 || response.status === 500) {
-          // If server is 404 / 500 (static deployment / offline / extraction error)
-          if (activeGeminiKey) {
-            setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
-            result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
-          } else {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Server error: ${response.status}`);
-          }
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Server error: ${response.status}`);
-        }
-      } catch (fetchErr: any) {
-        // Fallback: If network failed or server returned 404 and we have a key, try direct client AI
-        if (activeGeminiKey && !result && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
-          try {
-            setProgressStage(t('جاري الاتصال المباشر بـ Google Gemini من المتصفح...', 'پەیوەندی ڕاستەوخۆ بە Gemini...', 'Directly connecting to Google Gemini from browser...'));
-            result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
-          } catch (directErr: any) {
-            throw new Error(directErr.message || fetchErr.message);
-          }
-        } else {
-          throw fetchErr;
-        }
-      }
-
-      if (result?.warning) {
-        setWarningNotice(result.warning);
-      } else {
-        setWarningNotice(null);
-      }
-
-      const rawItems = Array.isArray(result?.items) ? result.items : [];
-      setSystemTitle(result?.systemTitle || t('جدول المواد المستخرجة من صورتك المرفوعة', 'خشتەی کاڵا دەرهێنراوەکان لە وێنەکەت', 'Items Extracted from Uploaded Photo'));
-
-      if (rawItems.length === 0) {
+      if (items.length === 0) {
         setErrorMsg(
           t(
             'لم يتم العثور على أدوية أو نصوص واضحة في الصورة المرفوعة. يرجى التأكد من التقاط صورة أوضح ومباشرة لشاشة البرنامج أو جدول المواد.',
@@ -435,96 +503,180 @@ Output STRICT valid JSON:
         return;
       }
 
-      // Map raw items into LegacyScannedItem with duplicate detection against existing catalog
-      const mappedItems: LegacyScannedItem[] = rawItems.map((raw: any, index: number) => {
-        const cleanBarcode = normalizeDigits((raw.barcode || '').toString());
-        // Verbatim rule: keep the exact name from the image. If in English, keep in English!
-        const rawName = (raw.name || raw.englishName || `Medicine Item ${index + 1}`).trim();
-        const isEnglish = /[a-zA-Z]/.test(rawName);
-        const nameVal = rawName;
-        const nameArVal = isEnglish ? rawName : (raw.nameAr || rawName);
-        const nameKuVal = isEnglish ? rawName : (raw.nameKu || rawName);
-
-        // Intelligent duplicate prevention: Exact barcode, exact name, or Fuzzy Matching for English/Arabic spelling variations
-        const fuzzyResult = findBestFuzzyProductMatch(rawName, existingProducts, {
-          barcode: cleanBarcode,
-          threshold: 0.80 // 80% similarity threshold for medicines
-        });
-        const matchedExisting = fuzzyResult.matchedProduct;
-
-        return {
-          id: `legacy-item-${Date.now()}-${index}`,
-          barcode: cleanBarcode || (matchedExisting?.barcode || `LEGACY-${Math.floor(10000000 + Math.random() * 90000000)}`),
-          name: nameVal,
-          englishName: nameVal,
-          nameAr: nameArVal,
-          nameKu: nameKuVal,
-          quantityPieces: Number(raw.quantityPieces ?? raw.quantity ?? 0),
-          unitsInPack: Math.max(1, Number(raw.unitsInPack ?? raw.unitsPerPack ?? 1)),
-          sheetPurchasePrice: Number(raw.sheetPurchasePrice || 0),
-          packPurchasePrice: Number(raw.packPurchasePrice ?? raw.cartonPurchasePrice ?? raw.originalPrice ?? 0),
-          sheetSellingPrice: Number(raw.sheetSellingPrice || 0),
-          packSellingPrice: Number(raw.packSellingPrice ?? raw.singleRetailPrice ?? raw.price ?? 0),
-          dosageForm: raw.dosageForm || 'Tablet',
-          manufacturer: raw.manufacturer || 'General Pharma',
-          expiryDate: raw.expiryDate || '2027-12-31',
-          category: raw.category || 'أدوية ومستلزمات',
-          unit: raw.unit || 'علبة',
-          selected: true,
-          matchStatus: matchedExisting ? 'existing_update' : 'new',
-          existingProductId: matchedExisting?.id,
-          matchType: fuzzyResult.matchType,
-          matchSimilarity: fuzzyResult.similarity,
-          matchedProductName: matchedExisting?.name
-        };
+      // Merge newly extracted items with existing extracted items without duplicate barcodes
+      setExtractedItems(prev => {
+        const existingBarcodes = new Set(prev.map(p => p.barcode).filter(Boolean));
+        const newOnes = items.filter(i => !existingBarcodes.has(i.barcode));
+        return [...prev, ...newOnes];
       });
-
-      setExtractedItems(mappedItems);
     } catch (err: any) {
       console.error('Migration error in processScreenImage:', err);
-      const errStr = err?.message || String(err);
-      if (
-        errStr === 'SERVER_404_NO_KEY' ||
-        errStr.includes('404') ||
-        errStr.includes('500') ||
-        errStr.includes('Failed to fetch') ||
-        errStr.toLowerCase().includes('gemini_api_key') ||
-        errStr.toLowerCase().includes('api key')
-      ) {
-        setShowApiKeyPrompt(true);
-        setErrorMsg(
-          t(
-            'لتشغيل فحص وقراءة صور الأدوية بالذكاء الاصطناعي: يرجى إدخال مفتاح Google Gemini API المجاني أدناه.',
-            'بۆ کارکردنی پشکنینی وێنە بە زیرەکی دەستکرد، تکایە کلیلی بەخۆڕایی Google Gemini لە خوارەوە دابنێ.',
-            'To enable AI photo recognition, please enter your free Google Gemini API key below.'
-          )
-        );
-      } else {
-        setErrorMsg(
-          errStr || t(
-            'تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التأكد من جودة الصورة أو إعادة المحاولة.',
-            'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەکەدا.',
-            'Error reading image with AI. Please retry.'
-          )
-        );
-      }
+      handleProcessingError(err);
     } finally {
       setIsProcessing(false);
       setProgressStage('');
     }
   };
 
-  // Handle local file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        processScreenImage(reader.result);
+  // Error handler helper
+  const handleProcessingError = (err: any) => {
+    const errStr = err?.message || String(err);
+    if (
+      errStr === 'SERVER_404_NO_KEY' ||
+      errStr.includes('404') ||
+      errStr.includes('500') ||
+      errStr.includes('Failed to fetch') ||
+      errStr.toLowerCase().includes('gemini_api_key') ||
+      errStr.toLowerCase().includes('api key')
+    ) {
+      setShowApiKeyPrompt(true);
+      setErrorMsg(
+        t(
+          'لتشغيل فحص وقراءة صور الأدوية بالذكاء الاصطناعي: يرجى إدخال مفتاح Google Gemini API المجاني أدناه.',
+          'بۆ کارکردنی پشکنینی وێنە بە زیرەکی دەستکرد، تکایە کلیلی بەخۆڕایی Google Gemini لە خوارەوە دابنێ.',
+          'To enable AI photo recognition, please enter your free Google Gemini API key below.'
+        )
+      );
+    } else {
+      setErrorMsg(
+        errStr || t(
+          'تعذر قراءة الصورة بالذكاء الاصطناعي. يرجى التأكد من جودة الصورة أو إعادة المحاولة.',
+          'هەڵەیەک ڕوویدا لە خوێندنەوەی وێنەکەدا.',
+          'Error reading image with AI. Please retry.'
+        )
+      );
+    }
+  };
+
+  // Bulk Processing Engine for up to 500 images
+  const processBatchImages = async (files: File[]) => {
+    if (files.length === 0) return;
+    
+    // Safety cap at 500 files
+    const queueFiles = files.slice(0, 500);
+    const totalCount = queueFiles.length;
+
+    setIsProcessing(true);
+    setErrorMsg(null);
+    setWarningNotice(null);
+    setShowApiKeyPrompt(false);
+    abortBatchRef.current = false;
+
+    setBatchStats({
+      totalImages: totalCount,
+      processedImages: 0,
+      currentImageName: queueFiles[0]?.name || 'Image 1',
+      totalExtractedItems: 0,
+      failedImages: 0
+    });
+
+    let newlyExtractedTotal = 0;
+    let failedCount = 0;
+
+    for (let index = 0; index < totalCount; index++) {
+      if (abortBatchRef.current) {
+        setProgressStage(t('تم إيقاف المعالجة بناءً على طلبك.', 'پڕۆسەکە وەستێنرا بەپێی داواکاریت.', 'Processing stopped by user.'));
+        break;
       }
-    };
-    reader.readAsDataURL(file);
+
+      const file = queueFiles[index];
+      const currentNumber = index + 1;
+
+      setBatchStats(prev => prev ? {
+        ...prev,
+        processedImages: index,
+        currentImageName: file.name
+      } : null);
+
+      setProgressStage(
+        t(
+          `جاري معالجة الصورة ${currentNumber} من أصل ${totalCount}: ${file.name}...`,
+          `وێنەی ${currentNumber} لە ${totalCount} دەخوێنرێتەوە: ${file.name}...`,
+          `Processing image ${currentNumber} of ${totalCount}: ${file.name}...`
+        )
+      );
+
+      try {
+        const base64Data = await readFileAsDataUrl(file);
+        setSelectedImage(base64Data);
+
+        const { items, warning } = await extractItemsFromSingleImage(base64Data, extractedItems);
+        if (warning) setWarningNotice(warning);
+
+        if (items.length > 0) {
+          newlyExtractedTotal += items.length;
+          setExtractedItems(prev => {
+            // Merge with existing items, avoiding exact duplicate barcodes
+            const existingBarcodes = new Set(prev.map(p => p.barcode).filter(Boolean));
+            const freshItems = items.filter(item => !existingBarcodes.has(item.barcode));
+            return [...prev, ...freshItems];
+          });
+
+          setBatchStats(prev => prev ? {
+            ...prev,
+            totalExtractedItems: newlyExtractedTotal
+          } : null);
+        } else {
+          failedCount++;
+        }
+      } catch (err: any) {
+        console.warn(`Error processing file ${file.name}:`, err);
+        failedCount++;
+        setBatchStats(prev => prev ? {
+          ...prev,
+          failedImages: failedCount
+        } : null);
+
+        // If it's an API Key error, halt and prompt
+        const errStr = String(err?.message || err);
+        if (errStr.includes('API') || errStr.includes('404') || errStr === 'SERVER_404_NO_KEY') {
+          handleProcessingError(err);
+          break;
+        }
+      }
+
+      // Small 300ms pause between batches to protect browser thread & network rate
+      if (index < totalCount - 1) {
+        await new Promise(res => setTimeout(res, 350));
+      }
+    }
+
+    setBatchStats(prev => prev ? {
+      ...prev,
+      processedImages: totalCount,
+      failedImages: failedCount,
+      totalExtractedItems: newlyExtractedTotal
+    } : null);
+
+    setIsProcessing(false);
+    setProgressStage('');
+  };
+
+  // Stop / cancel running batch
+  const cancelBatchProcessing = () => {
+    abortBatchRef.current = true;
+  };
+
+  // Handle local file selection (support single or up to 500 files)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (files.length === 1) {
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          processScreenImage(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Multiple files selected (up to 500)
+      const filesArray = Array.from(files);
+      processBatchImages(filesArray);
+    }
+
     e.target.value = '';
   };
 
@@ -881,21 +1033,26 @@ Output STRICT valid JSON:
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
             {/* Input Action Cards */}
             <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* 1. Upload File Button */}
+              {/* 1. Upload File Button (Single or Bulk up to 500 images) */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessing}
-                className="flex flex-col items-center justify-center p-4 rounded-xl bg-slate-800/80 border border-slate-700/70 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-center cursor-pointer group disabled:opacity-50 shadow-sm"
+                className="flex flex-col items-center justify-center p-4 rounded-xl bg-slate-800/80 border border-slate-700/70 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-center cursor-pointer group disabled:opacity-50 shadow-sm relative overflow-hidden"
               >
                 <div className="w-10 h-10 rounded-xl bg-cyan-500/15 group-hover:bg-cyan-500/25 flex items-center justify-center mb-2 transition-colors">
                   <Upload className="w-5 h-5 text-cyan-400" />
                 </div>
-                <span className="text-xs font-black text-slate-200 group-hover:text-cyan-300">
-                  {t('رفع صورة الشاشة / جدول المواد', 'بارکردنی وێنەی شاشە یان خشتە', 'Upload Screen Photo / Table')}
-                </span>
-                <span className="text-[10px] text-slate-400 mt-0.5">
-                  {t('JPG, PNG أو لصق من الحافظة Ctrl+V', 'وێنە یان لە کلیلە ڕاستەوخۆ Ctrl+V', 'Image or Paste Ctrl+V')}
+                <div className="flex items-center gap-1.5 justify-center">
+                  <span className="text-xs font-black text-slate-200 group-hover:text-cyan-300">
+                    {t('رفع صور الشاشة / الجداول (حتى 500 صورة)', 'بارکردنی وێنەی شاشە (تا 500 وێنە)', 'Upload Screen Photos (Up to 500)')}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-bold border border-cyan-500/30">
+                    {t('متعدد', 'فرە', 'Bulk')}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1">
+                  {t('حدد صوراً فردية أو مئات الصور دفعة واحدة أو الصق Ctrl+V', 'دەتوانیت تا 500 وێنە لە یەک کاتدا دیاری بکەیت یان Ctrl+V', 'Select single or up to 500 photos at once, or Paste Ctrl+V')}
                 </span>
               </button>
 
@@ -903,6 +1060,7 @@ Output STRICT valid JSON:
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
                 onChange={handleFileChange}
               />
@@ -1005,20 +1163,66 @@ Output STRICT valid JSON:
             </div>
           )}
 
-          {/* Processing Indicator */}
+          {/* Processing Indicator (Supports Single Image or Bulk up to 500 Images) */}
           {isProcessing && (
-            <div className="p-8 rounded-2xl bg-slate-800/60 border border-slate-700/80 flex flex-col items-center justify-center text-center space-y-3">
+            <div className="p-6 sm:p-8 rounded-2xl bg-slate-800/80 border border-slate-700 flex flex-col items-center justify-center text-center space-y-4 shadow-xl">
               <div className="relative">
                 <div className="w-14 h-14 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center animate-spin">
                   <RefreshCw className="w-6 h-6 text-cyan-400" />
                 </div>
                 <Sparkles className="w-5 h-5 text-indigo-400 absolute -top-1 -right-1 animate-bounce" />
               </div>
-              <div>
-                <h3 className="text-sm font-black text-white">
-                  {t('جاري استخراج المواد والأسعار والباركود بالذكاء الاصطناعي...', 'AI خشتەی دەرمانەکان دەردەهێنێت...', 'AI Extracting Medicine Database...')}
+
+              <div className="w-full max-w-md space-y-2">
+                <h3 className="text-sm sm:text-base font-black text-white">
+                  {batchStats && batchStats.totalImages > 1
+                    ? t(
+                        `جاري قراءة واستخراج الدفعة (${batchStats.processedImages + 1} من ${batchStats.totalImages}) بالذكاء الاصطناعي...`,
+                        `پشکنینی بەکۆمەڵ (${batchStats.processedImages + 1} لە ${batchStats.totalImages}) بە زیرەکی دەستکرد...`,
+                        `Bulk AI Extracting (${batchStats.processedImages + 1} of ${batchStats.totalImages} images)...`
+                      )
+                    : t('جاري استخراج المواد والأسعار والباركود بالذكاء الاصطناعي...', 'AI خشتەی دەرمانەکان دەردەهێنێت...', 'AI Extracting Medicine Database...')}
                 </h3>
-                <p className="text-xs text-cyan-300 font-medium mt-1">{progressStage}</p>
+
+                <p className="text-xs text-cyan-300 font-medium">{progressStage}</p>
+
+                {/* Progress bar for multi-image batches */}
+                {batchStats && batchStats.totalImages > 1 && (
+                  <div className="mt-3 space-y-2">
+                    <div className="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-700/80">
+                      <div
+                        className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 transition-all duration-300 rounded-full"
+                        style={{
+                          width: `${Math.min(100, Math.round(((batchStats.processedImages) / batchStats.totalImages) * 100))}%`
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                      <span>
+                        {t('المواد المستخرجة حتى الآن:', 'کاڵا دۆزراوەکان تا ئێستا:', 'Items extracted so far:')}{' '}
+                        <strong className="text-emerald-400 font-mono font-bold">
+                          {batchStats.totalExtractedItems}
+                        </strong>
+                      </span>
+                      <span>
+                        {Math.round((batchStats.processedImages / batchStats.totalImages) * 100)}%
+                      </span>
+                    </div>
+
+                    {/* Cancel / Stop button for batch */}
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={cancelBatchProcessing}
+                        className="px-4 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <StopCircle className="w-4 h-4 text-rose-400" />
+                        <span>{t('إيقاف المعالجة الحالية والاكتفاء بالمستخرج', 'وەستاندنی پڕۆسەکە', 'Stop & Keep Extracted')}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1360,15 +1564,15 @@ Output STRICT valid JSON:
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-2 cursor-pointer"
                 >
                   <Upload className="w-4 h-4" />
-                  <span>{t('رفع صورة الشاشة الآن', 'بارکردنی وێنە ئێستا', 'Upload Screen Photo Now')}</span>
+                  <span>{t('رفع صور الشاشة الآن (حتى 500 صورة)', 'بارکردنی وێنەکان ئێستا (تا 500 وێنە)', 'Upload Screen Photos Now (Up to 500)')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={startCamera}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Camera className="w-4 h-4 text-blue-400" />
                   <span>{t('تصوير بالكاميرا', 'گرتن بە کامێرا', 'Capture Photo')}</span>

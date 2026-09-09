@@ -551,7 +551,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
             <button
               type="button"
               onClick={onOpenAIInvoiceScanner}
-              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] sm:col-span-2 lg:col-span-3 ${
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
                 isLight
                   ? 'bg-gradient-to-r from-purple-50 via-fuchsia-50 to-indigo-50 border-purple-300 hover:border-purple-600 shadow-sm hover:shadow-md'
                   : 'bg-gradient-to-r from-[#1E0E35] via-[#2A1348] to-[#140827] border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_30px_rgba(168,85,247,0.35)]'
@@ -565,7 +565,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                   <span className={`text-sm sm:text-base font-black transition-colors ${
                     isLight ? 'text-purple-950 group-hover:text-purple-700' : 'text-white group-hover:text-purple-300'
                   }`}>
-                    {t('إدخال المواد عبر صورة الوصل بالذكاء الاصطناعي (AI OCR Scanner)', 'خوێندنەوە و زیادکردنی مادەکان بە وێنەی پسوولە بە AI', 'AI Invoice Image Scanner & Auto-Importer')}
+                    {t('إدخال المواد عبر صورة الوصل (AI OCR)', 'خوێندنەوە و زیادکردنی مادەکان بە وێنەی پسوولە بە AI', 'AI Invoice Image Scanner')}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold border border-purple-500/30">
                     Gemini Vision
@@ -573,9 +573,45 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate sm:whitespace-normal">
                   {t(
-                    'التقط أو ارفع صورة وصل الشراء؛ يقوم النظام بقراءة أسماء الأدوية والمواد، التواريخ، الباتش، وأسعار الشراء والبيع وإدخالها فورياً إلى المخزن وحسابات الموردين',
-                    'وێنەی پسوولەکە دابنێ؛ ناوەکان، بەرواری بەسەرچوون، باچ، و نرخەکان بە تەواوی و خۆکار دەخرێنە کۆگاوە',
-                    'Snap or upload invoice photo: extracts items, batches, expiries, quantities & wholesale costs directly to warehouse'
+                    'التقط أو ارفع صورة وصل الشراء؛ يقوم النظام بقراءة أسماء الأدوية والمواد، التواريخ، وأسعار الشراء والبيع وحفظها فورياً',
+                    'وێنەی پسوولەکە دابنێ؛ ناوەکان، بەرواری بەسەرچوون، و نرخەکان بە تەواوی و خۆکار دەخرێنە کۆگاوە',
+                    'Snap or upload invoice photo: extracts items, batches, expiries & wholesale costs directly to warehouse'
+                  )}
+                </p>
+              </div>
+            </button>
+          )}
+
+          {/* Button: نقل المواد من شاشات البرامج السابقة (حتى 500 صورة دفعة واحدة) */}
+          {canEditProducts && onOpenLegacyScreenMigrator && (
+            <button
+              type="button"
+              onClick={onOpenLegacyScreenMigrator}
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+                isLight
+                  ? 'bg-gradient-to-r from-cyan-50 via-sky-50 to-blue-50 border-cyan-300 hover:border-cyan-600 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-r from-[#071F2C] via-[#0B2E42] to-[#0A1D2E] border-cyan-500/50 hover:border-cyan-400 hover:shadow-[0_0_30px_rgba(6,182,212,0.35)]'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-teal-500 to-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg group-hover:scale-105 transition-transform">
+                <Monitor className="w-6 h-6 text-white stroke-[2.5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm sm:text-base font-black transition-colors ${
+                    isLight ? 'text-cyan-950 group-hover:text-cyan-700' : 'text-white group-hover:text-cyan-300'
+                  }`}>
+                    {t('نقل المواد من صور البرنامج القديم (حتى 500 صورة)', 'هاوردەکردنی کاڵاکان لە وێنەی بەرنامەی کۆن (تا 500 وێنە)', 'Legacy System Screen Migrator (up to 500 images)')}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold border border-cyan-500/30">
+                    {t('متعدد حتى 500', 'کۆمەڵ تا 500', 'Batch 500')}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate sm:whitespace-normal">
+                  {t(
+                    'حدد صور شاشات برنامجك السابق (حتى 500 صورة)؛ يقوم النظام بقراءة الأسماء، الباركود، وأسعار الشيت والكرتون ونقلها دفعة واحدة',
+                    'تا 500 وێنەی شاشەی سیستەمە کۆنەکەت دیاریبکە؛ سیستمەکە بە یەکجار هەموو دەرمانەکان هاوردە دەکات',
+                    'Select up to 500 legacy screen photos: extracts barcodes, names, pack & blister prices in automated bulk batches'
                   )}
                 </p>
               </div>

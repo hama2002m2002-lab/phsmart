@@ -39,6 +39,7 @@ import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
 import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
 import { AILegacySystemMigratorModal } from './components/AILegacySystemMigratorModal';
+import { LocalDataNetworkModal } from './components/LocalDataNetworkModal';
 import { findBestFuzzyProductMatch } from './lib/fuzzyMatching';
 
 import {
@@ -286,6 +287,7 @@ export function App() {
   const [isInventoryAuditOpen, setIsInventoryAuditOpen] = useState(false);
   const [isAIInvoiceScannerOpen, setIsAIInvoiceScannerOpen] = useState(false);
   const [isLegacyMigratorOpen, setIsLegacyMigratorOpen] = useState(false);
+  const [isLocalDataNetworkOpen, setIsLocalDataNetworkOpen] = useState(false);
   const [aiDraftImportData, setAiDraftImportData] = useState<any | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -1514,6 +1516,7 @@ export function App() {
         onOpenDesktopApp={() => setIsDesktopAppModalOpen(true)}
         onOpenCSharpCode={() => setIsCSharpModalOpen(true)}
         onOpenAccountsModal={() => setIsAccountsModalOpen(true)}
+        onOpenLocalDataNetwork={() => setIsLocalDataNetworkOpen(true)}
         onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
         isFirebaseSynced={isFirebaseSynced}
         onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
@@ -1863,6 +1866,17 @@ export function App() {
           currentUser={currentUser}
           onConfirmMigration={handleConfirmLegacyMigration}
           onUpdateSettings={setSettings}
+        />
+      )}
+
+      {isLocalDataNetworkOpen && (
+        <LocalDataNetworkModal
+          isOpen={isLocalDataNetworkOpen}
+          onClose={() => setIsLocalDataNetworkOpen(false)}
+          settings={settings}
+          onOpenMobileSync={() => setIsMobileSyncOpen(true)}
+          onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+          onOpenLegacyMigrator={() => setIsLegacyMigratorOpen(true)}
         />
       )}
 

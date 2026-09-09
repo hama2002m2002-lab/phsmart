@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv } from 'lucide-react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, HardDrive, Wifi } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -28,6 +28,7 @@ interface HeaderProps {
   onOpenDesktopApp?: () => void;
   onOpenCSharpCode?: () => void;
   onOpenAccountsModal?: () => void;
+  onOpenLocalDataNetwork?: () => void;
   isFirebaseSynced?: boolean;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
@@ -45,6 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCashDrawer,
   onOpenShiftReport,
   onOpenCustomerDisplay,
+  onOpenLocalDataNetwork,
   onToggleSidebar,
   isSidebarOpen = false,
 }) => {
@@ -148,6 +150,22 @@ export const Header: React.FC<HeaderProps> = ({
               EN
             </button>
           </div>
+
+          {/* Local-First Storage & Offline Guarantee Badge / Indicator */}
+          {onOpenLocalDataNetwork && (
+            <button
+              type="button"
+              onClick={onOpenLocalDataNetwork}
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-500/40 text-emerald-300 text-[10px] sm:text-xs font-bold transition-all cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.2)] active:scale-95 shrink-0"
+              title={isKu ? 'دۆخی هەڵگرتنی ناوخۆیی و گواستنەوە' : isAr ? 'نظام الحفظ والتخزين المحلي المستقل' : 'Local-First Offline Storage Status'}
+            >
+              <HardDrive className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="hidden sm:inline">
+                {isKu ? 'خەزنی ناوخۆیی' : isAr ? 'تخزين محلي' : 'Local Storage'}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </button>
+          )}
 
           {/* Theme Switcher Button (Day / Night Mode - وضع ليلي و نهار) */}
           <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-0.5">
