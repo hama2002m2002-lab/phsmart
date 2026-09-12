@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck, CheckCircle2, HardDrive } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck, CheckCircle2, HardDrive, Smartphone } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
 import { OverviewTab } from './components/OverviewTab';
@@ -37,6 +37,8 @@ import { CashierAccountsModal } from './components/CashierAccountsModal';
 import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAvatarSelector';
 import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
+import { MobileScannerScreen } from './components/MobileScannerScreen';
+import { getLaptopSecurityCredentials, subscribeToIncomingScans, playScannerBeep } from './lib/mobileSyncSecurity';
 import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
 import { AILegacySystemMigratorModal } from './components/AILegacySystemMigratorModal';
 import { LocalDataNetworkModal } from './components/LocalDataNetworkModal';
@@ -998,10 +1000,20 @@ export function App() {
     return window.location.search.includes('view=customer-display') || window.location.hash.includes('customer-display');
   });
 
+  const [isMobileScannerRoute, setIsMobileScannerRoute] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const search = window.location.search;
+    return search.includes('mode=scanner') || search.includes('mode=mobile-scanner');
+  });
+
+  const [mobileScanToast, setMobileScanToast] = useState<{ barcode: string; time: number } | null>(null);
+
   useEffect(() => {
     const handleUrlChange = () => {
       const isDisplay = window.location.search.includes('view=customer-display') || window.location.hash.includes('customer-display');
       setIsCustomerDisplayRoute(isDisplay);
+      const isScanner = window.location.search.includes('mode=scanner') || window.location.search.includes('mode=mobile-scanner');
+      setIsMobileScannerRoute(isScanner);
     };
 
     window.addEventListener('popstate', handleUrlChange);
@@ -1011,6 +1023,43 @@ export function App() {
       window.removeEventListener('hashchange', handleUrlChange);
     };
   }, []);
+
+  // Listen on laptop for scans transmitted by authorized mobile device
+  useEffect(() => {
+    if (isCustomerDisplayRoute || isMobileScannerRoute) return;
+
+    const creds = getLaptopSecurityCredentials(settings.storeNameAr || settings.storeName);
+    const unsubscribe = subscribeToIncomingScans(creds.laptopId, (payload) => {
+      playScannerBeep();
+      setMobileScanToast({ barcode: payload.barcode, time: Date.now() });
+      setTimeout(() => setMobileScanToast(null), 3500);
+
+      window.dispatchEvent(new CustomEvent('phsmart_external_barcode_scan', {
+        detail: { barcode: payload.barcode }
+      }));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [settings.storeName, settings.storeNameAr, isCustomerDisplayRoute, isMobileScannerRoute]);
+
+  // If this window was opened as a standalone Mobile Wireless Barcode Scanner
+  if (isMobileScannerRoute) {
+    return (
+      <MobileScannerScreen
+        onExitToFullApp={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('mode');
+          url.searchParams.delete('lid');
+          url.searchParams.delete('pin');
+          url.searchParams.delete('tok');
+          window.history.pushState({}, '', url.pathname);
+          setIsMobileScannerRoute(false);
+        }}
+      />
+    );
+  }
 
   // If this window was opened specifically as a standalone Customer Display (e.g. secondary monitor / tablet)
   if (isCustomerDisplayRoute) {
@@ -1849,6 +1898,11 @@ export function App() {
           isOpen={isMobileSyncOpen}
           onClose={() => setIsMobileSyncOpen(false)}
           settings={settings}
+          onTestBarcodeReceived={(barcode) => {
+            window.dispatchEvent(new CustomEvent('phsmart_external_barcode_scan', {
+              detail: { barcode }
+            }));
+          }}
         />
       )}
 
@@ -1947,6 +2001,31 @@ export function App() {
           onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
           onOpenLegacyMigrator={() => setIsLegacyMigratorOpen(true)}
         />
+      )}
+
+      {/* Real-time Mobile Scanner Reception Toast on Laptop */}
+      {mobileScanToast && (
+        <div
+          role="status"
+          className="fixed top-16 left-6 z-50 max-w-sm p-4 rounded-2xl bg-[#090E1A]/95 border-2 border-cyan-400 text-white shadow-[0_0_35px_rgba(6,182,212,0.45)] backdrop-blur-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4"
+        >
+          <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shrink-0">
+            <Smartphone className="w-5 h-5 animate-pulse text-cyan-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
+              <span>📱 مسح من موبايل المحل المصرح به</span>
+            </p>
+            <p className="text-xs font-mono font-bold text-white mt-0.5">باركود: {mobileScanToast.barcode}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMobileScanToast(null)}
+            className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* Auto Backup Notification Toast */}

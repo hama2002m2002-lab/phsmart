@@ -1035,6 +1035,20 @@ export const POSTab: React.FC<POSTabProps> = ({
     });
   };
 
+  // Listen for wireless scans from the authorized shop mobile phone
+  useEffect(() => {
+    const handleExternalScan = (e: any) => {
+      const code = e?.detail?.barcode;
+      if (code && typeof code === 'string') {
+        processBarcodeOrProduct(code);
+      }
+    };
+    window.addEventListener('phsmart_external_barcode_scan', handleExternalScan);
+    return () => {
+      window.removeEventListener('phsmart_external_barcode_scan', handleExternalScan);
+    };
+  }, [products, cart]);
+
   const updateSaleType = (productId: string, oldSaleType: SaleUnitType, newSaleType: SaleUnitType) => {
     if (oldSaleType === newSaleType) return;
 
@@ -2621,6 +2635,23 @@ export const POSTab: React.FC<POSTabProps> = ({
                   {products?.length ?? 0}
                 </span>
               </button>
+
+              {/* WIRELESS MOBILE SCANNER SYNC BUTTON (QR + PIN) */}
+              {onOpenMobileSync && (
+                <button
+                  type="button"
+                  onClick={onOpenMobileSync}
+                  className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-bold text-xs shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.35)] border border-cyan-400/50 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  title={isAr ? 'ربط ماسح باركود لاسلكي بكاميرا الموبايل خاص باللابتوب والمحل' : isKu ? 'بەستنەوەی مۆبایل وەک بارکۆدی بێتەل' : 'Connect Wireless Mobile Barcode Scanner'}
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
+                  <span className="hidden sm:inline">{isAr ? 'ماسح الموبايل' : isKu ? 'بارکۆدی مۆبایل' : 'Mobile Scanner'}</span>
+                  <span className="sm:hidden">{isAr ? 'موبايل' : 'Phone'}</span>
+                  <span className="bg-cyan-950 text-cyan-300 px-1.5 py-0.5 rounded text-[10px] font-mono border border-cyan-500/40">
+                    QR
+                  </span>
+                </button>
+              )}
 
             </div>
           </div>

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import {
   X, Printer, Sliders, Tag, Palette, Type, Check, RefreshCw, Barcode as BarcodeIcon,
   Layers, FileText, CheckCircle2, BookmarkCheck, Save, Sparkles, Grid, Eye, AlertCircle,
-  Search
+  Search, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Move, RotateCw, AlignLeft, AlignCenter,
+  AlignRight, HelpCircle, Info, Compass
 } from 'lucide-react';
 import { Product, StoreSettings } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -76,6 +77,15 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   const [labelHeightMm, setLabelHeightMm] = useState<number>(30);
   const [borderWidthPx, setBorderWidthPx] = useState<number>(1);
   const [paddingPx, setPaddingPx] = useState<number>(6);
+
+  // Printer Alignment & Positioning Controls (Xprinter / Thermal alignment)
+  const [printAlignX, setPrintAlignX] = useState<'left' | 'center' | 'right'>('left');
+  const [printAlignY, setPrintAlignY] = useState<'top' | 'center' | 'bottom'>('top');
+  const [offsetXmm, setOffsetXmm] = useState<number>(0);
+  const [offsetYmm, setOffsetYmm] = useState<number>(0);
+  const [rotationDeg, setRotationDeg] = useState<0 | 90 | 180 | 270>(0);
+  const [printerPaperWidthMm, setPrinterPaperWidthMm] = useState<number>(80);
+  const [showXprinterGuide, setShowXprinterGuide] = useState<boolean>(false);
 
   // Field Toggles
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
@@ -197,11 +207,31 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         if (parsed.showBarcodeText !== undefined) setShowBarcodeText(parsed.showBarcodeText);
         if (parsed.priceOption) setPriceOption(parsed.priceOption);
         if (parsed.layoutMode) setLayoutMode(parsed.layoutMode);
+        if (parsed.printAlignX) setPrintAlignX(parsed.printAlignX);
+        if (parsed.printAlignY) setPrintAlignY(parsed.printAlignY);
+        if (parsed.offsetXmm !== undefined) setOffsetXmm(parsed.offsetXmm);
+        if (parsed.offsetYmm !== undefined) setOffsetYmm(parsed.offsetYmm);
+        if (parsed.rotationDeg !== undefined) setRotationDeg(parsed.rotationDeg);
+        if (parsed.printerPaperWidthMm !== undefined) setPrinterPaperWidthMm(parsed.printerPaperWidthMm);
       }
     } catch (e) {
       console.warn('Could not load saved barcode config:', e);
     }
   }, []);
+
+  // Helper to nudge offset in millimeters
+  const nudge = (dx: number, dy: number) => {
+    setOffsetXmm((prev) => Math.round((prev + dx) * 10) / 10);
+    setOffsetYmm((prev) => Math.round((prev + dy) * 10) / 10);
+  };
+
+  const resetPosition = () => {
+    setOffsetXmm(0);
+    setOffsetYmm(0);
+    setRotationDeg(0);
+    setPrintAlignX('left');
+    setPrintAlignY('top');
+  };
 
   if (!isOpen) return null;
 
@@ -264,6 +294,12 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         showBarcodeText,
         priceOption,
         layoutMode,
+        printAlignX,
+        printAlignY,
+        offsetXmm,
+        offsetYmm,
+        rotationDeg,
+        printerPaperWidthMm,
       };
       localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(config));
       setSavedSuccessMsg(true);
@@ -329,50 +365,77 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       priceOption === 'custom' ? (isAr ? 'سعر خاص' : 'Custom Price') : '';
 
     return `
-      <div class="label-page">
-        ${showStoreName ? `<div class="store-title">${settings.storeNameAr || settings.storeName}</div>` : ''}
-        
-        ${showProductName ? `<div class="prod-title">${activeProduct.nameAr || activeProduct.name}</div>` : ''}
+      <div class="print-carrier-page">
+        <div class="label-page">
+          ${showStoreName ? `<div class="store-title">${settings.storeNameAr || settings.storeName}</div>` : ''}
+          
+          ${showProductName ? `<div class="prod-title">${activeProduct.nameAr || activeProduct.name}</div>` : ''}
 
-        ${showScientificName && activeProduct.scientificName ? `<div class="sci-name">🧪 ${activeProduct.scientificName}</div>` : ''}
-        ${showDosageForm && activeProduct.dosageForm ? `<div class="dosage-form">${activeProduct.dosageForm}</div>` : ''}
+          ${showScientificName && activeProduct.scientificName ? `<div class="sci-name">🧪 ${activeProduct.scientificName}</div>` : ''}
+          ${showDosageForm && activeProduct.dosageForm ? `<div class="dosage-form">${activeProduct.dosageForm}</div>` : ''}
 
-        ${priceOption !== 'none' ? `
-        <div class="prices-container">
-          ${priceOption !== 'all_three' ? `
-            <div class="price-badge">${currency}${formatNumber(displayedPrice)}</div>
-            ${showPriceLabel ? `<div class="price-label">${priceLabelText}</div>` : ''}
-          ` : `
-            <div class="three-prices-grid">
-              <div><span>مفرد</span><span style="color:${priceColor}">${currency}${formatNumber(singlePrice)}</span></div>
-              <div><span>جملة</span><span style="color:${priceColor}">${currency}${formatNumber(wholesalePrice)}</span></div>
-              <div><span>كرتون</span><span style="color:${priceColor}">${currency}${formatNumber(cartonPrice)}</span></div>
-            </div>
-          `}
+          ${priceOption !== 'none' ? `
+          <div class="prices-container">
+            ${priceOption !== 'all_three' ? `
+              <div class="price-badge">${currency}${formatNumber(displayedPrice)}</div>
+              ${showPriceLabel ? `<div class="price-label">${priceLabelText}</div>` : ''}
+            ` : `
+              <div class="three-prices-grid">
+                <div><span>مفرد</span><span style="color:${priceColor}">${currency}${formatNumber(singlePrice)}</span></div>
+                <div><span>جملة</span><span style="color:${priceColor}">${currency}${formatNumber(wholesalePrice)}</span></div>
+                <div><span>كرتون</span><span style="color:${priceColor}">${currency}${formatNumber(cartonPrice)}</span></div>
+              </div>
+            `}
+          </div>
+          ` : ''}
+
+          ${barcodeSVGMarkup}
+          ${showBarcodeText ? `<div class="barcode-text">${activeProduct.barcode}</div>` : ''}
+
+          ${showBatchNumber && activeProduct.batchNumber ? `<div class="batch-text">Batch: ${activeProduct.batchNumber}</div>` : ''}
+          ${showExpiryDate && activeProduct.expiryDate ? `<div class="expiry-text">تاريخ الانتهاء: ${activeProduct.expiryDate}</div>` : ''}
         </div>
-        ` : ''}
-
-        ${barcodeSVGMarkup}
-        ${showBarcodeText ? `<div class="barcode-text">${activeProduct.barcode}</div>` : ''}
-
-        ${showBatchNumber && activeProduct.batchNumber ? `<div class="batch-text">Batch: ${activeProduct.batchNumber}</div>` : ''}
-        ${showExpiryDate && activeProduct.expiryDate ? `<div class="expiry-text">تاريخ الانتهاء: ${activeProduct.expiryDate}</div>` : ''}
       </div>
     `;
   };
 
+  const effectivePageWidth = printerPaperWidthMm > 0 ? Math.max(labelWidthMm, printerPaperWidthMm) : labelWidthMm;
+
   const getLabelStyles = () => `
     @page {
-      size: ${labelWidthMm}mm ${labelHeightMm}mm;
+      size: ${effectivePageWidth}mm ${labelHeightMm}mm;
       margin: 0;
     }
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    html, body {
       margin: 0;
       padding: 0;
       background-color: #ffffff;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      direction: ltr !important;
+    }
+    .print-carrier-page {
+      width: ${effectivePageWidth}mm;
+      height: ${labelHeightMm}mm;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: row;
+      justify-content: ${
+        printAlignX === 'left' ? 'flex-start' :
+        printAlignX === 'right' ? 'flex-end' : 'center'
+      };
+      align-items: ${
+        printAlignY === 'top' ? 'flex-start' :
+        printAlignY === 'bottom' ? 'flex-end' : 'center'
+      };
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+      margin: 0;
+      padding: 0;
+      position: relative;
+      direction: ltr !important;
     }
     .label-page {
       width: ${labelWidthMm}mm;
@@ -386,10 +449,14 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       justify-content: space-between;
       align-items: center;
       text-align: center;
-      page-break-after: always;
-      break-after: page;
       overflow: hidden;
-      margin: 0 auto;
+      margin: 0;
+      position: relative;
+      left: ${offsetXmm}mm;
+      top: ${offsetYmm}mm;
+      transform: rotate(${rotationDeg}deg);
+      transform-origin: center center;
+      direction: rtl;
     }
     .store-title {
       font-size: ${storeFontSize}px;
@@ -551,7 +618,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
     const htmlContent = `
       <!DOCTYPE html>
-      <html dir="rtl">
+      <html dir="ltr">
         <head>
           <title>طباعة ملصق - ${activeProduct.nameAr || activeProduct.name}</title>
           <style>${getLabelStyles()}</style>
@@ -932,6 +999,379 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               </div>
             </div>
 
+            {/* 4. PRINTER ALIGNMENT & POSITIONING (Xprinter / Thermal Margins) */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-[#10192D] border-2 border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                  <Move className="w-4 h-4 text-amber-400" />
+                  <span>{isKu ? 'شوێن و ئاراستەی چاپکردن (تایبەت بە Xprinter):' : isAr ? 'موضع ومحاذاة الطباعة (يسار / وسط / يمين / أعلى / أسفل):' : 'Printer Alignment & Margins (Xprinter):'}</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowXprinterGuide(prev => !prev)}
+                  className="px-2 py-0.5 rounded-lg bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold hover:bg-amber-900 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{isAr ? 'دليل ضبط طابعة Xprinter' : 'Xprinter Guide'}</span>
+                </button>
+              </div>
+
+              {/* Xprinter Troubleshooting Guide Accordion */}
+              {showXprinterGuide && (
+                <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-500/40 text-xs text-slate-200 space-y-2 animate-fadeIn">
+                  <div className="flex items-center gap-2 text-amber-300 font-black">
+                    <Info className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>{isAr ? 'إرشادات ضبط الرول والطباعة لطابعة Xprinter:' : 'Xprinter Setup Tips:'}</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300 leading-relaxed">
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'موضع الرول:' : 'Roll Position:'}</strong> {isAr ? 'كما في صورتك، الرول موضوع على جهة اليسار. اختر زر «⬅️ أقصى اليسار» ليتم إرسال الطباعة مباشرة فوق الستيكر.' : 'Your roll is installed on the left side. Select "Left" alignment.'}
+                    </li>
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'مسارات الرول الخضراء داخل الطابعة:' : 'Roll Guides:'}</strong> {isAr ? 'تأكد من قفل الدليلين البلاستيكيين بالداخل حول الرول لمنعه من الانزلاق لليمين أو اليسار أثناء السحب.' : 'Snug the plastic roll guides against the roll to prevent slipping.'}
+                    </li>
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'معايرة حساس المسافات (Calibration):' : 'Auto Calibration:'}</strong> {isAr ? 'أطفئ الطابعة ثم اضغط زر FEED أو PAUSE واستمر بالضغط وشغل الطابعة حتى تسحب ملصقاً واحداً وتقف بدقة على حافة الفاصل.' : 'Turn off printer, hold FEED/PAUSE while turning on to calibrate label gap.'}
+                    </li>
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'الإزاحة الدقيقة (Nudge):' : 'Nudge Offsets:'}</strong> {isAr ? 'استخدم أزرار الأسهم (⬅️ ➡️ ⬆️ ⬇️) أدناه لتحريك الملصق بالملم حتى يقع الباركود في منتصف الورقة تماماً ثم اضغط «حفظ كإعداد افتراضي».' : 'Use the directional D-Pad below to fine-tune in millimeters.'}
+                    </li>
+                  </ul>
+                </div>
+              )}
+
+              {/* Quick Horizontal Presets */}
+              <div>
+                <span className="text-[10px] text-slate-400 block mb-1 font-bold">
+                  {isKu ? 'ئاراستەی ئاسۆیی (چەپ، ناوەڕاست، ڕاست):' : isAr ? 'المحاذاة الأفقية السريعة (يسار / وسط / يمين):' : 'Horizontal Alignment:'}
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPrintAlignX('left')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      printAlignX === 'left'
+                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/50 font-black'
+                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                    <span>{isAr ? '⬅️ أقصى اليسار' : 'Left'}</span>
+                    <span className="text-[9px] px-1 rounded bg-amber-950/40 text-amber-200 hidden sm:inline">{isAr ? 'لطابعتك' : 'Recommended'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrintAlignX('center')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      printAlignX === 'center'
+                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/50 font-black'
+                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                    <span>{isAr ? '⏺️ في الوسط' : 'Center'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrintAlignX('right')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      printAlignX === 'right'
+                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/50 font-black'
+                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    <AlignRight className="w-4 h-4" />
+                    <span>{isAr ? '➡️ أقصى اليمين' : 'Right'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Vertical Alignment & Rotation */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-1 font-bold">
+                    {isKu ? 'ئاراستەی ستوونی (سەرەوە، ناوەڕاست، خوارەوە):' : isAr ? 'المحاذاة الرأسية (أعلى / وسط / أسفل):' : 'Vertical Alignment:'}
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPrintAlignY('top')}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        printAlignY === 'top'
+                          ? 'bg-cyan-600 text-white border-cyan-400'
+                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      {isAr ? '⬆️ أعلى' : 'Top'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrintAlignY('center')}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        printAlignY === 'center'
+                          ? 'bg-cyan-600 text-white border-cyan-400'
+                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      {isAr ? '⏺️ وسط' : 'Mid'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrintAlignY('bottom')}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        printAlignY === 'bottom'
+                          ? 'bg-cyan-600 text-white border-cyan-400'
+                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      {isAr ? '⬇️ أسفل' : 'Bottom'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-1 font-bold">
+                    {isKu ? 'سوڕاندنی چاپ (پلە):' : isAr ? 'تدوير زاوية الطباعة:' : 'Rotation:'}
+                  </span>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[0, 90, 180, 270].map((deg) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => setRotationDeg(deg as any)}
+                        className={`py-1.5 px-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                          rotationDeg === deg
+                            ? 'bg-cyan-600 text-white border-cyan-400'
+                            : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Printer Carrier Width (80mm / 100mm / Match Label) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    {isKu ? 'پانی ڕووبەری چاپکەر (Printhead Width):' : isAr ? 'عرض رأس / حامل ورق الطابعة (مهم جداً لطابعات 80mm و 100mm):' : 'Printer Bed Width:'}
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-400 font-bold">
+                    {printerPaperWidthMm === 0 ? `${labelWidthMm} mm (نفس الملصق)` : `${printerPaperWidthMm} mm`}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(80)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 80
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    80 mm (Xprinter)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(100)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 100
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    100 mm (4-inch)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(58)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 58
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    58 mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(0)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 0
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    {isAr ? 'مطابق للملصق' : 'Auto'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Millimetric Directional D-Pad & Precise Offsets */}
+              <div className="p-3 rounded-xl bg-[#0B1120] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-300 flex items-center gap-1">
+                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{isAr ? 'لوحة التوجيه الملمترية (إزاحة بالملم):' : 'Directional Nudge D-Pad (mm):'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetPosition}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-[10px] font-bold border border-slate-700 transition-all cursor-pointer"
+                  >
+                    {isAr ? '🔄 تصفير الإزاحة' : 'Reset Offsets'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  {/* Interactive D-Pad Cross */}
+                  <div className="flex flex-col items-center justify-center p-2 bg-[#080D1A] rounded-xl border border-slate-800/80 select-none">
+                    {/* Top Arrow */}
+                    <div className="flex items-center gap-1 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, -5)}
+                        title="إزاحة للأعلى -5mm"
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
+                      >
+                        -5mm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, -1)}
+                        title="إزاحة للأعلى -1mm"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Left - Center - Right */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => nudge(-5, 0)}
+                        title="إزاحة لليسار -5mm"
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
+                      >
+                        -5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(-1, 0)}
+                        title="إزاحة لليسار -1mm"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+
+                      <div className="w-10 h-10 rounded-lg bg-slate-900 border border-cyan-500/30 flex flex-col items-center justify-center text-[9px] font-mono font-bold text-cyan-300">
+                        <span>{offsetXmm > 0 ? `+${offsetXmm}` : offsetXmm}</span>
+                        <span>{offsetYmm > 0 ? `+${offsetYmm}` : offsetYmm}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => nudge(1, 0)}
+                        title="إزاحة لليمين +1mm"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(5, 0)}
+                        title="إزاحة لليمين +5mm"
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
+                      >
+                        +5
+                      </button>
+                    </div>
+
+                    {/* Bottom Arrow */}
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, 1)}
+                        title="إزاحة للأسفل +1mm"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, 5)}
+                        title="إزاحة للأسفل +5mm"
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
+                      >
+                        +5mm
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Direct Numeric Inputs */}
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                        <span>{isAr ? 'إزاحة أفقية X (ملم):' : 'Horizontal Offset X (mm):'}</span>
+                        <span className="font-mono text-cyan-400 font-bold">{offsetXmm} mm</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={-50}
+                          max={50}
+                          step={1}
+                          value={offsetXmm}
+                          onChange={(e) => setOffsetXmm(Number(e.target.value))}
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min={-50}
+                          max={50}
+                          value={offsetXmm}
+                          onChange={(e) => setOffsetXmm(Number(e.target.value))}
+                          className="w-14 bg-[#080D1A] text-xs font-mono font-bold text-center text-white py-1 rounded-lg border border-slate-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                        <span>{isAr ? 'إزاحة رأسية Y (ملم):' : 'Vertical Offset Y (mm):'}</span>
+                        <span className="font-mono text-cyan-400 font-bold">{offsetYmm} mm</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={-30}
+                          max={30}
+                          step={1}
+                          value={offsetYmm}
+                          onChange={(e) => setOffsetYmm(Number(e.target.value))}
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min={-30}
+                          max={30}
+                          value={offsetYmm}
+                          onChange={(e) => setOffsetYmm(Number(e.target.value))}
+                          className="w-14 bg-[#080D1A] text-xs font-mono font-bold text-center text-white py-1 rounded-lg border border-slate-700"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* 4. Manual Font Sizes & Barcode Height */}
             <div className="p-3.5 rounded-2xl bg-[#10192D] border border-cyan-500/20 space-y-3">
               <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
@@ -1187,114 +1627,148 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 </span>
               </div>
 
-              {/* The Live Rendered Label Card */}
-              <div
-                style={{
-                  backgroundColor: labelBgColor,
-                  borderColor: borderColor,
-                  borderWidth: `${borderWidthPx}px`,
-                  borderStyle: 'solid',
-                  width: `${Math.min(320, labelWidthMm * 5)}px`,
-                  height: `${Math.min(230, labelHeightMm * 5)}px`,
-                  padding: `${paddingPx}px`,
-                }}
-                className="rounded-xl flex flex-col justify-between items-center text-center shadow-2xl transition-all relative overflow-hidden select-none my-auto"
-              >
-                {/* Store Title */}
-                {showStoreName && (
-                  <span
-                    style={{ color: textColor, fontSize: `${storeFontSize}px` }}
-                    className="font-extrabold block tracking-tight leading-none truncate max-w-full"
-                  >
-                    {isKu ? (settings.storeNameKu || settings.storeNameAr || settings.storeName) : (settings.storeNameAr || settings.storeName)}
+              {/* The Live Rendered Label Card inside simulated printer bed */}
+              <div className="w-full flex flex-col items-center">
+                <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between w-full px-1">
+                  <span>{isAr ? 'محاكاة موضع الورقة في رأس الطابعة:' : 'Simulated Printer Output:'}</span>
+                  <span className="font-mono text-amber-400 font-bold">
+                    {printAlignX === 'left' ? (isAr ? '⬅️ يسار' : 'Left') : printAlignX === 'right' ? (isAr ? '➡️ يمين' : 'Right') : (isAr ? '⏺️ وسط' : 'Center')}
+                    {offsetXmm !== 0 || offsetYmm !== 0 ? ` (X:${offsetXmm > 0 ? `+${offsetXmm}` : offsetXmm} Y:${offsetYmm > 0 ? `+${offsetYmm}` : offsetYmm})` : ''}
+                    {rotationDeg !== 0 ? ` [${rotationDeg}°]` : ''}
                   </span>
-                )}
-
-                {/* Product Name */}
-                {showProductName && (
-                  <h4
-                    style={{ color: textColor, fontSize: `${titleFontSize}px` }}
-                    className="font-black leading-tight truncate max-w-full px-1 my-0.5"
-                  >
-                    {isKu ? (activeProduct.nameKu || activeProduct.nameAr || activeProduct.name) : (activeProduct.nameAr || activeProduct.name)}
-                  </h4>
-                )}
-
-                {/* Optional Scientific Name */}
-                {showScientificName && activeProduct.scientificName && (
-                  <span
-                    style={{ fontSize: `${Math.max(8, titleFontSize - 5)}px` }}
-                    className="text-cyan-600 font-bold block truncate max-w-full leading-none"
-                  >
-                    🧪 {activeProduct.scientificName}
-                  </span>
-                )}
-
-                {/* Optional Dosage Form */}
-                {showDosageForm && activeProduct.dosageForm && (
-                  <span style={{ fontSize: '9px' }} className="text-slate-500 block leading-none">
-                    {activeProduct.dosageForm}
-                  </span>
-                )}
-
-                {/* Price Display */}
-                {priceOption !== 'none' && (
-                  <div className="w-full my-0.5">
-                    {priceOption !== 'all_three' ? (
-                      <div>
-                        <span style={{ color: priceColor, fontSize: `${priceFontSize}px` }} className="font-black block font-mono leading-none">
-                          {currency}{formatNumber(getDisplayPrice())}
-                        </span>
-                        {showPriceLabel && (
-                          <span style={{ color: textColor, fontSize: `${Math.max(8, priceFontSize - 7)}px` }} className="font-bold opacity-80">
-                            {priceOption === 'single' ? (isKu ? 'نرخی تاک' : 'سعر المفرد') :
-                             priceOption === 'carton' ? (isKu ? `نرخی کارتۆن (${activeProduct.unitsPerCarton || 12} دانە)` : `سعر الكرتون (${activeProduct.unitsPerCarton || 12} قطعة)`) :
-                             priceOption === 'wholesale' ? (isKu ? 'نرخی کۆ' : 'سعر الجملة') :
-                             priceOption === 'blister' ? (isKu ? 'نرخی شریت' : 'سعر الشريط') : (isKu ? 'نرخی دیاریکراو' : 'سعر مخصص')}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      /* All Three Prices */
-                      <div className="flex items-center justify-around w-full py-1 border-y border-slate-300 text-[10px]" style={{ color: textColor }}>
-                        <div className="flex flex-col">
-                          <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'تاک' : 'مفرد'}</span>
-                          <span className="font-mono font-black text-emerald-600">{currency}{formatNumber(singlePrice)}</span>
-                        </div>
-                        <div className="flex flex-col border-x border-slate-300 px-1.5">
-                          <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کۆ' : 'جملة'}</span>
-                          <span className="font-mono font-black text-blue-600">{currency}{formatNumber(wholesalePrice)}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کارتۆن' : 'كرتون'}</span>
-                          <span className="font-mono font-black text-purple-600">{currency}{formatNumber(cartonPrice)}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Graphic Barcode */}
-                <div className="w-full flex flex-col items-center justify-center">
-                  <BarcodeGraphic value={activeProduct.barcode || '123456789'} height={barcodeHeightPx} showText={false} />
-                  {showBarcodeText && (
-                    <span
-                      style={{ color: textColor, fontSize: `${barcodeFontSize}px` }}
-                      className="font-mono font-bold tracking-widest mt-0.5 leading-none"
-                    >
-                      {activeProduct.barcode}
-                    </span>
-                  )}
                 </div>
 
-                {/* Batch & Expiry */}
-                <div className="flex items-center justify-center gap-2 text-[8px] text-slate-500 font-mono">
-                  {showBatchNumber && activeProduct.batchNumber && (
-                    <span>Batch: {activeProduct.batchNumber}</span>
-                  )}
-                  {showExpiryDate && activeProduct.expiryDate && (
-                    <span>Exp: {activeProduct.expiryDate}</span>
-                  )}
+                <div
+                  style={{
+                    width: '100%',
+                    minHeight: '260px',
+                    backgroundColor: '#0a0f1d',
+                    backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)',
+                    backgroundSize: '12px 12px',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    justifyContent: printAlignX === 'left' ? 'flex-start' : printAlignX === 'right' ? 'flex-end' : 'center',
+                    alignItems: printAlignY === 'top' ? 'flex-start' : printAlignY === 'bottom' ? 'flex-end' : 'center',
+                    padding: '12px',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    direction: 'ltr',
+                    border: '1px dashed rgba(245, 158, 11, 0.3)',
+                  }}
+                  className="shadow-inner"
+                >
+                  <div
+                    style={{
+                      backgroundColor: labelBgColor,
+                      borderColor: borderColor,
+                      borderWidth: `${borderWidthPx}px`,
+                      borderStyle: 'solid',
+                      width: `${Math.min(300, Math.max(140, labelWidthMm * 4.2))}px`,
+                      height: `${Math.min(220, Math.max(110, labelHeightMm * 4.2))}px`,
+                      padding: `${paddingPx}px`,
+                      transform: `translate(${offsetXmm * 2}px, ${offsetYmm * 2}px) rotate(${rotationDeg}deg)`,
+                      transformOrigin: 'center center',
+                    }}
+                    className="rounded-xl flex flex-col justify-between items-center text-center shadow-2xl transition-all relative overflow-hidden select-none"
+                  >
+                    {/* Store Title */}
+                    {showStoreName && (
+                      <span
+                        style={{ color: textColor, fontSize: `${storeFontSize}px` }}
+                        className="font-extrabold block tracking-tight leading-none truncate max-w-full"
+                      >
+                        {isKu ? (settings.storeNameKu || settings.storeNameAr || settings.storeName) : (settings.storeNameAr || settings.storeName)}
+                      </span>
+                    )}
+
+                    {/* Product Name */}
+                    {showProductName && (
+                      <h4
+                        style={{ color: textColor, fontSize: `${titleFontSize}px` }}
+                        className="font-black leading-tight truncate max-w-full px-1 my-0.5"
+                      >
+                        {isKu ? (activeProduct.nameKu || activeProduct.nameAr || activeProduct.name) : (activeProduct.nameAr || activeProduct.name)}
+                      </h4>
+                    )}
+
+                    {/* Optional Scientific Name */}
+                    {showScientificName && activeProduct.scientificName && (
+                      <span
+                        style={{ fontSize: `${Math.max(8, titleFontSize - 5)}px` }}
+                        className="text-cyan-600 font-bold block truncate max-w-full leading-none"
+                      >
+                        🧪 {activeProduct.scientificName}
+                      </span>
+                    )}
+
+                    {/* Optional Dosage Form */}
+                    {showDosageForm && activeProduct.dosageForm && (
+                      <span style={{ fontSize: '9px' }} className="text-slate-500 block leading-none">
+                        {activeProduct.dosageForm}
+                      </span>
+                    )}
+
+                    {/* Price Display */}
+                    {priceOption !== 'none' && (
+                      <div className="w-full my-0.5">
+                        {priceOption !== 'all_three' ? (
+                          <div>
+                            <span style={{ color: priceColor, fontSize: `${priceFontSize}px` }} className="font-black block font-mono leading-none">
+                              {currency}{formatNumber(getDisplayPrice())}
+                            </span>
+                            {showPriceLabel && (
+                              <span style={{ color: textColor, fontSize: `${Math.max(8, priceFontSize - 7)}px` }} className="font-bold opacity-80">
+                                {priceOption === 'single' ? (isKu ? 'نرخی تاک' : 'سعر المفرد') :
+                                 priceOption === 'carton' ? (isKu ? `نرخی کارتۆن (${activeProduct.unitsPerCarton || 12} دانە)` : `سعر الكرتون (${activeProduct.unitsPerCarton || 12} قطعة)`) :
+                                 priceOption === 'wholesale' ? (isKu ? 'نرخی کۆ' : 'سعر الجملة') :
+                                 priceOption === 'blister' ? (isKu ? 'نرخی شریت' : 'سعر الشريط') : (isKu ? 'نرخی دیاریکراو' : 'سعر مخصص')}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          /* All Three Prices */
+                          <div className="flex items-center justify-around w-full py-1 border-y border-slate-300 text-[10px]" style={{ color: textColor }}>
+                            <div className="flex flex-col">
+                              <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'تاک' : 'مفرد'}</span>
+                              <span className="font-mono font-black text-emerald-600">{currency}{formatNumber(singlePrice)}</span>
+                            </div>
+                            <div className="flex flex-col border-x border-slate-300 px-1.5">
+                              <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کۆ' : 'جملة'}</span>
+                              <span className="font-mono font-black text-blue-600">{currency}{formatNumber(wholesalePrice)}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[8.5px] font-bold opacity-75">{isKu ? 'کارتۆن' : 'كرتون'}</span>
+                              <span className="font-mono font-black text-purple-600">{currency}{formatNumber(cartonPrice)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Graphic Barcode */}
+                    <div className="w-full flex flex-col items-center justify-center">
+                      <BarcodeGraphic value={activeProduct.barcode || '123456789'} height={barcodeHeightPx} showText={false} />
+                      {showBarcodeText && (
+                        <span
+                          style={{ color: textColor, fontSize: `${barcodeFontSize}px` }}
+                          className="font-mono font-bold tracking-widest mt-0.5 leading-none"
+                        >
+                          {activeProduct.barcode}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Batch & Expiry */}
+                    <div className="flex items-center justify-center gap-2 text-[8px] text-slate-500 font-mono">
+                      {showBatchNumber && activeProduct.batchNumber && (
+                        <span>Batch: {activeProduct.batchNumber}</span>
+                      )}
+                      {showExpiryDate && activeProduct.expiryDate && (
+                        <span>Exp: {activeProduct.expiryDate}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 

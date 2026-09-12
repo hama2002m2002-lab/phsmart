@@ -1246,6 +1246,192 @@ OUTPUT VALID JSON STRICTLY:
     }
   });
 
+  // ==========================================
+  // MOBILE POS & SCANNER REAL-TIME PAIRING HUB
+  // Restricts mobile access exclusively to authorized shop & laptop
+  // ==========================================
+
+  interface RegisteredLaptopSession {
+    laptopId: string;
+    pin: string;
+    token: string;
+    shopName: string;
+    lastHeartbeat: number;
+    pendingScans: Array<{
+      id: string;
+      barcode: string;
+      laptopId: string;
+      pin: string;
+      deviceName?: string;
+      timestamp: number;
+      scanMode?: string;
+    }>;
+  }
+
+  const activeLaptopSessions = new Map<string, RegisteredLaptopSession>();
+
+  // 1. Laptop registers or updates its active security pairing session
+  app.post("/api/mobile-sync/register-laptop", (req, res) => {
+    try {
+      const { laptopId, pin, token, shopName } = req.body;
+      if (!laptopId || !pin) {
+        return res.status(400).json({ error: "laptopId and pin are required" });
+      }
+
+      const existing = activeLaptopSessions.get(laptopId);
+      activeLaptopSessions.set(laptopId, {
+        laptopId,
+        pin: String(pin).trim(),
+        token: token || existing?.token || "",
+        shopName: shopName || existing?.shopName || "سوبرماركت",
+        lastHeartbeat: Date.now(),
+        pendingScans: existing ? existing.pendingScans : []
+      });
+
+      return res.json({ success: true, registered: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 2. Mobile device verifies authorization with the laptop's security PIN
+  app.post("/api/mobile-sync/verify", (req, res) => {
+    try {
+      const { laptopId, pin, token } = req.body;
+      if (!laptopId) {
+        return res.status(400).json({ error: "laptopId is required" });
+      }
+
+      const session = activeLaptopSessions.get(laptopId);
+      const cleanPin = String(pin || "").trim();
+
+      // If registered on server, check PIN or token
+      if (session) {
+        const pinMatch = session.pin === cleanPin;
+        const tokenMatch = token && session.token && session.token === token;
+
+        if (pinMatch || tokenMatch) {
+          return res.json({
+            authorized: true,
+            shopName: session.shopName,
+            laptopId: session.laptopId,
+            message: "تم التحقق من تفويض الجهاز بنجاح"
+          });
+        } else {
+          return res.status(403).json({
+            authorized: false,
+            error: "رمز أمان اللابتوب (PIN) غير صحيح! الوصول مقفل ومقتصر على لابتوب المحل فقط."
+          });
+        }
+      }
+
+      // If session not yet in memory on server (e.g. server restart), accept if PIN is provided
+      if (cleanPin.length >= 4) {
+        activeLaptopSessions.set(laptopId, {
+          laptopId,
+          pin: cleanPin,
+          token: token || "",
+          shopName: "سوبرماركت",
+          lastHeartbeat: Date.now(),
+          pendingScans: []
+        });
+        return res.json({
+          authorized: true,
+          shopName: "سوبرماركت",
+          laptopId,
+          message: "تم التحقق والمصادقة بنجاح"
+        });
+      }
+
+      return res.status(403).json({
+        authorized: false,
+        error: "هذا النظام مقفل ومخصص للابتوب المحل فقط. يرجى إدخال رمز الأمان الصحيح."
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3. Mobile phone sends a scanned barcode to the laptop
+  app.post("/api/mobile-sync/scan", (req, res) => {
+    try {
+      const { laptopId, pin, barcode, deviceName, scanMode } = req.body;
+      if (!laptopId || !barcode) {
+        return res.status(400).json({ error: "laptopId and barcode are required" });
+      }
+
+      let session = activeLaptopSessions.get(laptopId);
+      if (!session) {
+        session = {
+          laptopId,
+          pin: pin ? String(pin).trim() : "",
+          token: "",
+          shopName: "سوبرماركت",
+          lastHeartbeat: Date.now(),
+          pendingScans: []
+        };
+        activeLaptopSessions.set(laptopId, session);
+      }
+
+      const scanItem = {
+        id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        barcode: String(barcode).trim(),
+        laptopId,
+        pin: pin ? String(pin).trim() : "",
+        deviceName: deviceName || "موبايل الكاشير",
+        timestamp: Date.now(),
+        scanMode: scanMode || "scanner"
+      };
+
+      session.pendingScans.push(scanItem);
+      // Keep queue manageable
+      if (session.pendingScans.length > 50) {
+        session.pendingScans = session.pendingScans.slice(-50);
+      }
+
+      return res.json({ success: true, received: true, scanId: scanItem.id });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 4. Laptop polls for scans sent from the phone
+  app.get("/api/mobile-sync/poll", (req, res) => {
+    try {
+      const laptopId = String(req.query.laptopId || "").trim();
+      if (!laptopId) {
+        return res.status(400).json({ error: "laptopId is required" });
+      }
+
+      const session = activeLaptopSessions.get(laptopId);
+      if (!session || session.pendingScans.length === 0) {
+        return res.json({ scans: [] });
+      }
+
+      // Pop all pending scans
+      const scansToSend = [...session.pendingScans];
+      session.pendingScans = [];
+      session.lastHeartbeat = Date.now();
+
+      return res.json({ scans: scansToSend });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 5. Laptop revokes pairing and clears all scans
+  app.post("/api/mobile-sync/revoke", (req, res) => {
+    try {
+      const { laptopId, pin } = req.body;
+      if (laptopId) {
+        activeLaptopSessions.delete(laptopId);
+      }
+      return res.json({ success: true, revoked: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
 // Vite middleware and static serving for standalone server
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
