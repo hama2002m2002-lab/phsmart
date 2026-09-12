@@ -46,10 +46,10 @@ function getAIClient(customApiKey?: string): GoogleGenAI {
 // Multi-tier resilient model fallback cascade per official Gemini guidelines
 const GEMINI_VISION_MODELS = [
   "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-3.6-flash",
   "gemini-3.8-flash",
-  "gemini-flash-latest"
+  "gemini-flash-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-3.1-pro-preview"
 ];
 
 async function callGeminiVisionWithFallback(params: {
@@ -92,9 +92,18 @@ async function callGeminiVisionWithFallback(params: {
       lastError = err;
       const errStr = err?.message || String(err);
       console.warn(`[Gemini Vision] Model "${model}" returned error: ${errStr}`);
-      // If 503 (high demand), 429 (rate limit), or RESOURCE_EXHAUSTED / quota, pause briefly before trying next fallback model
-      if (errStr.includes("503") || errStr.includes("429") || errStr.includes("UNAVAILABLE") || errStr.includes("high demand") || errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("quota") || errStr.includes("Quota")) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // If 503 (high demand), 429 (rate limit), or RESOURCE_EXHAUSTED / quota, pause with adaptive backoff before trying next fallback model
+      if (
+        errStr.includes("503") ||
+        errStr.includes("429") ||
+        errStr.includes("UNAVAILABLE") ||
+        errStr.includes("high demand") ||
+        errStr.includes("RESOURCE_EXHAUSTED") ||
+        errStr.includes("quota") ||
+        errStr.includes("Quota")
+      ) {
+        const backoff = (i + 1) * 1200;
+        await new Promise(resolve => setTimeout(resolve, backoff));
       }
     }
   }
@@ -353,8 +362,10 @@ TARGET LANGUAGE FOCUS MODE: ${languageMode} (Process rapidly and populate tri-li
 KURDISH RECEIPT VOCABULARY & RECOGNITION (سۆرانی و بادینی):
 - Recognize warehouse terms: "كۆگای دەرمان" (Drug Store / Warehouse), "پسوولەی کڕین" / "پسوولەی فرۆشتن" (Purchase/Sales Bill), "هه‌ولێر", "سلێمانی", "دهۆك", "ژمارەی پسوولە" (Invoice #), "کڕیار" (Customer), "بەروار" (Date).
 - Item and quantity terms: "ناوی دەرمان / کاڵا" (Medicine Name), "بڕ / عەدەد / دانە" (Quantity), "بەلاش / بۆنەس" (Free/Bonus), "نرخی کڕین" (Cost Price), "نرخی فرۆشتن" (Retail Price), "داشکاندن" (Discount).
+- Financial totals & balance terms: "کۆی گشتی" / "المجموع" (Gross Total), "داشکاندن" / "الخصم" (Discount), "صافي الوصل" / "کۆی کۆتایی" (Net Invoice Total), "بڕی دراو / واسڵکراو" / "المدفوع / الواصل" (Paid Amount), "بڕی ماوە / قەرز" / "المتبقي / الباقي" (Remaining / Unpaid Amount), "حسابی پێشوو" / "الحساب السابق" (Previous Balance), "کۆی گشتی قەرز" / "مجموع الرصيد" (Total Balance).
 
-MANDATORY RULES:
+MANDATORY PRECISION & EXTRACTION RULES:
+- HIGH PRECISION ITEM-BY-ITEM EXTRACTION: Carefully read every single item line in sequence without skipping or merging rows. Verify each quantity, unit cost, line total, and expiration date with meticulous accuracy.
 1. "rawInvoiceName": The EXACT verbatim product/medicine name as printed on the physical receipt without alteration.
 2. "name" & "englishName": The clean, standardized English pharmaceutical/trade name (e.g., "Panadol Extra 500mg Tab", "Amoxicillin 500mg Cap", "Cefixime 400mg").
 3. "nameKu": Standard Kurdish Sorani translation/transliteration (e.g., "پانادۆڵ ئێکسـترا 500 ملغ", "ئەمۆکسیسیلین 500 ملغ", "سیفیکسیم 400 ملغ").
@@ -385,6 +396,8 @@ Output valid JSON strictly following this schema:
     "discountAmount": 0,
     "discountPercent": 0,
     "netInvoiceAmount": 0,
+    "paidAmount": 0,
+    "remainingAmount": 0,
     "previousBalance": 0,
     "totalBalance": 0,
     "currency": "IQD"
@@ -950,40 +963,45 @@ MANDATORY RULES:
         const detectedMimeType = mimeType || "image/jpeg";
         const cleanData = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-        const prompt = `You are an expert AI vision system specialized in extracting medicines, stock tables, pharmacy inventory grids, invoices, receipts, and product lists from computer screens, smartphone photos of monitors, Excel sheets, and legacy POS tables.
+        const prompt = `You are a world-class AI vision and OCR expert specializing in reading computer monitor photos, mobile phone camera pictures of legacy pharmacy desktop software (e.g. Al-Ameen, Al-Mustashar, Asnan, Delphi POS, Visual Basic 6 tables, FoxPro, Access DB grids, Excel tables).
 
-MANDATORY INSTRUCTIONS:
-1. Examine the image carefully. Look at every row, column, text line, and product entry.
-2. Extract EVERY SINGLE medicine/product visible in the image.
-3. For each item:
-   - "name": Verbatim medicine or product name as seen in the image. If written in English, keep it 100% in English (e.g. "Panadol Extra", "Amoxicillin 500mg"). If Arabic/Kurdish, keep as printed.
-   - "barcode": Any barcode number or product code visible (convert Arabic/Persian digits to 0-9). If not visible, set to "".
-   - "quantityPieces": Number of pieces, units, or stock balance. Number (default 0).
-   - "unitsInPack": Units per pack/box if shown (default 1).
-   - "sheetPurchasePrice": Cost per strip/sheet if shown (number).
-   - "packPurchasePrice": Cost or purchase price per box/pack (number).
-   - "sheetSellingPrice": Selling/retail price per strip/sheet if shown (number).
-   - "packSellingPrice": Selling/retail price per box/pack (number).
-   - "dosageForm": Dosage form (Tablet, Capsule, Syrup, Drops, Injection, Cream, Ointment, etc.).
-   - "manufacturer": Manufacturer or company if visible.
-   - "expiryDate": Expiration date in YYYY-MM-DD or MM/YY if visible, else "".
+HIGH-PRECISION EXTRACTION RULES:
+1. Examine the image row-by-row and column-by-column across the table or grid. Look through monitor moiré patterns, reflections, perspective angles, or slight blur.
+2. Read EVERY SINGLE product row completely. Never skip or truncate rows.
+3. For each row:
+   - "name": Verbatim product/medicine name as written in the cell (e.g. "Panadol Extra 500mg *24", "Amoxicillin 500mg Cap", "Cataflam 50mg Tab").
+     * If printed in Latin/English, preserve English exactly without translating.
+     * If printed in Arabic or Kurdish, preserve as printed.
+     * Retain dosage strength (e.g. 500mg, 10ml, 1g) and package count if in the name cell.
+   - "barcode": Exact barcode number or product code visible in the row (e.g. "5000347060124").
+     * Convert Eastern Arabic/Persian digits (٠١٢٣٤٥٦٧٨٩) to standard 0-9 digits.
+     * If no barcode column exists or cell is blank, return empty string "".
+   - "quantityPieces": Current stock balance or total quantity (integer or decimal). If empty, return 0.
+   - "unitsInPack": Units, strips, or blisters per box/carton if shown (default 1).
+   - "sheetPurchasePrice": Cost/purchase price per sheet/strip if shown (number, default 0).
+   - "packPurchasePrice": Cost/purchase price per pack/box (number, default 0).
+   - "sheetSellingPrice": Retail selling price per sheet/strip if shown (number, default 0).
+   - "packSellingPrice": Retail selling price per pack/box (number, default 0).
+   - "dosageForm": Dosage form (Tablet, Capsule, Syrup, Drops, Injection, Cream, Ointment, Spray, etc.).
+   - "manufacturer": Company, origin, or agent name if in a column.
+   - "expiryDate": Expiry date in YYYY-MM-DD or MM/YY if visible.
    - "category": Category (e.g. "أدوية ومستلزمات").
    - "unit": "علبة" or "قطعة".
 
-Output STRICT valid JSON format only:
+Output STRICT valid JSON format only without markdown ticks:
 {
   "systemTitle": "Detected screen or table title",
   "totalItemsDetected": 0,
   "items": [
     {
-      "barcode": "",
-      "name": "Medicine Name",
-      "quantityPieces": 10,
+      "barcode": "string",
+      "name": "string",
+      "quantityPieces": 0,
       "unitsInPack": 1,
       "sheetPurchasePrice": 0,
-      "packPurchasePrice": 1000,
+      "packPurchasePrice": 0,
       "sheetSellingPrice": 0,
-      "packSellingPrice": 1500,
+      "packSellingPrice": 0,
       "dosageForm": "Tablet",
       "manufacturer": "",
       "expiryDate": "",

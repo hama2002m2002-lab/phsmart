@@ -37,11 +37,13 @@ import {
   Truck,
   Languages,
   FileSpreadsheet,
-  Key
+  Key,
+  CreditCard
 } from 'lucide-react';
 import { Product, Supplier, PurchaseInvoice, StoreSettings, ProductBatch } from '../types';
 import { generateUniqueBarcode200245 } from '../lib/barcodeUtils';
 import { toPharmaceuticalEnglish, isArabicOrKurdishText } from '../lib/pharmaTranslator';
+import { inspectAndRenderPdf } from '../lib/pdfHelper';
 
 export interface ScannedInvoiceData {
   supplier: {
@@ -59,6 +61,8 @@ export interface ScannedInvoiceData {
     discountAmount?: number;
     discountPercent?: number;
     netInvoiceAmount: number;
+    paidAmount?: number;
+    remainingAmount?: number;
     previousBalance?: number;
     totalBalance?: number;
     currency?: string;
@@ -160,6 +164,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ currentPage: number; totalPages: number; totalFoundItems: number } | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedData, setScannedData] = useState<ScannedInvoiceData | null>(null);
   const [showKeyInputInModal, setShowKeyInputInModal] = useState(false);
@@ -200,6 +205,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const appendFileInputRef = useRef<HTMLInputElement>(null);
   const mobileCameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -224,19 +230,35 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     };
   }, [isOpen]);
 
-  // File Upload Handler
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      console.log('[AIInvoiceScannerModal] File selected:', { name: file.name, size: file.size, type: file.type });
+  // Helper to read File as Base64 Data URL
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        setImageSrc(result);
-        processInvoiceImage(result);
-      };
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (err) => reject(err);
       reader.readAsDataURL(file);
+    });
+  };
+
+  // File Upload Handler (Supports multiple invoice images, multiple photos, & PDFs)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, appendMode: boolean = false) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    
+    const files = Array.from(fileList);
+    console.log('[AIInvoiceScannerModal] Files selected:', files.length, { appendMode });
+
+    // If any PDF is selected, process it
+    const pdfFile = files.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    if (pdfFile) {
+      processInvoicePdf(pdfFile);
+      e.target.value = '';
+      return;
     }
+
+    // Process all selected images via the multi-image engine
+    await processBatchInvoiceImages(files, appendMode);
+    e.target.value = '';
   };
 
   // Live Camera Handlers with progressive constraints for mobile browsers
@@ -355,14 +377,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       .trim();
   };
 
-  // AI Invoice Scanner Execution
-  const processInvoiceImage = async (base64Image: string) => {
-    setIsScanning(true);
-    setScanError(null);
-    setScannedData(null);
-    setSavedSummaryReport(null);
-
-    const fallbackData: ScannedInvoiceData = {
+  const fallbackData: ScannedInvoiceData = {
       supplier: {
         name: "كۆگای كۆلاجین (Collagen Drug Store)",
         nameKu: "كۆگای دەرمانی كۆلاجین",
@@ -558,11 +573,11 @@ CRITICAL EXTRACTION RULES:
 Output strictly valid JSON with this structure:
 {
   "supplier": { "name": "string", "phone": "string", "address": "string" },
-  "invoice": { "invoiceNumber": "string", "date": "YYYY-MM-DD", "currency": "IQD", "netInvoiceAmount": 0 },
+  "invoice": { "invoiceNumber": "string", "date": "YYYY-MM-DD", "currency": "IQD", "netInvoiceAmount": 0, "paidAmount": 0, "remainingAmount": 0 },
   "items": []
 }`;
 
-      const models = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.8-flash'];
       let lastErr: any = null;
 
       for (const model of models) {
@@ -610,79 +625,300 @@ Output strictly valid JSON with this structure:
       throw lastErr || new Error('Failed to connect to Gemini API directly');
     };
 
+  // Helper: process a single image base64 through Gemini Vision
+  const scanSingleImagePage = async (base64Img: string): Promise<ScannedInvoiceData> => {
+    const optimizedImage = await compressImage(base64Img);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const activeGeminiKey = settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '';
+    if (activeGeminiKey) {
+      headers['x-gemini-api-key'] = activeGeminiKey;
+    }
+
     try {
-      const optimizedImage = await compressImage(base64Image);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const response = await fetch('/api/gemini/scan-invoice', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          imageBase64: optimizedImage, 
+          mimeType: 'image/jpeg',
+          languageMode,
+          apiKey: activeGeminiKey || undefined
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      const activeGeminiKey = settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '';
-      if (activeGeminiKey) {
-        headers['x-gemini-api-key'] = activeGeminiKey;
+      if (response.ok) {
+        return await response.json();
+      } else if (response.status === 404 || response.status === 500) {
+        if (activeGeminiKey) {
+          return await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
+        } else {
+          throw new Error('SERVER_404_NO_KEY');
+        }
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server error: ${response.status}`);
       }
+    } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
+      if (activeGeminiKey && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
+        try {
+          return await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
+        } catch (directErr: any) {
+          throw new Error(directErr.message || fetchErr.message);
+        }
+      } else {
+        throw fetchErr;
+      }
+    }
+  };
 
-      let result: ScannedInvoiceData;
+  // Multi-Image Invoice Processing Engine
+  const processBatchInvoiceImages = async (imageFiles: File[], appendMode: boolean = false) => {
+    if (!imageFiles || imageFiles.length === 0) return;
 
-      try {
-        const response = await fetch('/api/gemini/scan-invoice', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ 
-            imageBase64: optimizedImage, 
-            mimeType: 'image/jpeg',
-            languageMode,
-            apiKey: activeGeminiKey || undefined
-          }),
-          signal: controller.signal
+    setIsScanning(true);
+    setScanError(null);
+    if (!appendMode) {
+      setScannedData(null);
+      setSavedSummaryReport(null);
+    }
+
+    const totalImages = imageFiles.length;
+    setPdfProgress({
+      currentPage: 1,
+      totalPages: totalImages,
+      totalFoundItems: appendMode ? (scannedData?.items?.length || 0) : 0
+    });
+
+    try {
+      // If append mode, start with current data, otherwise fresh
+      const combinedSupplier: ScannedInvoiceData['supplier'] = appendMode && scannedData?.supplier 
+        ? { ...scannedData.supplier } 
+        : { name: '' };
+        
+      const combinedInvoice: ScannedInvoiceData['invoice'] = appendMode && scannedData?.invoice
+        ? { ...scannedData.invoice }
+        : {
+            invoiceNumber: '',
+            date: new Date().toISOString().split('T')[0],
+            currency: 'IQD',
+            netInvoiceAmount: 0,
+            paidAmount: 0,
+            remainingAmount: 0
+          };
+
+      const aggregatedItems: ScannedInvoiceItem[] = appendMode && scannedData?.items
+        ? [...scannedData.items]
+        : [];
+
+      const seenBarcodes = new Set<string>(
+        aggregatedItems.map(it => normalizeDigits(it.barcode || '').trim()).filter(Boolean)
+      );
+      const seenNames = new Set<string>(
+        aggregatedItems.map(it => (it.name || it.rawInvoiceName || '').trim().toLowerCase()).filter(Boolean)
+      );
+
+      for (let i = 0; i < totalImages; i++) {
+        const file = imageFiles[i];
+        setPdfProgress({
+          currentPage: i + 1,
+          totalPages: totalImages,
+          totalFoundItems: aggregatedItems.length
         });
-        clearTimeout(timeoutId);
 
-        if (response.ok) {
-          result = await response.json();
-        } else if (response.status === 404 || response.status === 500) {
-          if (activeGeminiKey) {
-            result = await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
-          } else {
-            throw new Error('SERVER_404_NO_KEY');
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          if (i === 0 || !imageSrc) {
+            setImageSrc(dataUrl);
           }
-        } else {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Server error: ${response.status}`);
+
+          const pageResult = await scanSingleImagePage(dataUrl);
+
+          // Merge supplier header
+          if (pageResult.supplier?.name && (!combinedSupplier.name || combinedSupplier.name === 'مورد غير محدد')) {
+            combinedSupplier.name = pageResult.supplier.name;
+            combinedSupplier.phone = pageResult.supplier.phone || combinedSupplier.phone;
+            combinedSupplier.address = pageResult.supplier.address || combinedSupplier.address;
+            combinedSupplier.nameKu = pageResult.supplier.nameKu || combinedSupplier.nameKu;
+          }
+
+          // Merge invoice header
+          if (pageResult.invoice) {
+            if (pageResult.invoice.invoiceNumber && !combinedInvoice.invoiceNumber) {
+              combinedInvoice.invoiceNumber = pageResult.invoice.invoiceNumber;
+            }
+            if (pageResult.invoice.date) {
+              combinedInvoice.date = pageResult.invoice.date;
+            }
+            if (pageResult.invoice.currency) {
+              combinedInvoice.currency = pageResult.invoice.currency;
+            }
+            if (pageResult.invoice.netInvoiceAmount && pageResult.invoice.netInvoiceAmount > (combinedInvoice.netInvoiceAmount || 0)) {
+              combinedInvoice.netInvoiceAmount = pageResult.invoice.netInvoiceAmount;
+            }
+            if (pageResult.invoice.paidAmount !== undefined && (pageResult.invoice.paidAmount > 0 || combinedInvoice.paidAmount === 0)) {
+              combinedInvoice.paidAmount = pageResult.invoice.paidAmount;
+            }
+            if (pageResult.invoice.remainingAmount !== undefined && (pageResult.invoice.remainingAmount > 0 || combinedInvoice.remainingAmount === 0)) {
+              combinedInvoice.remainingAmount = pageResult.invoice.remainingAmount;
+            }
+            if (pageResult.invoice.grossInvoiceAmount && pageResult.invoice.grossInvoiceAmount > (combinedInvoice.grossInvoiceAmount || 0)) {
+              combinedInvoice.grossInvoiceAmount = pageResult.invoice.grossInvoiceAmount;
+            }
+            if (pageResult.invoice.discountAmount && pageResult.invoice.discountAmount > (combinedInvoice.discountAmount || 0)) {
+              combinedInvoice.discountAmount = pageResult.invoice.discountAmount;
+            }
+          }
+
+          // Merge items
+          if (pageResult.items && Array.isArray(pageResult.items) && pageResult.items.length > 0) {
+            for (const item of pageResult.items) {
+              const cleanBarcode = normalizeDigits(item.barcode || '').trim();
+              if (cleanBarcode) {
+                if (seenBarcodes.has(cleanBarcode)) continue;
+                seenBarcodes.add(cleanBarcode);
+              }
+
+              const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
+              const normName = rawName.trim().toLowerCase();
+              if (!cleanBarcode && normName) {
+                if (seenNames.has(normName)) continue;
+                seenNames.add(normName);
+              }
+
+              let engName = item.englishName;
+              if (!engName || isArabicOrKurdishText(engName)) {
+                engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
+              }
+
+              const activeName = namingPreference === 'english' ? engName : rawName;
+              let retail = item.suggestedRetailPrice;
+              if (!retail || retail <= item.unitPurchasePrice) {
+                retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
+              }
+
+              aggregatedItems.push({
+                ...item,
+                barcode: cleanBarcode,
+                rawInvoiceName: rawName,
+                englishName: engName,
+                name: activeName,
+                nameAr: item.nameAr || rawName,
+                suggestedRetailPrice: retail
+              });
+            }
+          }
+        } catch (imgErr: any) {
+          console.warn(`[AIInvoiceScannerModal] Error processing invoice image ${i + 1} (${file.name}):`, imgErr);
         }
-      } catch (fetchErr: any) {
-        clearTimeout(timeoutId);
-        if (activeGeminiKey && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
-          try {
-            result = await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
-          } catch (directErr: any) {
-            throw new Error(directErr.message || fetchErr.message);
-          }
-        } else {
-          throw fetchErr;
+
+        // Pacing delay of 800ms between image requests
+        if (i < totalImages - 1) {
+          await new Promise(res => setTimeout(res, 800));
         }
       }
+
+      if (aggregatedItems.length === 0) {
+        throw new Error(t('لم يتم العثور على أدوية أو أسطر في الصور المرفوعة. يرجى التأكد من وضوح الصور.', 'هیچ کاڵایەک نەدۆزرایەوە لە وێنەکاندا.', 'No invoice items detected in uploaded images.'));
+      }
+
+      // Calculate totals if not present or lower than items sum
+      const itemsNetSum = aggregatedItems.reduce((acc, it) => acc + (it.totalPrice || (it.unitPurchasePrice * it.quantity)), 0);
+      if (!combinedInvoice.netInvoiceAmount || combinedInvoice.netInvoiceAmount < itemsNetSum) {
+        combinedInvoice.netInvoiceAmount = itemsNetSum;
+      }
+      if (!combinedInvoice.grossInvoiceAmount) {
+        combinedInvoice.grossInvoiceAmount = combinedInvoice.netInvoiceAmount + (combinedInvoice.discountAmount || 0);
+      }
+      if ((combinedInvoice.paidAmount || 0) > 0 && (combinedInvoice.remainingAmount === undefined || combinedInvoice.remainingAmount === 0)) {
+        combinedInvoice.remainingAmount = Math.max(0, (combinedInvoice.netInvoiceAmount || 0) - (combinedInvoice.paidAmount || 0));
+      }
+
+      const finalResult: ScannedInvoiceData = {
+        supplier: combinedSupplier.name ? combinedSupplier : { name: t('مورد من الصور', 'دابینکەر لە وێنەکان', 'Supplier from Invoice Photos') },
+        invoice: {
+          ...combinedInvoice,
+          invoiceNumber: combinedInvoice.invoiceNumber || String(Math.floor(1000 + Math.random() * 9000)),
+          totalItemsCount: aggregatedItems.length
+        },
+        items: aggregatedItems
+      };
+
+      setScannedData(finalResult);
+      setSelectedItemIndices(new Set(aggregatedItems.map((_, idx) => idx)));
+    } catch (err: any) {
+      console.warn('Multi-image invoice processing error:', err);
+      const errStr = err?.message || String(err);
+      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
+        setShowKeyInputInModal(true);
+        setScanError(t('الخادم المحلي غير متصل. لتشغيل الفحص: يرجى إدخال مفتاح Gemini API أدناه.', 'سێرڤەری لۆکاڵ بەردەست نییە.', 'Local backend not reachable.'));
+      } else {
+        setScanError(errStr || t('فشل في معالجة صور الفاتورة بالذكاء الاصطناعي.', 'هەڵە لە خوێندنەوەی وێنەکان.', 'Invoice images scanning failed.'));
+      }
+    } finally {
+      setIsScanning(false);
+      setPdfProgress(null);
+    }
+  };
+
+  // AI Single Invoice Image Scanner Execution (supports append mode)
+  const processInvoiceImage = async (base64Image: string, appendMode: boolean = false) => {
+    setIsScanning(true);
+    setScanError(null);
+    if (!appendMode) {
+      setScannedData(null);
+      setSavedSummaryReport(null);
+    }
+    setPdfProgress(null);
+
+    try {
+      const result = await scanSingleImagePage(base64Image);
       
       // Auto normalize items: establish rawInvoiceName, englishName, barcode digits, and active name based on namingPreference
       if (result.items && Array.isArray(result.items) && result.items.length > 0) {
-        result.items = result.items.map(item => {
+        const seenBarcodes = new Set<string>(
+          appendMode && scannedData?.items 
+            ? scannedData.items.map(it => normalizeDigits(it.barcode || '').trim()).filter(Boolean)
+            : []
+        );
+        const seenNames = new Set<string>(
+          appendMode && scannedData?.items
+            ? scannedData.items.map(it => (it.name || it.rawInvoiceName || '').trim().toLowerCase()).filter(Boolean)
+            : []
+        );
+
+        const newFormattedItems: ScannedInvoiceItem[] = [];
+
+        for (const item of result.items) {
+          const cleanBarcode = normalizeDigits(item.barcode || '').trim();
+          if (cleanBarcode) {
+            if (seenBarcodes.has(cleanBarcode)) continue;
+            seenBarcodes.add(cleanBarcode);
+          }
           const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
+          const normName = rawName.trim().toLowerCase();
+          if (!cleanBarcode && normName) {
+            if (seenNames.has(normName)) continue;
+            seenNames.add(normName);
+          }
+
           let engName = item.englishName;
-          
           if (!engName || isArabicOrKurdishText(engName)) {
             engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
           }
 
-          // Active name to use across POS & Inventory
           const activeName = namingPreference === 'english' ? engName : rawName;
-
           let retail = item.suggestedRetailPrice;
           if (!retail || retail <= item.unitPurchasePrice) {
             retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
           }
 
-          const cleanBarcode = normalizeDigits(item.barcode || '');
-
-          return {
+          newFormattedItems.push({
             ...item,
             barcode: cleanBarcode,
             rawInvoiceName: rawName,
@@ -690,11 +926,29 @@ Output strictly valid JSON with this structure:
             name: activeName,
             nameAr: item.nameAr || rawName,
             suggestedRetailPrice: retail
-          };
-        });
+          });
+        }
 
-        setScannedData(result);
-        setSelectedItemIndices(new Set(result.items.map((_, i) => i)));
+        if (appendMode && scannedData) {
+          const allItems = [...scannedData.items, ...newFormattedItems];
+          const itemsNetSum = allItems.reduce((acc, it) => acc + (it.totalPrice || (it.unitPurchasePrice * it.quantity)), 0);
+          const updatedResult: ScannedInvoiceData = {
+            ...scannedData,
+            supplier: scannedData.supplier.name ? scannedData.supplier : (result.supplier || scannedData.supplier),
+            invoice: {
+              ...scannedData.invoice,
+              netInvoiceAmount: Math.max(scannedData.invoice.netInvoiceAmount, itemsNetSum),
+              totalItemsCount: allItems.length
+            },
+            items: allItems
+          };
+          setScannedData(updatedResult);
+          setSelectedItemIndices(new Set(allItems.map((_, i) => i)));
+        } else {
+          result.items = newFormattedItems;
+          setScannedData(result);
+          setSelectedItemIndices(new Set(result.items.map((_, i) => i)));
+        }
       } else {
         throw new Error(t('لم يتم العثور على أدوية أو أسطر في هذه الفاتورة. يرجى التقاط صورة أوضح.', 'هیچ کاڵایەک نەدۆزرایەوە لەم پسوولەیەدا.', 'No invoice item rows detected. Please upload a clearer photo.'));
       }
@@ -715,6 +969,180 @@ Output strictly valid JSON with this structure:
       }
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  // Multi-page PDF Processing Engine
+  const processInvoicePdf = async (pdfFile: File) => {
+    setIsScanning(true);
+    setScanError(null);
+    setScannedData(null);
+    setSavedSummaryReport(null);
+    setPdfProgress({ currentPage: 0, totalPages: 1, totalFoundItems: 0 });
+
+    try {
+      console.log('[AIInvoiceScannerModal] Starting PDF inspection & rendering for:', pdfFile.name);
+      const { numPages, pagesDataUrls } = await inspectAndRenderPdf(pdfFile, 35, 2.0);
+      
+      if (!pagesDataUrls || pagesDataUrls.length === 0) {
+        throw new Error(t('فشل في قراءة وتصيير صفحات ملف الـ PDF. يرجى التأكد من صحة الملف.', 'نەتوانرا پەڕەکانی فایلی PDF بخوێندرێتەوە.', 'Failed to render PDF pages. Please verify the file.'));
+      }
+
+      setPdfProgress({ currentPage: 1, totalPages: pagesDataUrls.length, totalFoundItems: 0 });
+      setImageSrc(pagesDataUrls[0]); // Preview first page
+
+      const combinedSupplier: ScannedInvoiceData['supplier'] = { name: '' };
+      const combinedInvoice: ScannedInvoiceData['invoice'] = {
+        invoiceNumber: '',
+        date: new Date().toISOString().split('T')[0],
+        currency: 'IQD',
+        netInvoiceAmount: 0,
+        paidAmount: 0,
+        remainingAmount: 0
+      };
+
+      const aggregatedItems: ScannedInvoiceData['items'] = [];
+      const seenBarcodes = new Set<string>();
+      const seenNames = new Set<string>();
+
+      for (let i = 0; i < pagesDataUrls.length; i++) {
+        setPdfProgress({ currentPage: i + 1, totalPages: pagesDataUrls.length, totalFoundItems: aggregatedItems.length });
+        
+        try {
+          const pageResult = await scanSingleImagePage(pagesDataUrls[i]);
+
+          // Extract supplier and invoice header information from whichever page provides it
+          if (pageResult.supplier?.name && !combinedSupplier.name) {
+            combinedSupplier.name = pageResult.supplier.name;
+            combinedSupplier.phone = pageResult.supplier.phone || combinedSupplier.phone;
+            combinedSupplier.address = pageResult.supplier.address || combinedSupplier.address;
+            combinedSupplier.nameKu = pageResult.supplier.nameKu || combinedSupplier.nameKu;
+          }
+
+          if (pageResult.invoice) {
+            if (pageResult.invoice.invoiceNumber && !combinedInvoice.invoiceNumber) {
+              combinedInvoice.invoiceNumber = pageResult.invoice.invoiceNumber;
+            }
+            if (pageResult.invoice.date) {
+              combinedInvoice.date = pageResult.invoice.date;
+            }
+            if (pageResult.invoice.currency) {
+              combinedInvoice.currency = pageResult.invoice.currency;
+            }
+            // Financial amounts: prioritize the final page or maximum total balance
+            if (pageResult.invoice.netInvoiceAmount && pageResult.invoice.netInvoiceAmount > (combinedInvoice.netInvoiceAmount || 0)) {
+              combinedInvoice.netInvoiceAmount = pageResult.invoice.netInvoiceAmount;
+            }
+            if (pageResult.invoice.paidAmount !== undefined && (pageResult.invoice.paidAmount > 0 || combinedInvoice.paidAmount === 0)) {
+              combinedInvoice.paidAmount = pageResult.invoice.paidAmount;
+            }
+            if (pageResult.invoice.remainingAmount !== undefined && (pageResult.invoice.remainingAmount > 0 || combinedInvoice.remainingAmount === 0)) {
+              combinedInvoice.remainingAmount = pageResult.invoice.remainingAmount;
+            }
+            if (pageResult.invoice.grossInvoiceAmount && pageResult.invoice.grossInvoiceAmount > (combinedInvoice.grossInvoiceAmount || 0)) {
+              combinedInvoice.grossInvoiceAmount = pageResult.invoice.grossInvoiceAmount;
+            }
+            if (pageResult.invoice.discountAmount && pageResult.invoice.discountAmount > (combinedInvoice.discountAmount || 0)) {
+              combinedInvoice.discountAmount = pageResult.invoice.discountAmount;
+            }
+          }
+
+          // Accumulate items and deduplicate using Set logic (AILegacySystemMigratorModal pattern)
+          if (pageResult.items && Array.isArray(pageResult.items)) {
+            for (const item of pageResult.items) {
+              const cleanBarcode = normalizeDigits(item.barcode || '').trim();
+              if (cleanBarcode) {
+                if (seenBarcodes.has(cleanBarcode)) continue;
+                seenBarcodes.add(cleanBarcode);
+              }
+
+              const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
+              const normName = rawName.trim().toLowerCase();
+              if (!cleanBarcode && normName) {
+                if (seenNames.has(normName)) continue;
+                seenNames.add(normName);
+              }
+
+              let engName = item.englishName;
+              if (!engName || isArabicOrKurdishText(engName)) {
+                engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
+              }
+
+              const activeName = namingPreference === 'english' ? engName : rawName;
+
+              let retail = item.suggestedRetailPrice;
+              if (!retail || retail <= item.unitPurchasePrice) {
+                retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
+              }
+
+              aggregatedItems.push({
+                ...item,
+                barcode: cleanBarcode,
+                rawInvoiceName: rawName,
+                englishName: engName,
+                name: activeName,
+                nameAr: item.nameAr || rawName,
+                suggestedRetailPrice: retail
+              });
+            }
+          }
+        } catch (pageErr) {
+          console.warn(`[AIInvoiceScannerModal] Warning on PDF page ${i + 1}:`, pageErr);
+        }
+
+        // Throttle 600ms between page requests to protect browser thread & Gemini rate limits
+        if (i < pagesDataUrls.length - 1) {
+          await new Promise(res => setTimeout(res, 600));
+        }
+      }
+
+      if (aggregatedItems.length === 0) {
+        throw new Error(t('لم يتم العثور على أدوية أو أسطر في ملف الـ PDF. يرجى التأكد من وضوح الصفحات.', 'هیچ کاڵایەک نەدۆزرایەوە لە پەڕەکانی ئەم PDFە.', 'No invoice items detected in this PDF.'));
+      }
+
+      // Calculate totals if not present or lower than items sum
+      const itemsNetSum = aggregatedItems.reduce((acc, it) => acc + (it.totalPrice || (it.unitPurchasePrice * it.quantity)), 0);
+      if (!combinedInvoice.netInvoiceAmount || combinedInvoice.netInvoiceAmount < itemsNetSum) {
+        combinedInvoice.netInvoiceAmount = itemsNetSum;
+      }
+      if (!combinedInvoice.grossInvoiceAmount) {
+        combinedInvoice.grossInvoiceAmount = combinedInvoice.netInvoiceAmount + (combinedInvoice.discountAmount || 0);
+      }
+      // If paid amount was recorded and remaining wasn't specified, calculate remaining
+      if ((combinedInvoice.paidAmount || 0) > 0 && (combinedInvoice.remainingAmount === undefined || combinedInvoice.remainingAmount === 0)) {
+        combinedInvoice.remainingAmount = Math.max(0, (combinedInvoice.netInvoiceAmount || 0) - (combinedInvoice.paidAmount || 0));
+      }
+
+      const finalPdfResult: ScannedInvoiceData = {
+        supplier: combinedSupplier.name ? combinedSupplier : { name: t('مورد من ملف PDF', 'دابینکەر لە PDF', 'Supplier from PDF') },
+        invoice: {
+          ...combinedInvoice,
+          invoiceNumber: combinedInvoice.invoiceNumber || String(Math.floor(1000 + Math.random() * 9000)),
+          totalItemsCount: aggregatedItems.length
+        },
+        items: aggregatedItems
+      };
+
+      setScannedData(finalPdfResult);
+      setSelectedItemIndices(new Set(aggregatedItems.map((_, i) => i)));
+    } catch (err: any) {
+      console.warn('PDF Invoice scanning error:', err);
+      const errStr = err?.message || String(err);
+      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
+        setShowKeyInputInModal(true);
+        setScanError(
+          t(
+            'الخادم المحلي غير متصل. لتشغيل فحص الفواتير مباشرة على حاسوبك: يرجى إدخال مفتاح Gemini API المجاني أدناه.',
+            'سێرڤەری لۆکاڵ بەردەست نییە. تکایە کلیلی Gemini لە خوارەوە دابنێ بۆ پشکنینی ڕاستەوخۆی وێنە.',
+            'Local backend not reachable. Please enter your free Gemini API key below to enable direct photo OCR.'
+          )
+        );
+      } else {
+        setScanError(errStr || t('فشل في معالجة ملف الـ PDF. يرجى المحاولة مرة أخرى.', 'هەڵە لە خوێندنەوەی فایلی PDF.', 'PDF invoice processing failed. Please try again.'));
+      }
+    } finally {
+      setIsScanning(false);
+      setPdfProgress(null);
     }
   };
 
@@ -1296,6 +1724,14 @@ Output strictly valid JSON with this structure:
     // 3. Purchase Invoice Record
     let newPurchaseInvoiceObj: PurchaseInvoice | undefined;
     if (createPurchaseInvoice && purchaseInvoiceItems.length > 0) {
+      const paid = scannedData.invoice.paidAmount !== undefined 
+        ? scannedData.invoice.paidAmount 
+        : 0;
+      const remaining = scannedData.invoice.remainingAmount !== undefined 
+        ? scannedData.invoice.remainingAmount 
+        : Math.max(0, invoiceTotal - paid);
+      const pType = paid >= invoiceTotal ? 'cash' : (paid > 0 ? 'partially_paid' : 'credit');
+
       newPurchaseInvoiceObj = {
         id: `pur-inv-${invoiceNum}`,
         invoiceNumber: `PUR-${invoiceNum}`,
@@ -1303,15 +1739,15 @@ Output strictly valid JSON with this structure:
         time: new Date().toLocaleTimeString(),
         supplierName: targetSupplier?.nameAr || supplierName,
         supplierPhone: targetSupplier?.phone || supplierPhone,
-        paymentType: 'credit',
-        paidAmount: 0,
-        remainingAmount: invoiceTotal,
+        paymentType: pType as any,
+        paidAmount: paid,
+        remainingAmount: remaining,
         grossInvoiceAmount: managerAuditSummary?.grossTotal || invoiceTotal,
         discountAmount: managerAuditSummary?.totalDiscountSaved || 0,
         totalInvoiceAmount: invoiceTotal,
         items: purchaseInvoiceItems,
         status: 'completed',
-        notes: `تم الإدخال والتحقق عبر مسح صورة الوصل بالذكاء الاصطناعي (Gemini Vision) - تشمل مقارنة الأسعار والتواريخ والخصومات`
+        notes: `تم الإدخال والتحقق عبر قراءة الوصل بالذكاء الاصطناعي (Gemini OCR/PDF) - تشمل مقارنة الأسعار والتواريخ والمدفوع والمتبقي`
       };
     }
 
@@ -1383,12 +1819,23 @@ Output strictly valid JSON with this structure:
         {/* Top Control Bar: Upload, Camera, or Sample */}
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-[#0B1528] border border-slate-800">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Standard file/image picker */}
+            {/* Standard file/image picker (supports multiple invoice photos and PDFs) */}
             <input 
               type="file" 
               ref={fileInputRef} 
               accept="image/*,.pdf" 
-              onChange={handleFileChange} 
+              multiple
+              onChange={(e) => handleFileChange(e, false)} 
+              className="hidden" 
+            />
+
+            {/* Additional photo pages picker (append mode) */}
+            <input 
+              type="file" 
+              ref={appendFileInputRef} 
+              accept="image/*" 
+              multiple
+              onChange={(e) => handleFileChange(e, true)} 
               className="hidden" 
             />
 
@@ -1398,7 +1845,7 @@ Output strictly valid JSON with this structure:
               ref={mobileCameraInputRef} 
               accept="image/*" 
               capture="environment"
-              onChange={handleFileChange} 
+              onChange={(e) => handleFileChange(e, false)} 
               className="hidden" 
             />
 
@@ -1432,9 +1879,21 @@ Output strictly valid JSON with this structure:
               onClick={() => fileInputRef.current?.click()}
               disabled={isScanning}
               className="px-4 py-2.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              title={t('يمكنك اختيار صورة واحدة أو عدة صور لصفحات الفاتورة معاً أو ملف PDF وسيتم دمج كل المواد تلقائياً', 'دەتوانیت یەک وێنە یان چەندین وێنەی لاپەڕەکانی پسوولەکە پێکەوە هەڵبژێریت یان فایلی PDF', 'Select one or multiple invoice photo pages together or a PDF file')}
             >
               <Upload className="w-4 h-4" />
-              <span>{t('📁 اختيار صورة من المعرض', '📁 هەڵبژاردنی وێنە لە گەلەری', 'Upload from Gallery')}</span>
+              <span>{t('📁 اختيار صور الفاتورة (واحدة أو أكثر) / PDF', '📁 هەڵبژاردنی وێنەکانی پسوولە (یەک یان زیاتر) / PDF', 'Upload Invoice Photos (1 or more) / PDF')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isScanning}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:brightness-110 text-white text-xs font-black flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              title={t('قراءة وصل كامل بصيغة PDF واستخراج كل المواد وحساب المبالغ المدفوعة والمتبقية', 'خوێندنەوەی هەموو پسوولەی PDF', 'Scan Complete Multi-page PDF Invoice')}
+            >
+              <FileText className="w-4 h-4" />
+              <span>{t('📄 إضافة وصل كامل PDF', '📄 زیادکردنی پسوولەی تەواوی PDF', '📄 Scan Full PDF Invoice')}</span>
             </button>
 
             {onOpenLegacyScreenMigrator && (
@@ -1485,13 +1944,31 @@ Output strictly valid JSON with this structure:
 
         {/* Scanning Spinner */}
         {isScanning && (
-          <div className="p-8 rounded-2xl bg-[#0B1528] border border-cyan-500/40 text-center space-y-3 animate-fadeIn my-auto">
+          <div className="p-8 rounded-2xl bg-[#0B1528] border border-cyan-500/40 text-center space-y-4 animate-fadeIn my-auto max-w-lg mx-auto">
             <div className="inline-block p-4 rounded-full bg-cyan-500/20 text-cyan-400 animate-spin">
               <ScanLine className="w-10 h-10" />
             </div>
-            <h4 className="text-base font-black text-white">
-              {t('جاري استخراج وقراءة المواد والأسعار والخصومات والتواريخ...', 'زیرەکی دەستکرد خەریکی شیکردنەوە و خوێندنەوەی پسوولەکەیە...', 'Gemini Vision AI is extracting items, discounts, expiries & costs...')}
-            </h4>
+            <div className="space-y-1.5">
+              <h4 className="text-base font-black text-white">
+                {pdfProgress 
+                  ? t(`جاري قراءة واستخراج صفحة ${pdfProgress.currentPage} من أصل ${pdfProgress.totalPages} في ملف الـ PDF...`, `خەریکی شیکردنەوەی پەڕەی ${pdfProgress.currentPage} لە ${pdfProgress.totalPages}ی فایلی PDF...`, `Extracting items from PDF page ${pdfProgress.currentPage} of ${pdfProgress.totalPages}...`)
+                  : t('جاري استخراج وقراءة المواد والأسعار والخصومات والتواريخ...', 'زیرەکی دەستکرد خەریکی شیکردنەوە و خوێندنەوەی پسوولەکەیە...', 'Gemini Vision AI is extracting items, discounts, expiries & costs...')}
+              </h4>
+              {pdfProgress && (
+                <div className="space-y-2 pt-2">
+                  <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-cyan-500 to-emerald-500 h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.round((pdfProgress.currentPage / Math.max(1, pdfProgress.totalPages)) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <span>{t(`صفحة ${pdfProgress.currentPage} / ${pdfProgress.totalPages}`, `پەڕەی ${pdfProgress.currentPage} / ${pdfProgress.totalPages}`, `Page ${pdfProgress.currentPage} / ${pdfProgress.totalPages}`)}</span>
+                    <span className="text-emerald-400 font-bold">{t(`تم العثور على ${pdfProgress.totalFoundItems} مادة حتى الآن`, `تا ئێستا ${pdfProgress.totalFoundItems} کاڵا دۆزرایەوە`, `${pdfProgress.totalFoundItems} items detected so far`)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1664,6 +2141,31 @@ Output strictly valid JSON with this structure:
                 </div>
               </div>
 
+              {/* Paid & Remaining Amounts */}
+              {(scannedData.invoice.paidAmount !== undefined || scannedData.invoice.remainingAmount !== undefined) && (
+                <>
+                  <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/40 space-y-0.5">
+                    <div className="text-[11px] text-blue-300 flex items-center gap-1 font-bold">
+                      <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+                      <span>{t('المبلغ المدفوع (نقد):', 'بڕی پارەی دراو:', 'Paid Amount:')}</span>
+                    </div>
+                    <div className="text-xs font-mono font-black text-blue-300">
+                      {(scannedData.invoice.paidAmount || 0).toLocaleString()} {currency}
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-0.5">
+                    <div className="text-[11px] text-amber-300 flex items-center gap-1 font-bold">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{t('المبلغ المتبقي (آجل/دين):', 'بڕی ماوە (قەرز):', 'Remaining Debt:')}</span>
+                    </div>
+                    <div className="text-xs font-mono font-black text-amber-300">
+                      {(scannedData.invoice.remainingAmount || 0).toLocaleString()} {currency}
+                    </div>
+                  </div>
+                </>
+              )}
+
             </div>
 
             {/* 2. Manager Audit KPI Summary Strip */}
@@ -1813,6 +2315,17 @@ Output strictly valid JSON with this structure:
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => appendFileInputRef.current?.click()}
+                    disabled={isScanning}
+                    className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                    title={t('إضافة صور صفحات أخرى لنفس الفاتورة ودمج موادها مباشرة في السلة', 'زیادکردنی وێنەی پەڕەکانی تر بۆ ئەم پسوولەیە و کۆکردنەوەی مادەکانی', 'Add more photo pages to this invoice and aggregate items')}
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{t('➕ إضافة صورة أخرى للوصل', '➕ وێنەی تری پسوولە', '+ Add Another Photo')}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleAddNewItemRow}

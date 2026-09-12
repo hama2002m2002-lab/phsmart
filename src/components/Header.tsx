@@ -1,5 +1,5 @@
-import React from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, HardDrive, Wifi } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, HardDrive, Wifi, WifiOff, ShieldCheck } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -53,6 +53,21 @@ export const Header: React.FC<HeaderProps> = ({
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
+
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const cashierName = currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير الرئيسي' : isKu ? 'کاشێری سەرەکی' : 'Main Cashier');
   const storeDisplayName = isKu ? (settings.storeNameKu || settings.storeNameAr || settings.storeName) : isAr ? (settings.storeNameAr || settings.storeName) : settings.storeName;
@@ -152,6 +167,25 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Local-First Storage & Offline Guarantee Badge / Indicator */}
+          {!isOnline ? (
+            <div
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-300 text-[10px] sm:text-xs font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0"
+              title={isKu ? 'سیستەم بە تەواوی ئۆفلاین کار دەکات - هەموو داتاکان پارێزراون' : isAr ? 'النظام يعمل أوفلاين 100% بدون إنترنت - كافة عمليات البيع والمخزن محفوظة محلياً' : '100% Offline Independent Mode Active'}
+            >
+              <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+              <span className="hidden xs:inline">{isKu ? 'ئۆفلاین ١٠٠٪' : isAr ? 'أوفلاين 100%' : 'Offline 100%'}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            </div>
+          ) : (
+            <div
+              className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-700/60 text-slate-300 text-[10px] font-bold transition-all shrink-0"
+              title={isKu ? 'سیستەم ئامادەیە بۆ کارکردنی ئۆفلاین و ئۆنلاین بە بێ کێشە' : isAr ? 'المنظومة مدعومة للعمل أوفلاين بالكامل بدون الحاجة لإنترنت' : 'Offline Capable'}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{isKu ? 'ئۆفلاین ئامادەیە' : isAr ? 'أوفلاين 100%' : 'Offline Ready'}</span>
+            </div>
+          )}
+
           {onOpenLocalDataNetwork && (
             <button
               type="button"

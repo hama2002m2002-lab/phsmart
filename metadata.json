@@ -1,6 +1,6 @@
 {
   "name": "7amo.pos",
-  "description": "نظام إدارة الماركيت والمبيعات والمخزون المتكامل مع واجهة سريعة ومظلمة متطورة",
+  "description": "نظام إدارة الماركيت والمبيعات والمخزون المتكامل مع النسخ الاحتياطي التلقائي ودعم العمل أوفلاين 100% بدون إنترنت",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

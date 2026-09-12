@@ -30,7 +30,8 @@ import {
   ExternalLink,
   Files,
   Images,
-  StopCircle
+  StopCircle,
+  ArrowUpDown
 } from 'lucide-react';
 import { Product, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -95,6 +96,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
   const [extractedItems, setExtractedItems] = useState<LegacyScannedItem[]>([]);
   const [systemTitle, setSystemTitle] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState('');
+  const [sortField, setSortField] = useState<'name' | 'barcode' | 'quantityPieces' | 'packPurchasePrice' | 'packSellingPrice' | null>('name');
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [warningNotice, setWarningNotice] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -108,6 +111,8 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     totalExtractedItems: number;
     failedImages: number;
   } | null>(null);
+
+  const [unprocessedBatchFiles, setUnprocessedBatchFiles] = useState<{ file: File; name: string; reason?: string }[]>([]);
 
   const abortBatchRef = useRef<boolean>(false);
 
@@ -215,8 +220,9 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
     }
   };
 
-  // Image compressor for fast high OCR accuracy - keeps high resolution for small text & tables
-  const compressImage = (dataUrl: string, maxWidth = 2048, quality = 0.92): Promise<string> => {
+  // Advanced image pre-processor for legacy POS screens & photos:
+  // Enhances contrast, reduces monitor moiré & washed-out glare, sharpens fine grid lines
+  const compressImage = (dataUrl: string, maxWidth = 1600, quality = 0.86): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -234,9 +240,28 @@ export const AILegacySystemMigratorModal: React.FC<AILegacySystemMigratorModalPr
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
+          // Draw original image
           ctx.drawImage(img, 0, 0, width, height);
+
+          try {
+            // Apply slight auto-contrast & brightness boost for washed-out monitor photos
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+            const contrast = 1.15; // 15% boost to make faded text and lines crisp
+            const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+
+            for (let i = 0; i < data.length; i += 4) {
+              data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+              data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+              data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+            }
+            ctx.putImageData(imgData, 0, 0);
+          } catch {
+            // Canvas tainting fallback - keep normal drawImage
+          }
+
           resolve(canvas.toDataURL('image/jpeg', quality));
         } else {
           resolve(dataUrl);
@@ -299,7 +324,12 @@ Output STRICT valid JSON:
   ]
 }`;
 
-    const models = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    const models = [
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite'
+    ];
     let lastErr: any = null;
 
     for (const model of models) {
@@ -503,10 +533,22 @@ Output STRICT valid JSON:
         return;
       }
 
-      // Merge newly extracted items with existing extracted items without duplicate barcodes
+      // Merge newly extracted items with existing extracted items without duplicate barcodes or names
       setExtractedItems(prev => {
-        const existingBarcodes = new Set(prev.map(p => p.barcode).filter(Boolean));
-        const newOnes = items.filter(i => !existingBarcodes.has(i.barcode));
+        const existingBarcodes = new Set(
+          prev.map(p => p.barcode?.trim().toLowerCase()).filter(b => b && !b.startsWith('legacy-'))
+        );
+        const existingNames = new Set(
+          prev.map(p => p.name?.trim().toLowerCase()).filter(Boolean)
+        );
+
+        const newOnes = items.filter(i => {
+          const b = i.barcode?.trim().toLowerCase();
+          if (b && !b.startsWith('legacy-') && existingBarcodes.has(b)) return false;
+          const n = i.name?.trim().toLowerCase();
+          if (n && existingNames.has(n)) return false;
+          return true;
+        });
         return [...prev, ...newOnes];
       });
     } catch (err: any) {
@@ -549,7 +591,7 @@ Output STRICT valid JSON:
   };
 
   // Bulk Processing Engine for up to 500 images
-  const processBatchImages = async (files: File[]) => {
+  const processBatchImages = async (files: File[], appendMode = false) => {
     if (files.length === 0) return;
     
     // Safety cap at 500 files
@@ -562,6 +604,10 @@ Output STRICT valid JSON:
     setShowApiKeyPrompt(false);
     abortBatchRef.current = false;
 
+    if (!appendMode) {
+      setUnprocessedBatchFiles([]);
+    }
+
     setBatchStats({
       totalImages: totalCount,
       processedImages: 0,
@@ -572,6 +618,7 @@ Output STRICT valid JSON:
 
     let newlyExtractedTotal = 0;
     let failedCount = 0;
+    const failedFilesList: { file: File; name: string; reason?: string }[] = [];
 
     for (let index = 0; index < totalCount; index++) {
       if (abortBatchRef.current) {
@@ -590,8 +637,8 @@ Output STRICT valid JSON:
 
       setProgressStage(
         t(
-          `جاري معالجة الصورة ${currentNumber} من أصل ${totalCount}: ${file.name}...`,
-          `وێنەی ${currentNumber} لە ${totalCount} دەخوێنرێتەوە: ${file.name}...`,
+          `جاري معالجة وقراءة الصورة ${currentNumber} من أصل ${totalCount}: ${file.name}...`,
+          `خوێندنەوەی وێنەی ${currentNumber} لە ${totalCount}: ${file.name}...`,
           `Processing image ${currentNumber} of ${totalCount}: ${file.name}...`
         )
       );
@@ -600,15 +647,54 @@ Output STRICT valid JSON:
         const base64Data = await readFileAsDataUrl(file);
         setSelectedImage(base64Data);
 
-        const { items, warning } = await extractItemsFromSingleImage(base64Data, extractedItems);
+        let extractionResult: { items: LegacyScannedItem[]; systemTitle?: string; warning?: string } = { items: [] };
+        let lastErrorForImage: any = null;
+        
+        // Multi-attempt resilient retry per image with progressive backoff
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            extractionResult = await extractItemsFromSingleImage(base64Data, extractedItems);
+            if (extractionResult?.items && extractionResult.items.length > 0) {
+              lastErrorForImage = null;
+              break;
+            }
+          } catch (firstErr: any) {
+            lastErrorForImage = firstErr;
+            console.warn(`Attempt ${attempt} failed for image ${currentNumber} (${file.name}):`, firstErr);
+            if (attempt < 3) {
+              const waitMs = attempt * 2000;
+              setProgressStage(
+                t(
+                  `إعادة محاولة الصورة ${currentNumber} بعد ${waitMs / 1000} ثوانٍ لتجاوز ضغط السيرفر...`,
+                  `دووبارە هەوڵدان بۆ وێنەی ${currentNumber}...`,
+                  `Retrying image ${currentNumber} in ${waitMs / 1000}s...`
+                )
+              );
+              await new Promise(res => setTimeout(res, waitMs));
+            }
+          }
+        }
+
+        const { items, warning } = extractionResult;
         if (warning) setWarningNotice(warning);
 
-        if (items.length > 0) {
+        if (items && items.length > 0) {
           newlyExtractedTotal += items.length;
           setExtractedItems(prev => {
-            // Merge with existing items, avoiding exact duplicate barcodes
-            const existingBarcodes = new Set(prev.map(p => p.barcode).filter(Boolean));
-            const freshItems = items.filter(item => !existingBarcodes.has(item.barcode));
+            const existingBarcodes = new Set(
+              prev.map(p => p.barcode?.trim().toLowerCase()).filter(b => b && !b.startsWith('legacy-'))
+            );
+            const existingNames = new Set(
+              prev.map(p => p.name?.trim().toLowerCase()).filter(Boolean)
+            );
+            
+            const freshItems = items.filter(item => {
+              const b = item.barcode?.trim().toLowerCase();
+              if (b && !b.startsWith('legacy-') && existingBarcodes.has(b)) return false;
+              const n = item.name?.trim().toLowerCase();
+              if (n && existingNames.has(n)) return false;
+              return true;
+            });
             return [...prev, ...freshItems];
           });
 
@@ -618,26 +704,37 @@ Output STRICT valid JSON:
           } : null);
         } else {
           failedCount++;
+          failedFilesList.push({
+            file,
+            name: file.name,
+            reason: lastErrorForImage?.message || t('لم يتم العثور على أدوية أو حدث خطأ في القراءة', 'دەرمان نەدۆزرایەوە', 'No medicines detected')
+          });
+          console.warn(`Image ${currentNumber} (${file.name}) yielded 0 items.`);
         }
       } catch (err: any) {
-        console.warn(`Error processing file ${file.name}:`, err);
+        console.warn(`Fatal error processing file ${file.name}:`, err);
         failedCount++;
+        failedFilesList.push({
+          file,
+          name: file.name,
+          reason: err?.message || 'Error processing image'
+        });
         setBatchStats(prev => prev ? {
           ...prev,
           failedImages: failedCount
         } : null);
 
-        // If it's an API Key error, halt and prompt
+        // Only halt if server is not reachable AND no API key exists anywhere
         const errStr = String(err?.message || err);
-        if (errStr.includes('API') || errStr.includes('404') || errStr === 'SERVER_404_NO_KEY') {
+        if (errStr === 'SERVER_404_NO_KEY') {
           handleProcessingError(err);
           break;
         }
       }
 
-      // Small 300ms pause between batches to protect browser thread & network rate
-      if (index < totalCount - 1) {
-        await new Promise(res => setTimeout(res, 350));
+      // Smooth 2000ms pacing between images to avoid triggering Gemini rate limits
+      if (index < totalCount - 1 && !abortBatchRef.current) {
+        await new Promise(res => setTimeout(res, 2000));
       }
     }
 
@@ -648,8 +745,33 @@ Output STRICT valid JSON:
       totalExtractedItems: newlyExtractedTotal
     } : null);
 
+    setUnprocessedBatchFiles(prev => {
+      if (appendMode) {
+        const remainingOld = prev.filter(p => !queueFiles.includes(p.file));
+        return [...remainingOld, ...failedFilesList];
+      }
+      return failedFilesList;
+    });
+
+    if (failedFilesList.length > 0) {
+      setWarningNotice(
+        t(
+          `تم استخراج المواد من ${totalCount - failedFilesList.length} صورة، ولكن تعذر إكمال ${failedFilesList.length} صور بسبب ضغط خوادم الذكاء الاصطناعي أو عدم وضوحها. يمكنك الضغط على زر إعادة فحص الصور المتبقية.`,
+          `لە ${totalCount - failedFilesList.length} وێنە کاڵاکان دەرکران، بەڵام ${failedFilesList.length} وێنە تەواو نەبوون. دەتوانیت دووبارە پشکنینیان بکەیتەوە.`,
+          `Extracted from ${totalCount - failedFilesList.length} images, but ${failedFilesList.length} images could not be read due to AI load. You can retry them.`
+        )
+      );
+    }
+
     setIsProcessing(false);
     setProgressStage('');
+  };
+
+  // Retry specifically the failed batch images
+  const retryUnprocessedBatchFiles = () => {
+    if (unprocessedBatchFiles.length === 0) return;
+    const filesToRetry = unprocessedBatchFiles.map(f => f.file);
+    processBatchImages(filesToRetry, true);
   };
 
   // Stop / cancel running batch
@@ -722,18 +844,81 @@ Output STRICT valid JSON:
     setExtractedItems(prev => prev.filter(item => item.id !== id));
   };
 
-  // Filtered extracted items
+  // Deduplicate items in the table
+  const handleRemoveDuplicates = () => {
+    const seenBarcodes = new Set<string>();
+    const seenNames = new Set<string>();
+    let removedCount = 0;
+
+    setExtractedItems(prev => {
+      const cleanList: LegacyScannedItem[] = [];
+      for (const item of prev) {
+        const b = item.barcode?.trim().toLowerCase();
+        const n = item.name?.trim().toLowerCase();
+        if (b && seenBarcodes.has(b)) {
+          removedCount++;
+          continue;
+        }
+        if (n && seenNames.has(n)) {
+          removedCount++;
+          continue;
+        }
+        if (b) seenBarcodes.add(b);
+        if (n) seenNames.add(n);
+        cleanList.push(item);
+      }
+      return cleanList;
+    });
+
+    if (removedCount > 0) {
+      setWarningNotice(
+        t(
+          `تم تنظيف وحذف ${removedCount} مادة مكررة بنجاح لضمان ترتيب الجدول.`,
+          `بە سەرکەوتوویی ${removedCount} کاڵای دووبارە سڕانەوە.`,
+          `Cleaned and removed ${removedCount} duplicate items.`
+        )
+      );
+    }
+  };
+
+  // Toggle sorting on column
+  const handleToggleSort = (field: 'name' | 'barcode' | 'quantityPieces' | 'packPurchasePrice' | 'packSellingPrice') => {
+    if (sortField === field) {
+      setSortAsc(prev => !prev);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
+  };
+
+  // Filtered & Sorted extracted items
   const filteredItems = useMemo(() => {
-    if (!searchFilter.trim()) return extractedItems;
-    const q = searchFilter.toLowerCase();
-    return extractedItems.filter(item =>
-      item.name.toLowerCase().includes(q) ||
-      item.barcode.toLowerCase().includes(q) ||
-      item.manufacturer.toLowerCase().includes(q) ||
-      item.nameAr.toLowerCase().includes(q) ||
-      item.nameKu.toLowerCase().includes(q)
-    );
-  }, [extractedItems, searchFilter]);
+    let list = extractedItems;
+    if (searchFilter.trim()) {
+      const q = searchFilter.toLowerCase();
+      list = list.filter(item =>
+        item.name.toLowerCase().includes(q) ||
+        item.barcode.toLowerCase().includes(q) ||
+        item.manufacturer.toLowerCase().includes(q) ||
+        item.nameAr.toLowerCase().includes(q) ||
+        item.nameKu.toLowerCase().includes(q)
+      );
+    }
+
+    if (!sortField) return list;
+
+    return [...list].sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'name') {
+        comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      } else if (sortField === 'barcode') {
+        comparison = a.barcode.localeCompare(b.barcode);
+      } else {
+        comparison = (a[sortField] || 0) - (b[sortField] || 0);
+      }
+      return sortAsc ? comparison : -comparison;
+    });
+  }, [extractedItems, searchFilter, sortField, sortAsc]);
 
   // Totals & Match counts
   const selectedCount = extractedItems.filter(i => i.selected).length;
@@ -1269,6 +1454,17 @@ Output STRICT valid JSON:
                     />
                   </div>
 
+                  {/* Remove duplicates button */}
+                  <button
+                    type="button"
+                    onClick={handleRemoveDuplicates}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/70 hover:bg-indigo-600 text-white text-xs font-bold transition-colors shrink-0"
+                    title={t('حذف وتصفية المواد المكررة', 'سڕینەوەی کاڵای دووبارە', 'Remove Duplicates')}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{t('تنظيف التكرار', 'لابردنی دووبارە', 'Deduplicate')}</span>
+                  </button>
+
                   {/* Export Excel */}
                   <button
                     type="button"
@@ -1279,8 +1475,43 @@ Output STRICT valid JSON:
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">{t('تصدير Excel', 'ناردن بۆ ئێکسڵ', 'Excel')}</span>
                   </button>
+
+                  {/* Add More Images Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-colors shrink-0 shadow cursor-pointer"
+                    title={t('إضافة صور شاشات أخرى ودمجها في هذا الجدول', 'زیادکردنی وێنەی تر بۆ ئەم خشتەیە', 'Add More Images to this table')}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t('إضافة صور أخرى', 'زیادکردنی وێنە', 'Add Images')}</span>
+                  </button>
                 </div>
               </div>
+
+              {/* Unprocessed / Failed Batch Images Banner with 1-Click Retry */}
+              {unprocessedBatchFiles.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-fadeIn">
+                  <div className="flex items-center gap-2.5 text-xs text-amber-200">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      {t(
+                        `تنبيه: تم استخراج ${extractedItems.length} مادة، ولكن تعذر إكمال ${unprocessedBatchFiles.length} صور بسبب ضغط سيرفرات الذكاء الاصطناعي. يمكنك الضغط على الزر لإعادة فحصها ودمج موادها بالجدول:`,
+                        `ئاگاداری: ${extractedItems.length} کاڵا دەرهێنران، بەڵام ${unprocessedBatchFiles.length} وێنە تەواو نەبوون. دەتوانیت دووبارە پشکنینیان بکەیتەوە:`,
+                        `Notice: Extracted ${extractedItems.length} items, but ${unprocessedBatchFiles.length} images failed due to server load. Retry them now:`
+                      )}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={retryUnprocessedBatchFiles}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black transition-all shrink-0 cursor-pointer shadow"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>{t(`إعادة فحص الـ ${unprocessedBatchFiles.length} صور الآن`, `دووبارە پشکنینی ${unprocessedBatchFiles.length} وێنە`, `Retry ${unprocessedBatchFiles.length} Images`)}</span>
+                  </button>
+                </div>
+              )}
 
               {/* Fuzzy Matching Status Indicator */}
               <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700/60 text-xs">
@@ -1313,17 +1544,57 @@ Output STRICT valid JSON:
               <div className="border border-slate-700/80 rounded-xl overflow-hidden bg-slate-950/60 shadow-inner">
                 <div className="overflow-x-auto max-h-[50vh]">
                   <table className="w-full text-start text-xs border-collapse">
-                    <thead className="sticky top-0 bg-slate-900 border-b border-slate-700 text-slate-300 font-bold z-10">
+                    <thead className="sticky top-0 bg-slate-900 border-b border-slate-700 text-slate-300 font-bold z-10 select-none">
                       <tr>
                         <th className="p-2.5 text-center w-10">#</th>
-                        <th className="p-2.5 text-start min-w-[120px]">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
-                        <th className="p-2.5 text-start min-w-[220px]">{t('اسم المادة (مطابق للصورة تماماً)', 'ناوی دەرمان (وەک وێنەکە)', 'Item Name (Verbatim)')}</th>
-                        <th className="p-2.5 text-center min-w-[70px]">{t('الرصيد (عدد)', 'بڕ(عدد)', 'Stock Qty')}</th>
+                        <th
+                          onClick={() => handleToggleSort('barcode')}
+                          className="p-2.5 text-start min-w-[120px] cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>{t('الباركود', 'بارکۆد', 'Barcode')}</span>
+                            <ArrowUpDown className={`w-3 h-3 ${sortField === 'barcode' ? 'text-cyan-400' : 'text-slate-600'}`} />
+                          </div>
+                        </th>
+                        <th
+                          onClick={() => handleToggleSort('name')}
+                          className="p-2.5 text-start min-w-[220px] cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>{t('اسم المادة (مطابق للصورة تماماً)', 'ناوی دەرمان (وەک وێنەکە)', 'Item Name (Verbatim)')}</span>
+                            <ArrowUpDown className={`w-3 h-3 ${sortField === 'name' ? 'text-cyan-400' : 'text-slate-600'}`} />
+                          </div>
+                        </th>
+                        <th
+                          onClick={() => handleToggleSort('quantityPieces')}
+                          className="p-2.5 text-center min-w-[70px] cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            <span>{t('الرصيد (عدد)', 'بڕ(عدد)', 'Stock Qty')}</span>
+                            <ArrowUpDown className={`w-3 h-3 ${sortField === 'quantityPieces' ? 'text-cyan-400' : 'text-slate-600'}`} />
+                          </div>
+                        </th>
                         <th className="p-2.5 text-center min-w-[80px]">{t('داخل الباكيت', 'بڕی پاکەت', 'Pack In')}</th>
                         <th className="p-2.5 text-center min-w-[90px]">{t('شراء شيت', 'کڕینی شیت', 'Buy Sheet')}</th>
-                        <th className="p-2.5 text-center min-w-[100px]">{t('شراء باكيت', 'کڕینی پاکەت', 'Buy Pack')}</th>
+                        <th
+                          onClick={() => handleToggleSort('packPurchasePrice')}
+                          className="p-2.5 text-center min-w-[100px] cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            <span>{t('شراء باكيت', 'کڕینی پاکەت', 'Buy Pack')}</span>
+                            <ArrowUpDown className={`w-3 h-3 ${sortField === 'packPurchasePrice' ? 'text-cyan-400' : 'text-slate-600'}`} />
+                          </div>
+                        </th>
                         <th className="p-2.5 text-center min-w-[90px]">{t('بيع شيت', 'فرۆشتنی شیت', 'Sell Sheet')}</th>
-                        <th className="p-2.5 text-center min-w-[100px]">{t('بيع باكيت', 'نرخی فرۆشتن', 'Sell Pack')}</th>
+                        <th
+                          onClick={() => handleToggleSort('packSellingPrice')}
+                          className="p-2.5 text-center min-w-[100px] cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            <span>{t('بيع باكيت', 'نرخی فرۆشتن', 'Sell Pack')}</span>
+                            <ArrowUpDown className={`w-3 h-3 ${sortField === 'packSellingPrice' ? 'text-cyan-400' : 'text-slate-600'}`} />
+                          </div>
+                        </th>
                         <th className="p-2.5 text-start min-w-[90px]">{t('الشكل الدوائي', 'جۆری دەرمان', 'Form')}</th>
                         <th className="p-2.5 text-start min-w-[100px]">{t('الشركة المصنعة', 'کۆمپانیا', 'Company')}</th>
                         <th className="p-2.5 text-center min-w-[100px]">{t('تاريخ الصلاحية', 'بەسەرچوون', 'Expiry')}</th>

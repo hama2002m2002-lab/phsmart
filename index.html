@@ -31,22 +31,15 @@
     </div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Clear any stale Service Workers in sandbox/preview to prevent black screen issues
+      // Register Offline PWA Service Worker
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-          for (const reg of registrations) {
-            reg.unregister().catch(() => {});
-          }
-        }).catch(() => {});
-        if ('caches' in window) {
-          caches.keys().then(keys => {
-            for (const key of keys) {
-              if (key.includes('7amo-pos')) {
-                caches.delete(key).catch(() => {});
-              }
-            }
-          }).catch(() => {});
-        }
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').then(function(reg) {
+            console.log('[7amo.pos] Offline Service Worker active on scope:', reg.scope);
+          }).catch(function(err) {
+            console.warn('[7amo.pos] Service Worker registration info:', err);
+          });
+        });
       }
     </script>
   </body>

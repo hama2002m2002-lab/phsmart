@@ -343,6 +343,31 @@ export interface StoreSettings {
   printerCopies?: number;
   posShortcuts?: POSKeyboardShortcuts;
   geminiApiKey?: string;
+  // Automated Scheduled Backup Configuration
+  autoBackupEnabled?: boolean;
+  autoBackupFrequency?: 'hourly' | 'daily' | 'disabled';
+  autoBackupDestination?: 'local_archive' | 'auto_download' | 'both';
+  lastAutoBackupTime?: string;
+  keepBackupHistoryCount?: number;
+}
+
+export interface AutoBackupSnapshot {
+  id: string;
+  timestamp: string; // ISO string
+  formattedDate: string;
+  triggerType: 'hourly' | 'daily' | 'manual';
+  itemsCount: {
+    products: number;
+    sales: number;
+    purchases: number;
+    customers: number;
+    suppliers: number;
+    invoices?: number;
+    audits?: number;
+  };
+  totalRecords: number;
+  sizeBytes: number;
+  dataJson?: string;
 }
 
 export interface UserPermissions {

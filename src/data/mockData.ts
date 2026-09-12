@@ -43,4 +43,9 @@ export const defaultSettings: StoreSettings = {
   themeMode: 'dark',
   printerType: 'thermal80mm',
   posShortcuts: defaultPOSShortcuts,
+  autoBackupEnabled: true,
+  autoBackupFrequency: 'hourly',
+  autoBackupDestination: 'both',
+  lastAutoBackupTime: '',
+  keepBackupHistoryCount: 15,
 };

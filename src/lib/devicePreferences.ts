@@ -98,6 +98,11 @@ export function mergeWithDevicePreferences(
     paperSize: devicePrefs.paperSize,
     autoPrintReceipt: devicePrefs.autoPrintReceipt,
     posShortcuts: devicePrefs.posShortcuts || defaultPOSShortcuts,
+    autoBackupEnabled: settings?.autoBackupEnabled ?? true,
+    autoBackupFrequency: settings?.autoBackupFrequency || 'hourly',
+    autoBackupDestination: settings?.autoBackupDestination || 'both',
+    lastAutoBackupTime: settings?.lastAutoBackupTime || '',
+    keepBackupHistoryCount: settings?.keepBackupHistoryCount ?? 15,
   };
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck, CheckCircle2, HardDrive } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
 import { OverviewTab } from './components/OverviewTab';
@@ -72,6 +72,10 @@ import {
   localDbGetAll,
   localDbFactoryReset
 } from './lib/localDb';
+import {
+  shouldRunAutoBackup,
+  createFullSystemBackup
+} from './lib/autoBackupManager';
 
 // Optimized Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -340,6 +344,71 @@ export function App() {
   useEffect(() => {
     setIsFirebaseSynced(true);
   }, []);
+
+  // Automated background backup scheduler (100% offline & local in the background)
+  const [autoBackupToast, setAutoBackupToast] = useState<{
+    show: boolean;
+    message: string;
+    details?: string;
+  }>({ show: false, message: '' });
+
+  useEffect(() => {
+    const handleCheckAndRun = async () => {
+      try {
+        if (shouldRunAutoBackup(settings)) {
+          console.log('[AutoBackup] Running automated backup according to schedule...');
+          const freq = settings.autoBackupFrequency === 'daily' ? 'daily' : 'hourly';
+          const download = settings.autoBackupDestination === 'auto_download' || settings.autoBackupDestination === 'both';
+          const snapshot = await createFullSystemBackup(freq, download);
+
+          setSettings(prev => ({
+            ...prev,
+            lastAutoBackupTime: snapshot.timestamp
+          }));
+        }
+      } catch (err) {
+        console.warn('[AutoBackup] Background backup task warning:', err);
+      }
+    };
+
+    // Check on startup / settings change
+    handleCheckAndRun();
+
+    // Re-check periodically every 60 seconds
+    const interval = setInterval(handleCheckAndRun, 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [settings.autoBackupEnabled, settings.autoBackupFrequency, settings.autoBackupDestination, settings.lastAutoBackupTime]);
+
+  // Listen to backup created events to display sleek feedback toast
+  useEffect(() => {
+    const handleBackupEvent = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      const isHourly = detail.triggerType === 'hourly';
+      const isDaily = detail.triggerType === 'daily';
+      const freqLabel = isHourly ? (isAr ? 'كل ساعة' : 'Hourly') : isDaily ? (isAr ? 'يومياً' : 'Daily') : (isAr ? 'يدوي' : 'Manual');
+      
+      setAutoBackupToast({
+        show: true,
+        message: isAr
+          ? `✅ تم أخذ نسخة احتياطية آلية بنجاح (${freqLabel})`
+          : `✅ Automated backup completed (${freqLabel})`,
+        details: isAr
+          ? `تم حفظ ${detail.snapshot?.itemsCount?.products || 0} مادة و ${detail.snapshot?.itemsCount?.sales || 0} عملية بيع في الأرشيف المحلي الآمن.`
+          : `Saved ${detail.snapshot?.itemsCount?.products || 0} products & ${detail.snapshot?.itemsCount?.sales || 0} sales safely.`
+      });
+
+      const timer = setTimeout(() => {
+        setAutoBackupToast(prev => ({ ...prev, show: false }));
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    };
+
+    window.addEventListener('pos_backup_created', handleBackupEvent);
+    return () => window.removeEventListener('pos_backup_created', handleBackupEvent);
+  }, [isAr]);
 
   // Helper to check if current user has permission for activeTab
   const userHasPermissionForTab = (tabId: MainNavTab, user: UserAccount | null): boolean => {
@@ -1878,6 +1947,31 @@ export function App() {
           onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
           onOpenLegacyMigrator={() => setIsLegacyMigratorOpen(true)}
         />
+      )}
+
+      {/* Auto Backup Notification Toast */}
+      {autoBackupToast.show && (
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 z-50 max-w-sm p-4 rounded-2xl bg-[#0B1120]/95 border border-cyan-500/50 text-white shadow-[0_0_25px_rgba(6,182,212,0.35)] backdrop-blur-xl flex items-start gap-3 animate-in fade-in slide-in-from-bottom-5"
+        >
+          <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-cyan-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black text-cyan-300">{autoBackupToast.message}</p>
+            {autoBackupToast.details && (
+              <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{autoBackupToast.details}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoBackupToast(prev => ({ ...prev, show: false }))}
+            className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
     </div>
