@@ -136,7 +136,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(100);
+  const [pageSize, setPageSize] = useState<number>(40);
 
   const safeProducts = useMemo(() => Array.isArray(products) ? products.filter(Boolean) : [], [products]);
 
@@ -183,13 +183,25 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
     };
   }, [safeProducts]);
 
-  // Expiry statistics calculation for quick badges & hub warnings
+  // Expiry statistics calculation for quick badges & hub warnings - Optimized with date cache
   const expiryStats = useMemo(() => {
     let expiredCount = 0;
     let nearExpiryCount = 0;
     let totalWithExpiry = 0;
     const now = new Date();
     now.setHours(0, 0, 0, 0);
+    const nowTime = now.getTime();
+    const dayMs = 1000 * 60 * 60 * 24;
+    const dateCache = new Map<string, number>();
+
+    const getDaysFast = (dateStr: string): number => {
+      const cached = dateCache.get(dateStr);
+      if (cached !== undefined) return cached;
+      const expDate = parseDate(dateStr);
+      const days = Math.ceil((expDate.getTime() - nowTime) / dayMs);
+      dateCache.set(dateStr, days);
+      return days;
+    };
 
     for (let i = 0; i < safeProducts.length; i++) {
       const p = safeProducts[i];
@@ -202,8 +214,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         for (const b of p.batches) {
           if (b.expiryDate && b.expiryDate.trim() !== '' && b.expiryDate !== 'N/A') {
             hasExp = true;
-            const expDate = parseDate(b.expiryDate);
-            const days = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            const days = getDaysFast(b.expiryDate);
             if (earliestDays === null || days < earliestDays) {
               earliestDays = days;
             }
@@ -213,9 +224,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
 
       if (earliestDays === null && p.expiryDate && p.expiryDate.trim() !== '' && p.expiryDate !== 'N/A') {
         hasExp = true;
-        const expDate = parseDate(p.expiryDate);
-        const days = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        earliestDays = days;
+        earliestDays = getDaysFast(p.expiryDate);
       }
 
       if (hasExp) {

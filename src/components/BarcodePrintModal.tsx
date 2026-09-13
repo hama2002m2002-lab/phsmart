@@ -216,8 +216,61 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       }
     } catch (e) {
       console.warn('Could not load saved barcode config:', e);
+    } finally {
+      isInitialLoadedRef.current = true;
     }
   }, []);
+
+  const isInitialLoadedRef = React.useRef(false);
+
+  // Auto-save changes so the user's printer alignment is always preserved
+  useEffect(() => {
+    if (!isInitialLoadedRef.current) return;
+    try {
+      const config = {
+        labelWidthMm,
+        labelHeightMm,
+        storeFontSize,
+        titleFontSize,
+        priceFontSize,
+        barcodeFontSize,
+        barcodeHeightPx,
+        labelBgColor,
+        textColor,
+        priceColor,
+        borderColor,
+        borderWidthPx,
+        paddingPx,
+        showStoreName,
+        showProductName,
+        showScientificName,
+        showDosageForm,
+        showBatchNumber,
+        showExpiryDate,
+        showCurrencySymbol,
+        showPriceLabel,
+        showBarcodeText,
+        priceOption,
+        layoutMode,
+        printAlignX,
+        printAlignY,
+        offsetXmm,
+        offsetYmm,
+        rotationDeg,
+        printerPaperWidthMm,
+      };
+      localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(config));
+    } catch (e) {
+      // ignore
+    }
+  }, [
+    printAlignX, printAlignY, offsetXmm, offsetYmm, rotationDeg, printerPaperWidthMm,
+    labelWidthMm, labelHeightMm, storeFontSize, titleFontSize, priceFontSize,
+    barcodeFontSize, barcodeHeightPx, labelBgColor, textColor, priceColor, borderColor,
+    borderWidthPx, paddingPx, showStoreName, showProductName, showScientificName,
+    showDosageForm, showBatchNumber, showExpiryDate, showCurrencySymbol, showPriceLabel,
+    showBarcodeText, priceOption, layoutMode
+  ]);
 
   // Helper to nudge offset in millimeters
   const nudge = (dx: number, dy: number) => {
@@ -229,7 +282,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     setOffsetXmm(0);
     setOffsetYmm(0);
     setRotationDeg(0);
-    setPrintAlignX('left');
+    setPrintAlignX('right');
     setPrintAlignY('top');
   };
 
@@ -417,6 +470,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     }
     .print-carrier-page {
       width: ${effectivePageWidth}mm;
+      max-width: 100%;
       height: ${labelHeightMm}mm;
       box-sizing: border-box;
       display: flex;
@@ -429,10 +483,11 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         printAlignY === 'top' ? 'flex-start' :
         printAlignY === 'bottom' ? 'flex-end' : 'center'
       };
-      overflow: hidden;
+      overflow: visible;
       page-break-after: always;
       break-after: page;
       margin: 0;
+      ${printAlignX === 'right' ? 'margin-left: auto !important; margin-right: 0 !important;' : printAlignX === 'center' ? 'margin-left: auto !important; margin-right: auto !important;' : 'margin-left: 0 !important; margin-right: auto !important;'}
       padding: 0;
       position: relative;
       direction: ltr !important;
@@ -452,9 +507,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       overflow: hidden;
       margin: 0;
       position: relative;
-      left: ${offsetXmm}mm;
-      top: ${offsetYmm}mm;
-      transform: rotate(${rotationDeg}deg);
+      transform: translate(${offsetXmm}mm, ${offsetYmm}mm) rotate(${rotationDeg}deg);
       transform-origin: center center;
       direction: rtl;
     }
@@ -557,11 +610,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
           display: none !important;
         }
         #barcode-direct-print-root {
-          display: block !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: ${printAlignX === 'right' ? 'flex-end' : printAlignX === 'center' ? 'center' : 'flex-start'} !important;
+          width: 100% !important;
           position: absolute;
           left: 0;
           top: 0;
-          width: 100%;
           background: #ffffff;
         }
         ${getLabelStyles()}
@@ -623,7 +678,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
           <title>طباعة ملصق - ${activeProduct.nameAr || activeProduct.name}</title>
           <style>${getLabelStyles()}</style>
         </head>
-        <body>
+        <body style="margin: 0; padding: 0; display: flex; flex-direction: column; align-items: ${printAlignX === 'right' ? 'flex-end' : printAlignX === 'center' ? 'center' : 'flex-start'};">
           ${itemsArr.map(() => singleHTML).join('')}
           <script>
             window.onload = function() {
@@ -756,6 +811,417 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     <option value="">{isKu ? 'هیچ کاڵایەک نەدۆزرایەوە' : 'لا توجد مادة تطابق كلمة البحث'}</option>
                   )}
                 </select>
+              </div>
+            </div>
+
+            {/* 2. PRINTER ALIGNMENT & POSITIONING (يمين / يسار / وسط / فوق / تحت) - بارز في المقدمة */}
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-[#131E35] to-[#0D1527] border-2 border-amber-500/60 shadow-[0_0_25px_rgba(245,158,11,0.2)] space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                    <Move className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-amber-300 flex items-center gap-1.5">
+                      <span>{isKu ? 'شوێن و ئاراستەی دەرچوونی چاپ لەسەر طابيعە:' : isAr ? 'موضع ومحاذاة طباعة الباركود على الطابعة:' : 'Barcode Printer Position & Alignment:'}</span>
+                    </h4>
+                    <p className="text-[10.5px] text-slate-300">
+                      {isAr ? 'التحكم بمكان خروج الملصق (أقصى اليمين ➡️ / الوسط ⏺️ / أقصى اليسار ⬅️ / فوق وتحت ↕️)' : 'Control print exit location (Right / Center / Left / Up & Down)'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowXprinterGuide(prev => !prev)}
+                  className="px-2.5 py-1 rounded-xl bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold hover:bg-amber-900 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{isAr ? 'دليل طابعات Xprinter' : 'Xprinter Guide'}</span>
+                </button>
+              </div>
+
+              {/* Xprinter Troubleshooting Guide Accordion */}
+              {showXprinterGuide && (
+                <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-500/40 text-xs text-slate-200 space-y-2 animate-fadeIn">
+                  <div className="flex items-center gap-2 text-amber-300 font-black">
+                    <Info className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>{isAr ? 'إرشادات ضبط الرول والطباعة لطابعة Xprinter:' : 'Xprinter Setup Tips:'}</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300 leading-relaxed">
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'موضع الرول داخل الطابعة:' : 'Roll Position:'}</strong> {isAr ? 'إذا كان الرول على اليمين اختر زر «➡️ أقصى اليمين»، وإذا كان على اليسار اختر «⬅️ أقصى اليسار».' : 'Select Left or Right alignment based on your physical roll slot.'}
+                    </li>
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'مسارات الرول الخضراء:' : 'Roll Guides:'}</strong> {isAr ? 'اضبط الدليلين البلاستيكيين داخل الطابعة حول الرول لمنع انزلاقه أثناء السحب السريع.' : 'Snug plastic roll guides against the roll.'}
+                    </li>
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'معايرة حساس المسافات (Calibration):' : 'Calibration:'}</strong> {isAr ? 'أطفئ الطابعة ثم اضغط زر FEED أو PAUSE واستمر بالضغط وشغل الطابعة حتى تقف على فاصل الملصقات.' : 'Hold FEED/PAUSE while turning on to calibrate label gap.'}
+                    </li>
+                    <li>
+                      <strong className="text-amber-200">{isAr ? 'التحريك الدقيق بالملمتر:' : 'Nudge Offsets:'}</strong> {isAr ? 'استخدم أزرار الأسهم أدناه لتحريك الملصق بالملم حتى يقع الباركود في منتصف الورقة تماماً ويحفظ تلقائياً.' : 'Use the directional D-Pad below to fine-tune in millimeters.'}
+                    </li>
+                  </ul>
+                </div>
+              )}
+
+              {/* Quick Horizontal Alignment (يسار / وسط / يمين) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-white flex items-center gap-1.5">
+                    <Compass className="w-4 h-4 text-cyan-400" />
+                    <span>{isKu ? 'ئاراستەی ئاسۆیی (چەپ، ناوەڕاست، ڕاستی طابيعە):' : isAr ? 'جهة الخروج الأفقية على رول الطابعة (يمين / وسط / يسار):' : 'Horizontal Alignment on Printer Roll:'}</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-300">
+                    {printAlignX === 'right' ? (isAr ? '➡️ يمين الطابعة' : 'Right') : printAlignX === 'left' ? (isAr ? '⬅️ يسار الطابعة' : 'Left') : (isAr ? '⏺️ وسط' : 'Center')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Right Button (Requested by user: عند طباعة فقط يطبع على يمين طابعة) */}
+                  <button
+                    type="button"
+                    onClick={() => setPrintAlignX('right')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-black border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                      printAlignX === 'right'
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.6)] ring-2 ring-amber-300 scale-[1.02]'
+                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <AlignRight className="w-4 h-4" />
+                      <span className="text-sm font-black">{isAr ? '➡️ أقصى اليمين' : 'Right'}</span>
+                    </div>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                      printAlignX === 'right' ? 'bg-black/30 text-amber-950 font-black' : 'bg-amber-950/40 text-amber-300'
+                    }`}>
+                      {isAr ? 'يطبع على يمين الطابعة' : 'Print on Right'}
+                    </span>
+                  </button>
+
+                  {/* Center Button */}
+                  <button
+                    type="button"
+                    onClick={() => setPrintAlignX('center')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-black border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                      printAlignX === 'center'
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.6)] ring-2 ring-amber-300 scale-[1.02]'
+                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <AlignCenter className="w-4 h-4" />
+                      <span className="text-sm font-black">{isAr ? '⏺️ في المنتصف' : 'Center'}</span>
+                    </div>
+                    <span className="text-[9px] opacity-75">{isAr ? 'منتصف الرول' : 'Center Roll'}</span>
+                  </button>
+
+                  {/* Left Button */}
+                  <button
+                    type="button"
+                    onClick={() => setPrintAlignX('left')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-black border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                      printAlignX === 'left'
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.6)] ring-2 ring-amber-300 scale-[1.02]'
+                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <AlignLeft className="w-4 h-4" />
+                      <span className="text-sm font-black">{isAr ? '⬅️ أقصى اليسار' : 'Left'}</span>
+                    </div>
+                    <span className="text-[9px] opacity-75">{isAr ? 'يسار الرول' : 'Left Roll'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Vertical Alignment (فوق وتحت) & Rotation */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <span className="text-[11px] text-slate-300 block mb-1 font-bold">
+                    {isKu ? 'ئاراستەی ستوونی (سەرەوە، ناوەڕاست، خوارەوە):' : isAr ? 'المحاذاة الرأسية (فوق وتحت):' : 'Vertical Alignment (Up / Down):'}
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPrintAlignY('top')}
+                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        printAlignY === 'top'
+                          ? 'bg-cyan-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                      <span>{isAr ? 'أعلى (فوق)' : 'Top'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrintAlignY('center')}
+                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        printAlignY === 'center'
+                          ? 'bg-cyan-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <span>{isAr ? 'وسط' : 'Mid'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrintAlignY('bottom')}
+                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        printAlignY === 'bottom'
+                          ? 'bg-cyan-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                      <span>{isAr ? 'أسفل (تحت)' : 'Bottom'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-slate-300 block mb-1 font-bold">
+                    {isKu ? 'سوڕاندنی چاپ (پلە):' : isAr ? 'تدوير زاوية الطباعة:' : 'Rotation Angle:'}
+                  </span>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[0, 90, 180, 270].map((deg) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => setRotationDeg(deg as any)}
+                        className={`py-2 px-1 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+                          rotationDeg === deg
+                            ? 'bg-cyan-600 text-white border-cyan-400 font-black'
+                            : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Printer Carrier Roll Width Presets */}
+              <div className="p-2.5 rounded-xl bg-[#080D1A] border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-300 font-bold">
+                    {isKu ? 'پانی ڕوڵی طابيعە (Printer Roll Width):' : isAr ? 'عرض رول ورق الطابعة الحرارية:' : 'Printer Paper Roll Width:'}
+                  </span>
+                  <span className="text-xs font-mono font-black text-amber-400">
+                    {printerPaperWidthMm > 0 ? `${printerPaperWidthMm} mm` : `${labelWidthMm} mm (تلقائي)`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(80)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 80
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    80mm (Xprinter)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(58)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 58
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    58mm (كاشير صغير)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(100)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === 100
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    100mm (باركود عريض)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrinterPaperWidthMm(labelWidthMm)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      printerPaperWidthMm === labelWidthMm
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    {isAr ? 'مطابق للملصق' : 'Auto'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Directional Nudge D-Pad (Fine mm adjustment) */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-300 font-bold flex items-center gap-1.5">
+                    <Move className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{isAr ? 'التحريك الدقيق بالملمتر (فوق / تحت / يمين / يسار):' : 'Fine Nudge D-Pad (mm):'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetPosition}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-[10px] font-bold border border-slate-700 transition-all cursor-pointer"
+                  >
+                    {isAr ? '🔄 تصفير الإزاحة' : 'Reset 0,0'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  {/* Interactive D-Pad Cross */}
+                  <div className="flex flex-col items-center justify-center p-2.5 bg-[#080D1A] rounded-xl border border-slate-800/80 select-none">
+                    {/* Top Arrow */}
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, -5)}
+                        title="إزاحة للأعلى -5mm"
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-black font-mono transition-all cursor-pointer"
+                      >
+                        -5mm فوق
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, -1)}
+                        title="إزاحة للأعلى -1mm"
+                        className="p-2 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer shadow"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Left - Center - Right */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => nudge(-5, 0)}
+                        title="إزاحة لليسار -5mm"
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-black font-mono transition-all cursor-pointer"
+                      >
+                        -5 يسار
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(-1, 0)}
+                        title="إزاحة لليسار -1mm"
+                        className="p-2 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer shadow"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+
+                      <div className="w-14 h-12 rounded-xl bg-slate-950 border border-cyan-500/40 flex flex-col items-center justify-center text-[10px] font-mono font-black text-cyan-300 shadow-inner">
+                        <span>X: {offsetXmm > 0 ? `+${offsetXmm}` : offsetXmm}</span>
+                        <span>Y: {offsetYmm > 0 ? `+${offsetYmm}` : offsetYmm}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => nudge(1, 0)}
+                        title="إزاحة لليمين +1mm"
+                        className="p-2 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer shadow"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(5, 0)}
+                        title="إزاحة لليمين +5mm"
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-black font-mono transition-all cursor-pointer"
+                      >
+                        +5 يمين
+                      </button>
+                    </div>
+
+                    {/* Bottom Arrow */}
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, 1)}
+                        title="إزاحة للأسفل +1mm"
+                        className="p-2 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer shadow"
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudge(0, 5)}
+                        title="إزاحة للأسفل +5mm"
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-black font-mono transition-all cursor-pointer"
+                      >
+                        +5mm تحت
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Direct Numeric Range Sliders */}
+                  <div className="space-y-2.5 text-xs">
+                    <div>
+                      <div className="flex justify-between text-[10.5px] text-slate-300 mb-1">
+                        <span className="font-bold">{isAr ? 'الإزاحة الأفقية X (يسار / يمين):' : 'Horizontal X (Left / Right):'}</span>
+                        <span className="font-mono text-cyan-400 font-bold">{offsetXmm} mm</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={-50}
+                          max={50}
+                          step={1}
+                          value={offsetXmm}
+                          onChange={(e) => setOffsetXmm(Number(e.target.value))}
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min={-50}
+                          max={50}
+                          value={offsetXmm}
+                          onChange={(e) => setOffsetXmm(Number(e.target.value))}
+                          className="w-16 bg-[#080D1A] text-xs font-mono font-bold text-center text-white py-1 rounded-lg border border-slate-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[10.5px] text-slate-300 mb-1">
+                        <span className="font-bold">{isAr ? 'الإزاحة الرأسية Y (فوق / تحت):' : 'Vertical Y (Up / Down):'}</span>
+                        <span className="font-mono text-cyan-400 font-bold">{offsetYmm} mm</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={-40}
+                          max={40}
+                          step={1}
+                          value={offsetYmm}
+                          onChange={(e) => setOffsetYmm(Number(e.target.value))}
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min={-40}
+                          max={40}
+                          value={offsetYmm}
+                          onChange={(e) => setOffsetYmm(Number(e.target.value))}
+                          className="w-16 bg-[#080D1A] text-xs font-mono font-bold text-center text-white py-1 rounded-lg border border-slate-700"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -999,380 +1465,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               </div>
             </div>
 
-            {/* 4. PRINTER ALIGNMENT & POSITIONING (Xprinter / Thermal Margins) */}
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-[#10192D] border-2 border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                  <Move className="w-4 h-4 text-amber-400" />
-                  <span>{isKu ? 'شوێن و ئاراستەی چاپکردن (تایبەت بە Xprinter):' : isAr ? 'موضع ومحاذاة الطباعة (يسار / وسط / يمين / أعلى / أسفل):' : 'Printer Alignment & Margins (Xprinter):'}</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowXprinterGuide(prev => !prev)}
-                  className="px-2 py-0.5 rounded-lg bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold hover:bg-amber-900 transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  <HelpCircle className="w-3.5 h-3.5" />
-                  <span>{isAr ? 'دليل ضبط طابعة Xprinter' : 'Xprinter Guide'}</span>
-                </button>
-              </div>
-
-              {/* Xprinter Troubleshooting Guide Accordion */}
-              {showXprinterGuide && (
-                <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-500/40 text-xs text-slate-200 space-y-2 animate-fadeIn">
-                  <div className="flex items-center gap-2 text-amber-300 font-black">
-                    <Info className="w-4 h-4 shrink-0 text-amber-400" />
-                    <span>{isAr ? 'إرشادات ضبط الرول والطباعة لطابعة Xprinter:' : 'Xprinter Setup Tips:'}</span>
-                  </div>
-                  <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300 leading-relaxed">
-                    <li>
-                      <strong className="text-amber-200">{isAr ? 'موضع الرول:' : 'Roll Position:'}</strong> {isAr ? 'كما في صورتك، الرول موضوع على جهة اليسار. اختر زر «⬅️ أقصى اليسار» ليتم إرسال الطباعة مباشرة فوق الستيكر.' : 'Your roll is installed on the left side. Select "Left" alignment.'}
-                    </li>
-                    <li>
-                      <strong className="text-amber-200">{isAr ? 'مسارات الرول الخضراء داخل الطابعة:' : 'Roll Guides:'}</strong> {isAr ? 'تأكد من قفل الدليلين البلاستيكيين بالداخل حول الرول لمنعه من الانزلاق لليمين أو اليسار أثناء السحب.' : 'Snug the plastic roll guides against the roll to prevent slipping.'}
-                    </li>
-                    <li>
-                      <strong className="text-amber-200">{isAr ? 'معايرة حساس المسافات (Calibration):' : 'Auto Calibration:'}</strong> {isAr ? 'أطفئ الطابعة ثم اضغط زر FEED أو PAUSE واستمر بالضغط وشغل الطابعة حتى تسحب ملصقاً واحداً وتقف بدقة على حافة الفاصل.' : 'Turn off printer, hold FEED/PAUSE while turning on to calibrate label gap.'}
-                    </li>
-                    <li>
-                      <strong className="text-amber-200">{isAr ? 'الإزاحة الدقيقة (Nudge):' : 'Nudge Offsets:'}</strong> {isAr ? 'استخدم أزرار الأسهم (⬅️ ➡️ ⬆️ ⬇️) أدناه لتحريك الملصق بالملم حتى يقع الباركود في منتصف الورقة تماماً ثم اضغط «حفظ كإعداد افتراضي».' : 'Use the directional D-Pad below to fine-tune in millimeters.'}
-                    </li>
-                  </ul>
-                </div>
-              )}
-
-              {/* Quick Horizontal Presets */}
-              <div>
-                <span className="text-[10px] text-slate-400 block mb-1 font-bold">
-                  {isKu ? 'ئاراستەی ئاسۆیی (چەپ، ناوەڕاست، ڕاست):' : isAr ? 'المحاذاة الأفقية السريعة (يسار / وسط / يمين):' : 'Horizontal Alignment:'}
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPrintAlignX('left')}
-                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      printAlignX === 'left'
-                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/50 font-black'
-                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-slate-500'
-                    }`}
-                  >
-                    <AlignLeft className="w-4 h-4" />
-                    <span>{isAr ? '⬅️ أقصى اليسار' : 'Left'}</span>
-                    <span className="text-[9px] px-1 rounded bg-amber-950/40 text-amber-200 hidden sm:inline">{isAr ? 'لطابعتك' : 'Recommended'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPrintAlignX('center')}
-                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      printAlignX === 'center'
-                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/50 font-black'
-                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-slate-500'
-                    }`}
-                  >
-                    <AlignCenter className="w-4 h-4" />
-                    <span>{isAr ? '⏺️ في الوسط' : 'Center'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPrintAlignX('right')}
-                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      printAlignX === 'right'
-                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/50 font-black'
-                        : 'bg-[#0B1120] text-slate-300 border-slate-700 hover:border-slate-500'
-                    }`}
-                  >
-                    <AlignRight className="w-4 h-4" />
-                    <span>{isAr ? '➡️ أقصى اليمين' : 'Right'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Vertical Alignment & Rotation */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <span className="text-[10px] text-slate-400 block mb-1 font-bold">
-                    {isKu ? 'ئاراستەی ستوونی (سەرەوە، ناوەڕاست، خوارەوە):' : isAr ? 'المحاذاة الرأسية (أعلى / وسط / أسفل):' : 'Vertical Alignment:'}
-                  </span>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setPrintAlignY('top')}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                        printAlignY === 'top'
-                          ? 'bg-cyan-600 text-white border-cyan-400'
-                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {isAr ? '⬆️ أعلى' : 'Top'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPrintAlignY('center')}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                        printAlignY === 'center'
-                          ? 'bg-cyan-600 text-white border-cyan-400'
-                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {isAr ? '⏺️ وسط' : 'Mid'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPrintAlignY('bottom')}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                        printAlignY === 'bottom'
-                          ? 'bg-cyan-600 text-white border-cyan-400'
-                          : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {isAr ? '⬇️ أسفل' : 'Bottom'}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-400 block mb-1 font-bold">
-                    {isKu ? 'سوڕاندنی چاپ (پلە):' : isAr ? 'تدوير زاوية الطباعة:' : 'Rotation:'}
-                  </span>
-                  <div className="grid grid-cols-4 gap-1">
-                    {[0, 90, 180, 270].map((deg) => (
-                      <button
-                        key={deg}
-                        type="button"
-                        onClick={() => setRotationDeg(deg as any)}
-                        className={`py-1.5 px-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
-                          rotationDeg === deg
-                            ? 'bg-cyan-600 text-white border-cyan-400'
-                            : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        {deg}°
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Printer Carrier Width (80mm / 100mm / Match Label) */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-slate-400 font-bold">
-                    {isKu ? 'پانی ڕووبەری چاپکەر (Printhead Width):' : isAr ? 'عرض رأس / حامل ورق الطابعة (مهم جداً لطابعات 80mm و 100mm):' : 'Printer Bed Width:'}
-                  </span>
-                  <span className="text-[10px] font-mono text-amber-400 font-bold">
-                    {printerPaperWidthMm === 0 ? `${labelWidthMm} mm (نفس الملصق)` : `${printerPaperWidthMm} mm`}
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setPrinterPaperWidthMm(80)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                      printerPaperWidthMm === 80
-                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
-                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                    }`}
-                  >
-                    80 mm (Xprinter)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrinterPaperWidthMm(100)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                      printerPaperWidthMm === 100
-                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
-                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                    }`}
-                  >
-                    100 mm (4-inch)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrinterPaperWidthMm(58)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                      printerPaperWidthMm === 58
-                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
-                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                    }`}
-                  >
-                    58 mm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrinterPaperWidthMm(0)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                      printerPaperWidthMm === 0
-                        ? 'bg-amber-600 text-white border-amber-400 shadow-md font-black'
-                        : 'bg-[#0B1120] text-slate-400 border-slate-700 hover:text-white'
-                    }`}
-                  >
-                    {isAr ? 'مطابق للملصق' : 'Auto'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Millimetric Directional D-Pad & Precise Offsets */}
-              <div className="p-3 rounded-xl bg-[#0B1120] border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-300 flex items-center gap-1">
-                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>{isAr ? 'لوحة التوجيه الملمترية (إزاحة بالملم):' : 'Directional Nudge D-Pad (mm):'}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={resetPosition}
-                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-[10px] font-bold border border-slate-700 transition-all cursor-pointer"
-                  >
-                    {isAr ? '🔄 تصفير الإزاحة' : 'Reset Offsets'}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                  {/* Interactive D-Pad Cross */}
-                  <div className="flex flex-col items-center justify-center p-2 bg-[#080D1A] rounded-xl border border-slate-800/80 select-none">
-                    {/* Top Arrow */}
-                    <div className="flex items-center gap-1 mb-1">
-                      <button
-                        type="button"
-                        onClick={() => nudge(0, -5)}
-                        title="إزاحة للأعلى -5mm"
-                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
-                      >
-                        -5mm
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => nudge(0, -1)}
-                        title="إزاحة للأعلى -1mm"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
-                      >
-                        <ArrowUp className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {/* Left - Center - Right */}
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => nudge(-5, 0)}
-                        title="إزاحة لليسار -5mm"
-                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
-                      >
-                        -5
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => nudge(-1, 0)}
-                        title="إزاحة لليسار -1mm"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                      </button>
-
-                      <div className="w-10 h-10 rounded-lg bg-slate-900 border border-cyan-500/30 flex flex-col items-center justify-center text-[9px] font-mono font-bold text-cyan-300">
-                        <span>{offsetXmm > 0 ? `+${offsetXmm}` : offsetXmm}</span>
-                        <span>{offsetYmm > 0 ? `+${offsetYmm}` : offsetYmm}</span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => nudge(1, 0)}
-                        title="إزاحة لليمين +1mm"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
-                      >
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => nudge(5, 0)}
-                        title="إزاحة لليمين +5mm"
-                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
-                      >
-                        +5
-                      </button>
-                    </div>
-
-                    {/* Bottom Arrow */}
-                    <div className="flex items-center gap-1 mt-1">
-                      <button
-                        type="button"
-                        onClick={() => nudge(0, 1)}
-                        title="إزاحة للأسفل +1mm"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white transition-all active:scale-90 cursor-pointer"
-                      >
-                        <ArrowDown className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => nudge(0, 5)}
-                        title="إزاحة للأسفل +5mm"
-                        className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-bold font-mono transition-all cursor-pointer"
-                      >
-                        +5mm
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Direct Numeric Inputs */}
-                  <div className="space-y-2 text-xs">
-                    <div>
-                      <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
-                        <span>{isAr ? 'إزاحة أفقية X (ملم):' : 'Horizontal Offset X (mm):'}</span>
-                        <span className="font-mono text-cyan-400 font-bold">{offsetXmm} mm</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={-50}
-                          max={50}
-                          step={1}
-                          value={offsetXmm}
-                          onChange={(e) => setOffsetXmm(Number(e.target.value))}
-                          className="w-full accent-amber-400 cursor-pointer"
-                        />
-                        <input
-                          type="number"
-                          min={-50}
-                          max={50}
-                          value={offsetXmm}
-                          onChange={(e) => setOffsetXmm(Number(e.target.value))}
-                          className="w-14 bg-[#080D1A] text-xs font-mono font-bold text-center text-white py-1 rounded-lg border border-slate-700"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
-                        <span>{isAr ? 'إزاحة رأسية Y (ملم):' : 'Vertical Offset Y (mm):'}</span>
-                        <span className="font-mono text-cyan-400 font-bold">{offsetYmm} mm</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={-30}
-                          max={30}
-                          step={1}
-                          value={offsetYmm}
-                          onChange={(e) => setOffsetYmm(Number(e.target.value))}
-                          className="w-full accent-amber-400 cursor-pointer"
-                        />
-                        <input
-                          type="number"
-                          min={-30}
-                          max={30}
-                          value={offsetYmm}
-                          onChange={(e) => setOffsetYmm(Number(e.target.value))}
-                          className="w-14 bg-[#080D1A] text-xs font-mono font-bold text-center text-white py-1 rounded-lg border border-slate-700"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 4. Manual Font Sizes & Barcode Height */}
+            {/* 5. Manual Font Sizes & Barcode Height */}
+            
             <div className="p-3.5 rounded-2xl bg-[#10192D] border border-cyan-500/20 space-y-3">
               <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                 <Type className="w-4 h-4 text-cyan-400" />
@@ -1629,13 +1723,35 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 
               {/* The Live Rendered Label Card inside simulated printer bed */}
               <div className="w-full flex flex-col items-center">
-                <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between w-full px-1">
-                  <span>{isAr ? 'محاكاة موضع الورقة في رأس الطابعة:' : 'Simulated Printer Output:'}</span>
-                  <span className="font-mono text-amber-400 font-bold">
-                    {printAlignX === 'left' ? (isAr ? '⬅️ يسار' : 'Left') : printAlignX === 'right' ? (isAr ? '➡️ يمين' : 'Right') : (isAr ? '⏺️ وسط' : 'Center')}
-                    {offsetXmm !== 0 || offsetYmm !== 0 ? ` (X:${offsetXmm > 0 ? `+${offsetXmm}` : offsetXmm} Y:${offsetYmm > 0 ? `+${offsetYmm}` : offsetYmm})` : ''}
-                    {rotationDeg !== 0 ? ` [${rotationDeg}°]` : ''}
-                  </span>
+                {/* Simulated Thermal Printer Head Frame */}
+                <div className="w-full bg-gradient-to-b from-slate-800 to-slate-900 rounded-t-xl p-2.5 border border-slate-700 border-b-2 border-b-amber-500/50 flex items-center justify-between shadow-md">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.9)]" />
+                    <span className="text-[11px] font-mono font-black text-slate-200 tracking-wider">
+                      {printerPaperWidthMm > 0 ? `XPRINTER THERMAL (${printerPaperWidthMm}mm)` : 'THERMAL PRINTER'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                      printAlignX === 'right'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400/50'
+                        : printAlignX === 'left'
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-400/50'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
+                    }`}>
+                      {printAlignX === 'right' ? (isAr ? '➡️ يمين الطابعة' : 'Right') : printAlignX === 'left' ? (isAr ? '⬅️ يسار الطابعة' : 'Left') : (isAr ? '⏺️ في الوسط' : 'Center')}
+                    </span>
+                    <span className="text-[9.5px] font-mono text-cyan-400 font-bold">
+                      {printAlignY === 'top' ? (isAr ? '⬆️ أعلى' : 'Top') : printAlignY === 'bottom' ? (isAr ? '⬇️ أسفل' : 'Bottom') : (isAr ? '⏺️ وسط' : 'Mid')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Simulated Printer Paper Ejection Slot */}
+                <div className="w-full h-2 bg-black border-x border-slate-700 shadow-inner flex items-center justify-between px-3">
+                  <span className="text-[8px] font-mono text-slate-500">⬅️ يسار (0mm)</span>
+                  <div className="h-0.5 w-16 bg-slate-700 rounded-full" />
+                  <span className="text-[8px] font-mono text-slate-500">يمين ({printerPaperWidthMm || labelWidthMm}mm) ➡️</span>
                 </div>
 
                 <div
@@ -1650,11 +1766,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                     justifyContent: printAlignX === 'left' ? 'flex-start' : printAlignX === 'right' ? 'flex-end' : 'center',
                     alignItems: printAlignY === 'top' ? 'flex-start' : printAlignY === 'bottom' ? 'flex-end' : 'center',
                     padding: '12px',
-                    borderRadius: '16px',
+                    borderBottomLeftRadius: '16px',
+                    borderBottomRightRadius: '16px',
                     overflow: 'hidden',
                     position: 'relative',
                     direction: 'ltr',
-                    border: '1px dashed rgba(245, 158, 11, 0.3)',
+                    border: '1px dashed rgba(245, 158, 11, 0.4)',
+                    borderTop: 'none',
                   }}
                   className="shadow-inner"
                 >

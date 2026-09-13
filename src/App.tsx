@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck, CheckCircle2, HardDrive, Smartphone } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
@@ -321,8 +321,31 @@ export function App() {
 
   const isRTL = settings.language === 'ar' || settings.language === 'ku';
   const isAr = settings.language === 'ar';
-  const lowStockCount = products.filter(p => p.stock <= p.minStock).length;
-  const unreadNotifsCount = notifications.filter(n => !n.read).length;
+  
+  // Memoized counters for high-volume inventory performance
+  const lowStockCount = useMemo(() => {
+    let count = 0;
+    const len = products.length;
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      if (p && (p.stock ?? 0) <= (p.minStock ?? 5)) count++;
+    }
+    return count;
+  }, [products]);
+
+  const inventoryCount = useMemo(() => {
+    let count = 0;
+    const len = products.length;
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      if (p && (p.stock ?? 0) > 0) count++;
+    }
+    return count;
+  }, [products]);
+
+  const unreadNotifsCount = useMemo(() => {
+    return notifications.filter(n => !n.read).length;
+  }, [notifications]);
 
   // Apply theme class to document element and body
   useEffect(() => {
@@ -1110,6 +1133,103 @@ export function App() {
     );
   }
 
+  // Keep-Alive state for instant 0ms switching between POS and Warehouse/Products
+  const isPosActive = activeTopTab === 'overview' && activeTab === 'pos';
+  const isProductsActive = activeTopTab === 'overview' && activeTab === 'products';
+
+  const [hasVisitedPOS, setHasVisitedPOS] = useState<boolean>(isPosActive);
+  const [hasVisitedProducts, setHasVisitedProducts] = useState<boolean>(isProductsActive);
+
+  useEffect(() => {
+    if (isPosActive) setHasVisitedPOS(true);
+    if (isProductsActive) setHasVisitedProducts(true);
+  }, [isPosActive, isProductsActive]);
+
+  const renderPOSContent = () => {
+    const isAnyModalOpen = Boolean(
+      isCompletedReceiptsOpen ||
+      isSalesReturnOpen ||
+      isCashDrawerOpen ||
+      selectedReceipt ||
+      isProductModalOpen ||
+      showPOSInventory ||
+      isShiftReportOpen ||
+      isMobileSyncOpen ||
+      isBarcodePrintOpen ||
+      isRegisterModalOpen ||
+      isDesktopAppModalOpen ||
+      isCSharpModalOpen ||
+      isAccountsModalOpen
+    );
+    const handleExitPOS = () => {
+      const nextTab = getExitTabForUser(currentUser);
+      if (nextTab === 'pos') {
+        alert(
+          isRTL
+            ? 'حساب الكاشير مقتصر على واجهة البيع (POS) فقط بناءً على صلاحيات الإدارة.'
+            : 'Your cashier account is restricted to the POS view only based on manager permissions.'
+        );
+      } else {
+        setActiveTab(nextTab);
+      }
+    };
+
+    return (
+      <POSTab
+        products={products}
+        setProducts={setProducts}
+        customers={customers}
+        setCustomers={setCustomers}
+        settings={settings}
+        setSettings={setSettings}
+        onSaleCompleted={handleSaleCompleted}
+        showInventory={showPOSInventory}
+        setShowInventory={setShowPOSInventory}
+        showYellowLineModal={isYellowLineModalOpen}
+        setShowYellowLineModal={setIsYellowLineModalOpen}
+        isAnyModalOpen={isAnyModalOpen}
+        salesHistory={salesHistory}
+        onViewReceipt={(sale) => setSelectedReceipt(sale)}
+        onOpenMobileSync={() => setIsMobileSyncOpen(true)}
+        onExitPOS={handleExitPOS}
+        onBackToDashboard={handleExitPOS}
+        onOpenPrintBarcode={(prod) => {
+          setProductForBarcodePrint(prod || null);
+          setIsBarcodePrintOpen(true);
+        }}
+        onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
+        onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
+        onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
+        currentUser={currentUser}
+        isActive={isPosActive}
+      />
+    );
+  };
+
+  const renderProductsContent = () => {
+    return (
+      <ProductsTab
+        products={products}
+        setProducts={setProducts}
+        settings={settings}
+        currentUser={currentUser}
+        onOpenAddModal={handleOpenAddProduct}
+        onEditProduct={handleEditProduct}
+        onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
+        onOpenPrintBarcode={(prod) => {
+          setProductForBarcodePrint(prod || null);
+          setIsBarcodePrintOpen(true);
+        }}
+        onOpenInventoryAudit={() => setActiveTab('inventoryAudit')}
+        onOpenDamagedItems={() => setActiveTab('damagedItems')}
+        onOpenInvoices={() => setActiveTab('invoices')}
+        onNavigateToReports={() => setActiveTopTab('reports')}
+        onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+        onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
+      />
+    );
+  };
+
   // Determine view based on activeTopTab vs activeTab
   const renderMainContent = () => {
     // If top tab is switched to analytics, reports, or notifications, prioritize those
@@ -1217,88 +1337,11 @@ export function App() {
         );
       }
 
-      case 'pos': {
-        const isAnyModalOpen = Boolean(
-          isCompletedReceiptsOpen ||
-          isSalesReturnOpen ||
-          isCashDrawerOpen ||
-          selectedReceipt ||
-          isProductModalOpen ||
-          showPOSInventory ||
-          isShiftReportOpen ||
-          isMobileSyncOpen ||
-          isBarcodePrintOpen ||
-          isRegisterModalOpen ||
-          isDesktopAppModalOpen ||
-          isCSharpModalOpen ||
-          isAccountsModalOpen
-        );
-        const handleExitPOS = () => {
-          const nextTab = getExitTabForUser(currentUser);
-          if (nextTab === 'pos') {
-            alert(
-              isRTL
-                ? 'حساب الكاشير مقتصر على واجهة البيع (POS) فقط بناءً على صلاحيات الإدارة.'
-                : 'Your cashier account is restricted to the POS view only based on manager permissions.'
-            );
-          } else {
-            setActiveTab(nextTab);
-          }
-        };
-
-        return (
-          <POSTab
-            products={products}
-            setProducts={setProducts}
-            customers={customers}
-            setCustomers={setCustomers}
-            settings={settings}
-            setSettings={setSettings}
-            onSaleCompleted={handleSaleCompleted}
-            showInventory={showPOSInventory}
-            setShowInventory={setShowPOSInventory}
-            showYellowLineModal={isYellowLineModalOpen}
-            setShowYellowLineModal={setIsYellowLineModalOpen}
-            isAnyModalOpen={isAnyModalOpen}
-            salesHistory={salesHistory}
-            onViewReceipt={(sale) => setSelectedReceipt(sale)}
-            onOpenMobileSync={() => setIsMobileSyncOpen(true)}
-            onExitPOS={handleExitPOS}
-            onBackToDashboard={handleExitPOS}
-            onOpenPrintBarcode={(prod) => {
-              setProductForBarcodePrint(prod || null);
-              setIsBarcodePrintOpen(true);
-            }}
-            onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
-            onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
-            onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
-            currentUser={currentUser}
-          />
-        );
-      }
+      case 'pos':
+        return null;
 
       case 'products':
-        return (
-          <ProductsTab
-            products={products}
-            setProducts={setProducts}
-            settings={settings}
-            currentUser={currentUser}
-            onOpenAddModal={handleOpenAddProduct}
-            onEditProduct={handleEditProduct}
-            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
-            onOpenPrintBarcode={(prod) => {
-              setProductForBarcodePrint(prod || null);
-              setIsBarcodePrintOpen(true);
-            }}
-            onOpenInventoryAudit={() => setActiveTab('inventoryAudit')}
-            onOpenDamagedItems={() => setActiveTab('damagedItems')}
-            onOpenInvoices={() => setActiveTab('invoices')}
-            onNavigateToReports={() => setActiveTopTab('reports')}
-            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
-            onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
-          />
-        );
+        return null;
 
       case 'inventoryAudit':
         return (
@@ -1622,7 +1665,7 @@ export function App() {
           }
         }}
         onShowInventory={() => setShowPOSInventory(true)}
-        inventoryCount={products.filter(p => p.stock > 0).length}
+        inventoryCount={inventoryCount}
         onOpenCompletedReceipts={() => setIsCompletedReceiptsOpen(true)}
         onOpenSalesReturn={() => {
           setSalesReturnPreInvoiceNo(null);
@@ -1693,13 +1736,28 @@ export function App() {
 
         {/* Content Area */}
         <main className={`flex-1 w-full min-h-0 ${
-          activeTab === 'pos' 
+          isPosActive 
             ? 'max-w-full overflow-hidden h-full p-1.5 sm:p-2.5 lg:p-3' 
-            : activeTab === 'products' || activeTab === 'purchases' || activeTab === 'invoices' || activeTab === 'accountsHub' || activeTab === 'cashierAccounts' || isReportsFullscreen 
+            : isProductsActive || activeTab === 'purchases' || activeTab === 'invoices' || activeTab === 'accountsHub' || activeTab === 'cashierAccounts' || isReportsFullscreen 
             ? 'max-w-full overflow-y-auto p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6' 
             : 'max-w-7xl mx-auto overflow-y-auto p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6'
         }`}>
-          {renderMainContent()}
+          {/* Keep-Alive POS Tab: 0ms switch without remounting or re-indexing */}
+          {hasVisitedPOS && (
+            <div className={isPosActive ? 'h-full w-full' : 'hidden'}>
+              {renderPOSContent()}
+            </div>
+          )}
+
+          {/* Keep-Alive Products / Warehouse Tab: 0ms switch without remounting */}
+          {hasVisitedProducts && (
+            <div className={isProductsActive ? 'w-full' : 'hidden'}>
+              {renderProductsContent()}
+            </div>
+          )}
+
+          {/* Other Views */}
+          {!isPosActive && !isProductsActive && renderMainContent()}
         </main>
 
       </div>

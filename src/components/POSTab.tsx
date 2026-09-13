@@ -106,6 +106,7 @@ interface POSTabProps {
   onOpenDelegateReturns?: () => void;
   onOpenCustomerDisplay?: () => void;
   currentUser?: UserAccount | null;
+  isActive?: boolean;
 }
 
 const CATEGORIES: { labelEn: string; labelAr: string; icon: string }[] = [
@@ -223,6 +224,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   onOpenDelegateReturns,
   onOpenCustomerDisplay: externalOnOpenCustomerDisplay,
   currentUser,
+  isActive = true,
 }) => {
   const isLight = settings.themeMode === 'light';
   const lang = settings.language;
@@ -552,6 +554,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   const [showKioskModal, setShowKioskModal] = useState(false);
 
   const isBarcodeDisabled = Boolean(
+    !isActive ||
     isAnyModalOpen ||
     showInventory ||
     isBarcodePaused ||
@@ -562,17 +565,26 @@ export const POSTab: React.FC<POSTabProps> = ({
   );
 
   const focusBarcodeIfEnabled = (delay = 50) => {
+    if (!isActive) return;
     setTimeout(() => {
-      if (!isBarcodeDisabled && !isBarcodePaused) {
+      if (!isBarcodeDisabled && !isBarcodePaused && isActive) {
         barcodeRef.current?.focus();
       }
     }, delay);
   };
 
+  // Auto-focus barcode scanner input immediately when POS becomes active
+  useEffect(() => {
+    if (isActive) {
+      focusBarcodeIfEnabled(100);
+    }
+  }, [isActive]);
+
   // KEYBOARD SHORTCUTS LISTENER FOR POS INTERFACE
   const posShortcuts = settings.posShortcuts || defaultPOSShortcuts;
 
   useEffect(() => {
+    if (!isActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Helper function to match shortcut key combos (e.g. 'F1', 'F2', 'Alt+N', 'Ctrl+Space', etc.)
       const matchShortcut = (shortcutStr: string | undefined) => {
@@ -692,7 +704,7 @@ export const POSTab: React.FC<POSTabProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, windows, activeWindowIndex, activeWindow.id, posShortcuts, isBarcodeDisabled, lastAddedId]);
+  }, [cart, windows, activeWindowIndex, activeWindow.id, posShortcuts, isBarcodeDisabled, lastAddedId, isActive]);
 
   useEffect(() => {
     // If any modal is open or barcode is paused (e.g. typing discount or interacting with UI), blur and stop focus
@@ -739,6 +751,7 @@ export const POSTab: React.FC<POSTabProps> = ({
   // Hardware Barcode Scanner Global Listener
   // Captures rapid keystrokes from USB/Bluetooth handheld barcode scanners even if focus is elsewhere
   useEffect(() => {
+    if (!isActive) return;
     let scanBuffer = '';
     let lastKeypressTime = 0;
 
@@ -777,7 +790,7 @@ export const POSTab: React.FC<POSTabProps> = ({
 
     window.addEventListener('keydown', handleHardwareScan, true);
     return () => window.removeEventListener('keydown', handleHardwareScan, true);
-  }, [isBarcodeDisabled, products, barcodeMap, isReturnMode]);
+  }, [isBarcodeDisabled, products, barcodeMap, isReturnMode, isActive]);
 
   // Helper to calculate exact price depending on unit type (باكت / شيت)
   const getItemUnitPrice = (item: CartItem): number => {
@@ -1578,6 +1591,9 @@ export const POSTab: React.FC<POSTabProps> = ({
 
   const filteredProducts = useMemo(() => {
     const searchLower = deferredSearch.trim().toLowerCase();
+    if (!searchLower && selectedCat === 'ALL') {
+      return products;
+    }
     const isDigitsOnly = /^\d+$/.test(searchLower);
 
     const result: Product[] = [];
@@ -1598,7 +1614,7 @@ export const POSTab: React.FC<POSTabProps> = ({
       result.push(item.product);
     }
     return result;
-  }, [posIndexedProducts, deferredSearch, selectedCat]);
+  }, [posIndexedProducts, products, deferredSearch, selectedCat]);
 
   const totalInventoryPages = Math.max(1, Math.ceil(filteredProducts.length / INVENTORY_PAGE_SIZE));
   const safeInventoryPage = Math.min(Math.max(1, inventoryPage), totalInventoryPages);

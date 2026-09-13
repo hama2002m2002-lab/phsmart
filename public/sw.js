@@ -1,8 +1,8 @@
 // 7amo.pos Offline Service Worker
-// Enables 100% offline standalone POS operations without active internet connection
+// Enables 100% offline standalone POS operations with instantaneous offline startup
 
-const CACHE_NAME = '7amo-pos-cache-v3';
-const DATA_CACHE_NAME = '7amo-pos-data-v3';
+const CACHE_NAME = '7amo-pos-cache-v4';
+const DATA_CACHE_NAME = '7amo-pos-data-v4';
 
 // Core assets to pre-cache immediately on install
 const PRECACHE_ASSETS = [
@@ -23,7 +23,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate Event: clean up legacy caches and claim all clients
+// Activate Event: clean up legacy caches and claim all clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -49,24 +49,52 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 1. Navigation requests (HTML page loads or reloads)
+  // 1. Navigation requests (HTML page loads, reloads, and desktop app launches)
+  // Cache-First with background revalidation: Opens INSTANTLY (0ms) offline without waiting for network timeouts
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((networkResponse) => {
+      (async () => {
+        // Look up cached shell immediately
+        const cachedShell = (await caches.match('/index.html')) || (await caches.match('/'));
+        
+        // If we have the cached index shell, serve it immediately!
+        if (cachedShell) {
+          // In the background, if online, update the cache quietly
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+            fetch(request)
+              .then((networkResponse) => {
+                if (networkResponse && networkResponse.status === 200) {
+                  const clone = networkResponse.clone();
+                  caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
+                }
+              })
+              .catch(() => {});
+          }
+          return cachedShell;
+        }
+
+        // If not cached yet (first visit), attempt fetch with an aggressive 1.2s timeout to prevent offline hang
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1200);
+          const networkResponse = await fetch(request, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
           if (networkResponse && networkResponse.status === 200) {
             const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            const cache = await caches.open(CACHE_NAME);
+            cache.put('/index.html', clone);
           }
           return networkResponse;
-        })
-        .catch(() => {
-          // If offline or network unavailable, serve the cached index.html SPA shell
-          return caches.match('/index.html').then((cachedIndex) => {
-            if (cachedIndex) return cachedIndex;
-            return caches.match('/');
+        } catch (err) {
+          const fallback = (await caches.match('/index.html')) || (await caches.match('/'));
+          if (fallback) return fallback;
+          return new Response('7amo.pos Offline Ready', {
+            status: 200,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' }
           });
-        })
+        }
+      })()
     );
     return;
   }
@@ -93,10 +121,26 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 3. Static assets (JS chunks, CSS, fonts, SVG, images)
-  // Stale-While-Revalidate: Return cached version immediately for speed, update in background
+  // Cache-First with background revalidation: returns cached chunk in <1ms
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request)
+      if (cachedResponse) {
+        // Background cache update for freshest assets when online
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          fetch(request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                const clone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+              }
+            })
+            .catch(() => {});
+        }
+        return cachedResponse;
+      }
+
+      // If not in cache, fetch and store
+      return fetch(request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const clone = networkResponse.clone();
@@ -105,11 +149,8 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          // If network fetch fails, we rely completely on cachedResponse
-          return cachedResponse;
+          return new Response('', { status: 408, statusText: 'Offline Asset' });
         });
-
-      return cachedResponse || fetchPromise;
     })
   );
 });
