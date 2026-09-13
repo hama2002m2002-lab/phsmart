@@ -297,6 +297,18 @@ export function App() {
   const [aiDraftImportData, setAiDraftImportData] = useState<any | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
+  // Keep-Alive state for instant 0ms switching between POS and Warehouse/Products
+  const isPosActive = activeTopTab === 'overview' && activeTab === 'pos';
+  const isProductsActive = activeTopTab === 'overview' && activeTab === 'products';
+
+  const [hasVisitedPOS, setHasVisitedPOS] = useState<boolean>(isPosActive);
+  const [hasVisitedProducts, setHasVisitedProducts] = useState<boolean>(isProductsActive);
+
+  useEffect(() => {
+    if (isPosActive) setHasVisitedPOS(true);
+    if (isProductsActive) setHasVisitedProducts(true);
+  }, [isPosActive, isProductsActive]);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
@@ -1132,18 +1144,6 @@ export function App() {
       </>
     );
   }
-
-  // Keep-Alive state for instant 0ms switching between POS and Warehouse/Products
-  const isPosActive = activeTopTab === 'overview' && activeTab === 'pos';
-  const isProductsActive = activeTopTab === 'overview' && activeTab === 'products';
-
-  const [hasVisitedPOS, setHasVisitedPOS] = useState<boolean>(isPosActive);
-  const [hasVisitedProducts, setHasVisitedProducts] = useState<boolean>(isProductsActive);
-
-  useEffect(() => {
-    if (isPosActive) setHasVisitedPOS(true);
-    if (isProductsActive) setHasVisitedProducts(true);
-  }, [isPosActive, isProductsActive]);
 
   const renderPOSContent = () => {
     const isAnyModalOpen = Boolean(

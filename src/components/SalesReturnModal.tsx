@@ -77,8 +77,6 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   onOpenInventory,
   onViewReceipt
 }) => {
-  if (!isOpen) return null;
-
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
@@ -179,10 +177,14 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   }, [preSelectedInvoiceNo]);
 
   useEffect(() => {
-    setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 150);
+    if (isOpen) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 150);
+    }
   }, [isOpen, returnMode]);
+
+  if (!isOpen) return null;
 
   // Product search filter for Direct Return Mode
   const matchingProducts = products.filter(p => {

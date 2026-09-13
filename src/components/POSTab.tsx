@@ -3479,13 +3479,15 @@ export const POSTab: React.FC<POSTabProps> = ({
       )}
 
       {/* DAMAGED / BROKEN / EXPIRED ITEMS MODAL */}
-      <DamagedItemsModal
-        isOpen={isDamagedModalOpen}
-        onClose={() => setIsDamagedModalOpen(false)}
-        products={products}
-        setProducts={setProducts}
-        settings={settings}
-      />
+      {isDamagedModalOpen && (
+        <DamagedItemsModal
+          isOpen={isDamagedModalOpen}
+          onClose={() => setIsDamagedModalOpen(false)}
+          products={products}
+          setProducts={setProducts}
+          settings={settings}
+        />
+      )}
 
       {/* YELLOW LINE DETAILS & DIAGNOSTICS HUB MODAL */}
       {showYellowLineModal && (
@@ -3738,12 +3740,14 @@ export const POSTab: React.FC<POSTabProps> = ({
       )}
 
       {/* KIOSK / SILENT PRINTING CONFIGURATION MODAL */}
-      <KioskPrintModal
-        isOpen={showKioskModal}
-        onClose={() => setShowKioskModal(false)}
-        lang={lang}
-        settings={settings}
-      />
+      {showKioskModal && (
+        <KioskPrintModal
+          isOpen={showKioskModal}
+          onClose={() => setShowKioskModal(false)}
+          lang={lang}
+          settings={settings}
+        />
+      )}
 
     </div>
   );

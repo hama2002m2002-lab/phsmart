@@ -22,8 +22,6 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, settings }) => {
-  if (!sale) return null;
-
   const [viewMode, setViewMode] = useState<'details' | 'print_preview'>('details');
   const [activeFormat, setActiveFormat] = useState<PaperFormatType>(
     (settings.printerType as PaperFormatType) || 'thermal80mm'
@@ -32,12 +30,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   const [showBarcode, setShowBarcode] = useState<boolean>(true);
   const [showSignatures, setShowSignatures] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
+  const [directPrintStatus, setDirectPrintStatus] = useState<string>('');
 
   useEffect(() => {
     if (settings.printerType && ['thermal80mm', 'thermal58mm', 'a4', 'a5'].includes(settings.printerType)) {
       setActiveFormat(settings.printerType as PaperFormatType);
     }
   }, [settings.printerType]);
+
+  if (!sale) return null;
 
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -55,8 +56,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   const returnedTotal = safeReturnedItems.reduce((acc, r) => acc + (r?.total || 0), 0);
   const isFullyRefunded = sale.status === 'refunded';
   const isRefundReceipt = isFullyRefunded || returnedTotal > 0;
-
-  const [directPrintStatus, setDirectPrintStatus] = useState<string>('');
 
   const handlePrint = () => {
     setIsPrinting(true);

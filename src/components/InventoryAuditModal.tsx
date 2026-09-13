@@ -42,8 +42,6 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
   currentUser,
   onNavigateToReports,
 }) => {
-  if (!isOpen) return null;
-
   const lang = settings.language || 'ar';
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
@@ -250,6 +248,8 @@ export const InventoryAuditModal: React.FC<InventoryAuditModalProps> = ({
       accuracyRate
     };
   }, [products, marketUnits, warehouseUnits]);
+
+  if (!isOpen) return null;
 
   // Apply and Commit Audit to Database & Session History
   const handleApplyAllAdjustments = () => {
