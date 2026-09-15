@@ -9,8 +9,7 @@ import {
   connectWebSerialPrinter,
   sendRawToWebSerialPrinter,
   buildEscPosBuffer,
-  printThermalSilentIframe,
-  print80mmCashierReceipt
+  printThermalSilentIframe
 } from '../lib/thermalPrinter';
 
 export type PaperFormatType = 'thermal80mm' | 'thermal58mm' | 'a4' | 'a5';
@@ -22,6 +21,8 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, settings }) => {
+  if (!sale) return null;
+
   const [viewMode, setViewMode] = useState<'details' | 'print_preview'>('details');
   const [activeFormat, setActiveFormat] = useState<PaperFormatType>(
     (settings.printerType as PaperFormatType) || 'thermal80mm'
@@ -30,15 +31,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   const [showBarcode, setShowBarcode] = useState<boolean>(true);
   const [showSignatures, setShowSignatures] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
-  const [directPrintStatus, setDirectPrintStatus] = useState<string>('');
 
   useEffect(() => {
     if (settings.printerType && ['thermal80mm', 'thermal58mm', 'a4', 'a5'].includes(settings.printerType)) {
       setActiveFormat(settings.printerType as PaperFormatType);
     }
   }, [settings.printerType]);
-
-  if (!sale) return null;
 
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -57,6 +55,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   const isFullyRefunded = sale.status === 'refunded';
   const isRefundReceipt = isFullyRefunded || returnedTotal > 0;
 
+  const [directPrintStatus, setDirectPrintStatus] = useState<string>('');
+
   const handlePrint = () => {
     setIsPrinting(true);
     setTimeout(() => {
@@ -73,17 +73,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
       window.print();
     } finally {
       setTimeout(() => setIsPrinting(false), 500);
-    }
-  };
-
-  const handle80mmCashierPrint = () => {
-    setIsPrinting(true);
-    try {
-      print80mmCashierReceipt(sale, settings);
-    } catch (e) {
-      handleSilentPrint();
-    } finally {
-      setTimeout(() => setIsPrinting(false), 600);
     }
   };
 
@@ -362,8 +351,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                           <div>
                             <p>{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</p>
                             {item.saleType && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 inline-block mt-0.5 font-bold">
-                                {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 inline-block mt-0.5">
+                                {item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Blister') : t('مفرد', 'تاک', 'Unit')}
                               </span>
                             )}
                           </div>
@@ -722,11 +711,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                               <td className="p-2.5 text-slate-500 font-mono text-[10px]">{idx + 1}</td>
                               <td className="p-2.5 font-medium">
                                 <div className="text-white font-bold">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</div>
-                                {item.barcode && (
-                                  <div className="text-[10px] font-mono font-bold text-cyan-300 print:text-black flex items-center gap-1 mt-0.5">
-                                    🏷️ <span>{item.barcode}</span>
-                                  </div>
-                                )}
                                 {item.dosageInstruction && (
                                   <div className="text-[10px] text-cyan-300 font-bold bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30 inline-block mt-0.5">
                                     💊 {item.dosageInstruction}
@@ -739,8 +723,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                                 </span>
                               </td>
                               <td className="p-2.5 text-center">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-800 text-cyan-300 border border-slate-700">
-                                  {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-cyan-300 border border-slate-700">
+                                  {item.saleType === 'wholesale' ? t('جملة', 'کۆ', 'Wholesale') : item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Strip') : t('مفرد', 'تاک', 'Retail')}
                                 </span>
                               </td>
                               <td className="p-2.5 text-center font-bold text-white font-mono">{item.quantity}</td>
@@ -895,35 +879,30 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
 
                     <div className="space-y-2 py-1">
                       {safeItems.map((item, idx) => (
-                        <div key={idx} className="space-y-0.5 border-b border-slate-800/60 pb-1.5 print:border-black/30">
-                          <div className="flex justify-between items-start text-white print:text-black font-bold text-xs font-sans">
-                            <div className="min-w-0 flex-1 pe-2">
-                              <div className="font-bold text-slate-100 print:text-black text-xs leading-snug">
-                                {idx + 1}. {(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}
-                              </div>
-                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 inline-block font-sans font-bold print:bg-transparent print:text-black print:border-black">
-                                  {item.saleType === 'blister' 
-                                    ? t('شيت', 'شیت', 'Sheet') 
-                                    : t('باكت', 'باکەت', 'Box')}
-                                </span>
-                                {item.barcode && (
-                                  <span className="text-[9px] font-mono font-bold text-slate-300 print:text-black inline-flex items-center gap-0.5">
-                                    🏷️ <span className="tracking-wider">{item.barcode}</span>
-                                  </span>
-                                )}
-                              </div>
+                        <div key={idx} className="space-y-0.5 border-b border-slate-800/60 pb-1.5">
+                          <div className="flex justify-between items-start text-white font-bold text-xs font-sans">
+                            <div>
+                              <span className="truncate max-w-[190px] inline-block">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</span>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 inline-block mx-1 font-sans">
+                                {item.saleType === 'carton' 
+                                  ? t('كرتون', 'کارتۆن', 'Carton') 
+                                  : item.saleType === 'wholesale' 
+                                  ? t('جملة', 'کۆ', 'Wholesale') 
+                                  : item.saleType === 'blister' 
+                                  ? t('شريط', 'شریت', 'Strip') 
+                                  : t('مفرد', 'تاک', 'Unit')}
+                              </span>
                             </div>
-                            <span className="font-mono text-emerald-400 print:text-black shrink-0 font-bold">{settings.currencySymbol}{formatNumber(item.total)}</span>
+                            <span className="font-mono text-emerald-400 shrink-0">{settings.currencySymbol}{formatNumber(item.total)}</span>
                           </div>
                           {item.dosageInstruction && (
-                            <div className="text-[10px] text-cyan-300 print:text-black font-medium italic">
+                            <div className="text-[10px] text-cyan-300 font-medium italic">
                               💊 {item.dosageInstruction}
                             </div>
                           )}
-                          <div className="flex justify-between items-center text-[10px] text-slate-400 print:text-black font-mono">
+                          <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
                             <span>{item.quantity} x {settings.currencySymbol}{formatNumber(item.price)}</span>
-                            <span className="text-[9px] text-cyan-300 print:text-black font-mono bg-cyan-950/80 print:bg-transparent px-1 py-0.2 rounded border border-cyan-800 print:border-none">
+                            <span className="text-[9px] text-cyan-300 font-mono bg-cyan-950/80 px-1 py-0.2 rounded border border-cyan-800">
                               🕒 {formatDisplayTime(item.addedAtTime || safeItems[0]?.addedAtTime || sale.timestamp, lang)}
                             </span>
                           </div>
@@ -984,18 +963,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                   <div className="text-center pt-2 border-t border-slate-800 text-[10px] text-slate-400 font-sans">
                     <p>{settings.receiptFooterMsg}</p>
                   </div>
-
-                  {/* Invoice Barcode for 80mm Thermal */}
-                  {showBarcode && (
-                    <div className="pt-2 text-center flex flex-col items-center justify-center">
-                      <div className="bg-white p-1.5 rounded-xl inline-block text-black shadow-md">
-                        <BarcodeGraphic value={sale.invoiceNumber} height={36} showText={true} />
-                      </div>
-                      <p className="text-[9px] text-slate-400 print:text-black font-mono mt-1">
-                        {t('امسح الباركود لاسترجاع أو معاينة الوصل', 'بارکۆدەکە سکان بکە بۆ گەڕاندنەوە یان بینینی پسوولە', 'Scan barcode to view/refund receipt')}
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1013,18 +980,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
         {/* Action Buttons Bar */}
         <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-slate-800">
           
-          {/* Direct 80mm Cashier Roll Print Button */}
-          <button
-            type="button"
-            onClick={handle80mmCashierPrint}
-            disabled={isPrinting}
-            title={t('طباعة فورية على ورق كاشير 80 مم مع تفاصيل المواد والباركود', 'چاپی خێرا لەسەر وەرەقەی کاشێری 80 ملم بە بارکۆدەوە', 'Print 80mm Cashier Thermal Roll')}
-            className="py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] cursor-pointer active:scale-95 transition-all border border-emerald-300/50 shrink-0 font-sans"
-          >
-            <Printer className="w-4 h-4 text-slate-950" />
-            <span>{t('طباعة ورق كاشير 80 مم', 'چاپی کاشێر 80 ملم', 'Print 80mm Cashier')}</span>
-          </button>
-
           {/* Direct ESC/POS Thermal Print (Web Serial) */}
           {activeFormat.startsWith('thermal') && isWebSerialSupported() && (
             <button
@@ -1032,10 +987,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
               onClick={handleDirectEscPosPrint}
               disabled={isPrinting}
               title={t('طباعة حرارية مباشرة عبر منفذ USB/Serial بدون فتح نافذة المتصفح', 'چاپی ڕاستەوخۆ بە بێ پەنجەرەی وێبگەڕ لە ڕێگەی USB/Serial', 'Direct ESC/POS Thermal Printing via USB/Serial')}
-              className="py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[0_0_25px_rgba(245,158,11,0.4)] cursor-pointer active:scale-95 transition-all border border-amber-300/50 shrink-0 font-sans"
+              className="py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(245,158,11,0.4)] cursor-pointer active:scale-95 transition-all border border-amber-300/50 shrink-0 font-sans"
             >
               <Zap className="w-4 h-4 text-slate-950 fill-slate-950" />
-              <span>{t('حراري مباشر (ESC/POS)', 'گەرمی ڕاستەوخۆ', 'ESC/POS')}</span>
+              <span>{t('طباعة حرارية مباشرة (ESC/POS)', 'چاپی ڕاستەوخۆی گەرمی (ESC/POS)', 'Direct ESC/POS Thermal')}</span>
             </button>
           )}
 

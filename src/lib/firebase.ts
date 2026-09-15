@@ -1,5 +1,4 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
 import { 
   getFirestore, 
   initializeFirestore, 
@@ -8,6 +7,7 @@ import {
   doc, 
   getDocFromServer 
 } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import localConfig from '../../firebase-applet-config.json';
 
 // Hybrid Firebase configuration: supports environment variables and applet configuration
@@ -22,17 +22,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase App
-export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Auth FIRST before Firestore so Auth provider is registered with Firebase app container
-let authInstance: Auth;
-try {
-  authInstance = getAuth(app);
-} catch (authErr) {
-  console.warn('[Firebase Auth Engine] Initialization fallback notice:', authErr);
-  authInstance = null as any;
-}
-export const auth = authInstance;
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Firestore DB with persistent IndexedDB multi-tab local cache for instant offline startup
 const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || (localConfig as any).firestoreDatabaseId || '').trim();
@@ -49,6 +39,8 @@ try {
 }
 
 export const db = firestoreInstance;
+
+export const auth = getAuth(app);
 
 export enum OperationType {
   CREATE = 'create',
@@ -73,8 +65,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth?.currentUser?.uid,
-      email: auth?.currentUser?.email,
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
     },
     operationType,
     path,
@@ -92,6 +84,5 @@ export async function testFirestoreConnection() {
     return false;
   }
 }
-
 
 

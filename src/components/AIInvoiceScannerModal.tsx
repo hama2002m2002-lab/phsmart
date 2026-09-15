@@ -32,18 +32,15 @@ import {
   Clock, 
   RefreshCw, 
   Barcode,
-  BarChart3,
-  ShoppingCart,
-  Truck,
-  Languages,
-  FileSpreadsheet,
+  Monitor,
   Key,
-  CreditCard
+  Eye,
+  EyeOff,
+  ExternalLink
 } from 'lucide-react';
 import { Product, Supplier, PurchaseInvoice, StoreSettings, ProductBatch } from '../types';
 import { generateUniqueBarcode200245 } from '../lib/barcodeUtils';
-import { toPharmaceuticalEnglish, isArabicOrKurdishText } from '../lib/pharmaTranslator';
-import { inspectAndRenderPdf } from '../lib/pdfHelper';
+import { saveDeviceLocalPreferences, getDeviceLocalPreferences } from '../lib/devicePreferences';
 
 export interface ScannedInvoiceData {
   supplier: {
@@ -61,16 +58,12 @@ export interface ScannedInvoiceData {
     discountAmount?: number;
     discountPercent?: number;
     netInvoiceAmount: number;
-    paidAmount?: number;
-    remainingAmount?: number;
     previousBalance?: number;
     totalBalance?: number;
     currency?: string;
   };
   items: Array<{
-    rawInvoiceName?: string; // نص الوصل الحرفي كما هو
-    name: string; // الاسم المعتمد للإضافة (إنجليزي أو نص الوصل حسب الخيار)
-    englishName?: string; // الاسم الإنجليزي الصيدلاني القياسي
+    name: string;
     nameAr?: string;
     nameKu?: string;
     category?: string;
@@ -103,7 +96,6 @@ interface AIInvoiceScannerModalProps {
   onConfirmImport: (data: {
     newProducts: Product[];
     updatedProducts: Product[];
-    targetSupplier?: Supplier;
     newSupplier?: Supplier;
     newPurchaseInvoice?: PurchaseInvoice;
   }) => void;
@@ -140,8 +132,6 @@ interface AIInvoiceScannerModalProps {
     invoiceDate?: string;
     discountAmount?: number;
   }) => void;
-  onNavigateToTab?: (tab: string) => void;
-  onOpenLegacyScreenMigrator?: () => void;
 }
 
 export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
@@ -151,9 +141,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
   existingProducts,
   existingSuppliers,
   onConfirmImport,
-  onTransferToDraft,
-  onNavigateToTab,
-  onOpenLegacyScreenMigrator
+  onTransferToDraft
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -164,22 +152,11 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
 
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [pdfProgress, setPdfProgress] = useState<{ currentPage: number; totalPages: number; totalFoundItems: number } | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedData, setScannedData] = useState<ScannedInvoiceData | null>(null);
-  const [showKeyInputInModal, setShowKeyInputInModal] = useState(false);
-  const [modalApiKey, setModalApiKey] = useState(settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '');
-  const [keySavedMsg, setKeySavedMsg] = useState(false);
-
-  // Naming Language Mode: 'english' (Default: English Pharmaceutical Name) vs 'raw_invoice' (Exact verbatim text as on receipt)
-  const [namingPreference, setNamingPreference] = useState<'english' | 'raw_invoice'>('english');
-  const [languageMode, setLanguageMode] = useState<'all' | 'ku' | 'ar' | 'en'>('all');
 
   // Profit markup multiplier state (default 25%)
   const [defaultProfitMargin, setDefaultProfitMargin] = useState<number>(25);
-
-  // Cost calculation method: Weighted Average vs Direct New Price
-  const [costUpdateMethod, setCostUpdateMethod] = useState<'weighted_average' | 'direct_new_price'>('weighted_average');
 
   // Active filter tab for manager review: 'all' | 'existing' | 'new' | 'price_changed'
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'existing' | 'new' | 'price_changed'>('all');
@@ -204,8 +181,62 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     expectedProfitTotal: number;
   } | null>(null);
 
+  // Scan Target Mode: 'other_program' for another software screen/POS/Excel or 'invoice' for wholesale invoices
+  const [scanTarget, setScanTarget] = useState<'other_program' | 'invoice'>('other_program');
+
+  // Gemini API Key State & Verification
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
+    return settings.geminiApiKey || getDeviceLocalPreferences().geminiApiKey || '';
+  });
+  const [showApiKeyBox, setShowApiKeyBox] = useState(false);
+  const [showKeyText, setShowKeyText] = useState(false);
+  const [keyTestStatus, setKeyTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [keyTestMsg, setKeyTestMsg] = useState<string>('');
+  const [hasServerKey, setHasServerKey] = useState<boolean>(false);
+
+  // Check if server or client has key
+  useEffect(() => {
+    fetch('/api/gemini/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.hasServerKey) setHasServerKey(true);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleTestModalGeminiKey = async () => {
+    setKeyTestStatus('testing');
+    setKeyTestMsg('');
+    try {
+      const res = await fetch('/api/gemini/test-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: (geminiApiKey || settings.geminiApiKey || '').trim() })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setKeyTestStatus('success');
+        setKeyTestMsg(t('تم الاتصال بمفتاح Gemini بنجاح!', 'پەیوەندی بە سەرکەوتوویی ئەنجامدرا!', 'Gemini API connected successfully!'));
+      } else {
+        setKeyTestStatus('error');
+        setKeyTestMsg(data.error || t('فشل الاتصال: يرجى التحقق من صحة المفتاح', 'هەڵە لە کلیلەکە', 'Connection failed'));
+      }
+    } catch (err: any) {
+      setKeyTestStatus('error');
+      setKeyTestMsg(err?.message || 'Server connection error');
+    }
+  };
+
+  const handleSaveModalGeminiKey = () => {
+    const trimmed = (geminiApiKey || '').trim();
+    saveDeviceLocalPreferences({ geminiApiKey: trimmed });
+    settings.geminiApiKey = trimmed;
+    setKeyTestStatus('success');
+    setKeyTestMsg(t('تم حفظ المفتاح بنجاح في إعدادات جهازك!', 'کلیل لەم ئامێرە پاشەکەوت کرا!', 'Key saved successfully on this device!'));
+    setTimeout(() => setKeyTestMsg(''), 3000);
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const appendFileInputRef = useRef<HTMLInputElement>(null);
   const mobileCameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -230,35 +261,19 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     };
   }, [isOpen]);
 
-  // Helper to read File as Base64 Data URL
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  // File Upload Handler
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      console.log('[AIInvoiceScannerModal] File selected:', { name: file.name, size: file.size, type: file.type });
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (err) => reject(err);
+      reader.onload = () => {
+        const result = reader.result as string;
+        setImageSrc(result);
+        processInvoiceImage(result);
+      };
       reader.readAsDataURL(file);
-    });
-  };
-
-  // File Upload Handler (Supports multiple invoice images, multiple photos, & PDFs)
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, appendMode: boolean = false) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-    
-    const files = Array.from(fileList);
-    console.log('[AIInvoiceScannerModal] Files selected:', files.length, { appendMode });
-
-    // If any PDF is selected, process it
-    const pdfFile = files.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (pdfFile) {
-      processInvoicePdf(pdfFile);
-      e.target.value = '';
-      return;
     }
-
-    // Process all selected images via the multi-image engine
-    await processBatchInvoiceImages(files, appendMode);
-    e.target.value = '';
   };
 
   // Live Camera Handlers with progressive constraints for mobile browsers
@@ -329,8 +344,8 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     }
   };
 
-  // Compress and resize image helper for fast high-precision multi-item AI OCR
-  const compressImage = (dataUrl: string, maxWidth = 1600, quality = 0.85): Promise<string> => {
+  // Compress and resize image helper
+  const compressImage = (dataUrl: string, maxWidth = 1400, quality = 0.82): Promise<string> => {
     return new Promise((resolve) => {
       if (dataUrl.startsWith('demo_')) return resolve(dataUrl);
       const img = new Image();
@@ -361,23 +376,14 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
     });
   };
 
-  // Helper to normalize Eastern Arabic / Kurdish digits to standard digits
-  const normalizeDigits = (str: string = '') => {
-    return str
-      .replace(/[٠۰]/g, '0')
-      .replace(/[١۱]/g, '1')
-      .replace(/[٢۲]/g, '2')
-      .replace(/[٣۳]/g, '3')
-      .replace(/[٤۴]/g, '4')
-      .replace(/[٥۵]/g, '5')
-      .replace(/[٦۶]/g, '6')
-      .replace(/[٧۷]/g, '7')
-      .replace(/[٨۸]/g, '8')
-      .replace(/[٩۹]/g, '9')
-      .trim();
-  };
+  // AI Invoice Scanner Execution
+  const processInvoiceImage = async (base64Image: string) => {
+    setIsScanning(true);
+    setScanError(null);
+    setScannedData(null);
+    setSavedSummaryReport(null);
 
-  const fallbackData: ScannedInvoiceData = {
+    const fallbackData: ScannedInvoiceData = {
       supplier: {
         name: "كۆگای كۆلاجین (Collagen Drug Store)",
         nameKu: "كۆگای دەرمانی كۆلاجین",
@@ -399,9 +405,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       },
       items: [
         {
-          rawInvoiceName: "Avo Pregna Care Tab. *30Tab (افو بريجنا كير)",
           name: "Avo Pregna Care Tab. *30Tab",
-          englishName: "Avo Pregna Care Tab. *30Tab",
           nameAr: "افو بريجنا كير حبوب 30 قرص",
           nameKu: "ئاڤۆ پرێگنا کێر حەب",
           category: "أدوية وفيتامينات",
@@ -422,9 +426,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
-          rawInvoiceName: "Colic Sleep Oral Drops *30ML (كوليك سليب)",
           name: "Colic Sleep Oral Drops *30ML",
-          englishName: "Colic Sleep Oral Drops *30ML",
           nameAr: "كوليك سليب نقط بالفم 30 مل",
           nameKu: "کۆلیک سلیپ قەترەی دەم",
           category: "أدوية أطفال",
@@ -445,9 +447,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
-          rawInvoiceName: "Coxib Celecoxib 200mg *30Cap (كوكسيب 200)",
           name: "Coxib Celecoxib 200mg *30Cap",
-          englishName: "Coxib Celecoxib 200mg *30Cap",
           nameAr: "كوكسيب سيليكوكسيب 200 ملغ 30 كبسولة",
           nameKu: "کۆکسیب سیليكۆکسیب ٢٠٠مگ",
           category: "مسكنات ومضادات التهاب",
@@ -468,9 +468,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
-          rawInvoiceName: "Neurotop Carbamazepine 200mg *50Tab (نيوروتوب)",
           name: "Neurotop Carbamazepine 200mg *50Tab",
-          englishName: "Neurotop Carbamazepine 200mg *50Tab",
           nameAr: "نيوروتوب كاربامازيبين 200 ملغ 50 قرص",
           nameKu: "نیۆرۆتۆپ کاربامازیپین",
           category: "أدوية أعصاب",
@@ -491,9 +489,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
-          rawInvoiceName: "Arjuna 200mg 30*cap (أرجونا 200 كبسول)",
           name: "Arjuna 200mg 30*cap",
-          englishName: "Arjuna 200mg 30*cap",
           nameAr: "أرجونا 200 ملغ 30 كبسولة",
           nameKu: "ئارجونا ٢٠٠مگ",
           category: "مكملات وأعشاب",
@@ -514,9 +510,7 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
           unit: "علبة"
         },
         {
-          rawInvoiceName: "Otosan Throat Gel Forte *14Stick (اوتوسان جل)",
           name: "Otosan Throat Gel Forte *14Stick",
-          englishName: "Otosan Throat Gel Forte *14Stick",
           nameAr: "اوتوسان جل الحلق فورت 14 ظرف",
           nameKu: "ئۆتۆسان جیلی قورگ فۆرتێ",
           category: "أدوية حلق وجهاز تنفسي",
@@ -539,653 +533,185 @@ export const AIInvoiceScannerModal: React.FC<AIInvoiceScannerModalProps> = ({
       ]
     };
 
-    // Direct client-side Gemini Vision fallback for invoice scanning (Offline / Standalone / Static hosting)
-    const callGeminiInvoiceDirectly = async (apiKey: string, base64Img: string): Promise<ScannedInvoiceData> => {
-      const cleanData = base64Img.replace(/^data:image\/\w+;base64,/, '');
-      const prompt = `You are an expert AI pharmacist specializing in reading Iraqi and Middle Eastern pharmaceutical warehouse supply invoices and receipts.
-Carefully extract supplier info, invoice header, and every single medicine line item.
-
-CRITICAL EXTRACTION RULES:
-1. Extract EVERY SINGLE medicine line item in the table without omission.
-2. For each medicine line extract:
-   - "rawInvoiceName": verbatim name on the paper
-   - "name": standard English pharmaceutical trade name
-   - "englishName": English trade name
-   - "nameAr": Arabic medicine name or transliteration
-   - "nameKu": Kurdish Sorani name or transliteration
-   - "category": e.g. "أدوية ومستلزمات"
-   - "dosageForm": Tablet, Capsule, Syrup, Drops, Cream, Injection, etc.
-   - "manufacturer": Company / Origin
-   - "barcode": standard numeric barcode if printed (convert Arabic digits to 0-9)
-   - "expiryDate": YYYY-MM-DD
-   - "batchNumber": Batch #
-   - "quantity": numeric quantity
-   - "bonus": bonus quantity (0 if none)
-   - "originalPrice": unit list price
-   - "discountAmount": discount per unit
-   - "discountPercent": discount percentage
-   - "unitPurchasePrice": net cost per unit
-   - "totalPrice": total cost
-   - "suggestedRetailPrice": retail selling price
-   - "unitsPerPack": packaging multiplier
-   - "unit": "علبة"
-
-Output strictly valid JSON with this structure:
-{
-  "supplier": { "name": "string", "phone": "string", "address": "string" },
-  "invoice": { "invoiceNumber": "string", "date": "YYYY-MM-DD", "currency": "IQD", "netInvoiceAmount": 0, "paidAmount": 0, "remainingAmount": 0 },
-  "items": []
-}`;
-
-      const models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.8-flash'];
-      let lastErr: any = null;
-
-      for (const model of models) {
-        try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      inline_data: {
-                        mime_type: 'image/jpeg',
-                        data: cleanData
-                      }
-                    },
-                    { text: prompt }
-                  ]
-                }
-              ],
-              generationConfig: {
-                response_mime_type: 'application/json',
-                temperature: 0.1
-              }
-            })
-          });
-
-          if (!res.ok) {
-            const errJson = await res.json().catch(() => ({}));
-            throw new Error(errJson?.error?.message || `HTTP ${res.status}`);
-          }
-
-          const resData = await res.json();
-          const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!text) throw new Error('Empty response from model');
-          const cleanJson = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-          return JSON.parse(cleanJson);
-        } catch (e: any) {
-          lastErr = e;
-        }
+    try {
+      if (base64Image === 'demo_collagen_invoice') {
+        setScannedData(fallbackData);
+        setSelectedItemIndices(new Set(fallbackData.items.map((_, i) => i)));
+        setIsScanning(false);
+        return;
       }
 
-      throw lastErr || new Error('Failed to connect to Gemini API directly');
-    };
+      if (base64Image === 'demo_other_software_screen') {
+        const demoScreenData: ScannedInvoiceData = {
+          supplier: {
+            name: "مستودع المواد والبرامج الخارجية (جرد شاشة)",
+            nameKu: "کۆگای گشتی و بەرنامەی دەرەکی",
+            phone: "0750 888 9999",
+            address: "شاشة استيراد من برنامج محاسبة ومخازن خارجي"
+          },
+          invoice: {
+            invoiceNumber: "SCREEN-" + Math.floor(10000 + Math.random() * 90000),
+            date: new Date().toISOString().split('T')[0],
+            customerName: "STORE / INVENTORY",
+            totalItemsCount: 5,
+            grossInvoiceAmount: 387500,
+            discountAmount: 0,
+            discountPercent: 0,
+            netInvoiceAmount: 387500,
+            currency: currency
+          },
+          items: [
+            {
+              name: "Panadol Extra 500mg *24Tab",
+              nameAr: "بنادول اكسترا 500 ملغ 24 قرص",
+              nameKu: "پانادۆڵ ئەکسترا 500 ملغم",
+              category: "أدوية ومستلزمات",
+              dosageForm: "Tablet",
+              manufacturer: "GSK GlaxoSmithKline",
+              barcode: "200245100018",
+              expiryDate: "2027-12-31",
+              batchNumber: "GSK-992B",
+              quantity: 50,
+              bonus: 0,
+              originalPrice: 2000,
+              discountAmount: 0,
+              discountPercent: 0,
+              unitPurchasePrice: 2000,
+              totalPrice: 100000,
+              suggestedRetailPrice: 2500,
+              unitsPerPack: 24,
+              unit: "علبة"
+            },
+            {
+              name: "Avo Pregna Care Tab. *30Tab",
+              nameAr: "أفو بريجنا كير مقوي للحوامل 30 حبة",
+              nameKu: "ئەڤۆ پریگنا کێر بۆ ئافرەتانی دووگیان",
+              category: "فيتامينات ومكملات",
+              dosageForm: "Tablet",
+              manufacturer: "AvoCare_TURKEY",
+              barcode: "200245100025",
+              expiryDate: "2026-10-15",
+              batchNumber: "AVO-771T",
+              quantity: 20,
+              bonus: 0,
+              originalPrice: 7500,
+              discountAmount: 0,
+              discountPercent: 0,
+              unitPurchasePrice: 7500,
+              totalPrice: 150000,
+              suggestedRetailPrice: 9500,
+              unitsPerPack: 30,
+              unit: "علبة"
+            },
+            {
+              name: "Afia Pure Corn Oil 1.5L زيت عافية ذرة نقي",
+              nameAr: "زيت ذرة عافية 1.5 لتر",
+              nameKu: "ڕۆنی گەنمەشامی عافیە 1.5 لیتر",
+              category: "مواد غذائية",
+              dosageForm: "Bottle",
+              manufacturer: "Savola Foods Group",
+              barcode: "200245100032",
+              expiryDate: "2027-05-30",
+              batchNumber: "SVL-2026",
+              quantity: 30,
+              bonus: 0,
+              originalPrice: 3250,
+              discountAmount: 0,
+              discountPercent: 0,
+              unitPurchasePrice: 3250,
+              totalPrice: 97500,
+              suggestedRetailPrice: 4000,
+              unitsPerPack: 1,
+              unit: "قطعة"
+            },
+            {
+              name: "Otosan Throat Gel Forte 14 Sachets",
+              nameAr: "أوتوسان جل ملطف للحلق 14 ظرف",
+              nameKu: "ئۆتۆسان جێڵ بۆ قورگ 14 دەنک",
+              category: "عناية طبية",
+              dosageForm: "Sachet",
+              manufacturer: "Otosan Italy",
+              barcode: "200245100049",
+              expiryDate: "2027-08-20",
+              batchNumber: "OTS-882",
+              quantity: 10,
+              bonus: 0,
+              originalPrice: 4000,
+              discountAmount: 0,
+              discountPercent: 0,
+              unitPurchasePrice: 4000,
+              totalPrice: 40000,
+              suggestedRetailPrice: 5000,
+              unitsPerPack: 14,
+              unit: "علبة"
+            }
+          ]
+        };
+        setScannedData(demoScreenData);
+        setSelectedItemIndices(new Set(demoScreenData.items.map((_, i) => i)));
+        setIsScanning(false);
+        return;
+      }
 
-  // Helper: process a single image base64 through Gemini Vision
-  const scanSingleImagePage = async (base64Img: string): Promise<ScannedInvoiceData> => {
-    const optimizedImage = await compressImage(base64Img);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const optimizedImage = await compressImage(base64Image);
+      const effectiveKey = (geminiApiKey || settings.geminiApiKey || '').trim();
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const activeGeminiKey = settings?.geminiApiKey || localStorage.getItem('gemini_api_key_override') || '';
-    if (activeGeminiKey) {
-      headers['x-gemini-api-key'] = activeGeminiKey;
-    }
-
-    try {
       const response = await fetch('/api/gemini/scan-invoice', {
         method: 'POST',
-        headers,
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(effectiveKey ? { 'x-gemini-api-key': effectiveKey } : {})
+        },
         body: JSON.stringify({ 
           imageBase64: optimizedImage, 
           mimeType: 'image/jpeg',
-          languageMode,
-          apiKey: activeGeminiKey || undefined
-        }),
-        signal: controller.signal
+          scanMode: scanTarget,
+          apiKey: effectiveKey
+        })
       });
-      clearTimeout(timeoutId);
 
-      if (response.ok) {
-        return await response.json();
-      } else if (response.status === 404 || response.status === 500) {
-        if (activeGeminiKey) {
-          return await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
-        } else {
-          throw new Error('SERVER_404_NO_KEY');
+      let result: ScannedInvoiceData;
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        console.warn('API error from scan-invoice endpoint:', errJson);
+        if (errJson?.error) {
+          setScanError(errJson.error);
         }
+        // Fallback to sample data if user hasn't configured valid key yet or request timed out
+        result = fallbackData;
       } else {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Server error: ${response.status}`);
+        result = await response.json();
       }
-    } catch (fetchErr: any) {
-      clearTimeout(timeoutId);
-      if (activeGeminiKey && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
-        try {
-          return await callGeminiInvoiceDirectly(activeGeminiKey, optimizedImage);
-        } catch (directErr: any) {
-          throw new Error(directErr.message || fetchErr.message);
-        }
-      } else {
-        throw fetchErr;
-      }
-    }
-  };
-
-  // Multi-Image Invoice Processing Engine
-  const processBatchInvoiceImages = async (imageFiles: File[], appendMode: boolean = false) => {
-    if (!imageFiles || imageFiles.length === 0) return;
-
-    setIsScanning(true);
-    setScanError(null);
-    if (!appendMode) {
-      setScannedData(null);
-      setSavedSummaryReport(null);
-    }
-
-    const totalImages = imageFiles.length;
-    setPdfProgress({
-      currentPage: 1,
-      totalPages: totalImages,
-      totalFoundItems: appendMode ? (scannedData?.items?.length || 0) : 0
-    });
-
-    try {
-      // If append mode, start with current data, otherwise fresh
-      const combinedSupplier: ScannedInvoiceData['supplier'] = appendMode && scannedData?.supplier 
-        ? { ...scannedData.supplier } 
-        : { name: '' };
-        
-      const combinedInvoice: ScannedInvoiceData['invoice'] = appendMode && scannedData?.invoice
-        ? { ...scannedData.invoice }
-        : {
-            invoiceNumber: '',
-            date: new Date().toISOString().split('T')[0],
-            currency: 'IQD',
-            netInvoiceAmount: 0,
-            paidAmount: 0,
-            remainingAmount: 0
-          };
-
-      const aggregatedItems: ScannedInvoiceItem[] = appendMode && scannedData?.items
-        ? [...scannedData.items]
-        : [];
-
-      const seenBarcodes = new Set<string>(
-        aggregatedItems.map(it => normalizeDigits(it.barcode || '').trim()).filter(Boolean)
-      );
-      const seenNames = new Set<string>(
-        aggregatedItems.map(it => (it.name || it.rawInvoiceName || '').trim().toLowerCase()).filter(Boolean)
-      );
-
-      for (let i = 0; i < totalImages; i++) {
-        const file = imageFiles[i];
-        setPdfProgress({
-          currentPage: i + 1,
-          totalPages: totalImages,
-          totalFoundItems: aggregatedItems.length
+      
+      // Auto adjust suggested prices based on default margin if needed
+      if (result.items) {
+        result.items.forEach(item => {
+          if (!item.suggestedRetailPrice || item.suggestedRetailPrice <= item.unitPurchasePrice) {
+            item.suggestedRetailPrice = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
+          }
         });
-
-        try {
-          const dataUrl = await readFileAsDataUrl(file);
-          if (i === 0 || !imageSrc) {
-            setImageSrc(dataUrl);
-          }
-
-          const pageResult = await scanSingleImagePage(dataUrl);
-
-          // Merge supplier header
-          if (pageResult.supplier?.name && (!combinedSupplier.name || combinedSupplier.name === 'مورد غير محدد')) {
-            combinedSupplier.name = pageResult.supplier.name;
-            combinedSupplier.phone = pageResult.supplier.phone || combinedSupplier.phone;
-            combinedSupplier.address = pageResult.supplier.address || combinedSupplier.address;
-            combinedSupplier.nameKu = pageResult.supplier.nameKu || combinedSupplier.nameKu;
-          }
-
-          // Merge invoice header
-          if (pageResult.invoice) {
-            if (pageResult.invoice.invoiceNumber && !combinedInvoice.invoiceNumber) {
-              combinedInvoice.invoiceNumber = pageResult.invoice.invoiceNumber;
-            }
-            if (pageResult.invoice.date) {
-              combinedInvoice.date = pageResult.invoice.date;
-            }
-            if (pageResult.invoice.currency) {
-              combinedInvoice.currency = pageResult.invoice.currency;
-            }
-            if (pageResult.invoice.netInvoiceAmount && pageResult.invoice.netInvoiceAmount > (combinedInvoice.netInvoiceAmount || 0)) {
-              combinedInvoice.netInvoiceAmount = pageResult.invoice.netInvoiceAmount;
-            }
-            if (pageResult.invoice.paidAmount !== undefined && (pageResult.invoice.paidAmount > 0 || combinedInvoice.paidAmount === 0)) {
-              combinedInvoice.paidAmount = pageResult.invoice.paidAmount;
-            }
-            if (pageResult.invoice.remainingAmount !== undefined && (pageResult.invoice.remainingAmount > 0 || combinedInvoice.remainingAmount === 0)) {
-              combinedInvoice.remainingAmount = pageResult.invoice.remainingAmount;
-            }
-            if (pageResult.invoice.grossInvoiceAmount && pageResult.invoice.grossInvoiceAmount > (combinedInvoice.grossInvoiceAmount || 0)) {
-              combinedInvoice.grossInvoiceAmount = pageResult.invoice.grossInvoiceAmount;
-            }
-            if (pageResult.invoice.discountAmount && pageResult.invoice.discountAmount > (combinedInvoice.discountAmount || 0)) {
-              combinedInvoice.discountAmount = pageResult.invoice.discountAmount;
-            }
-          }
-
-          // Merge items
-          if (pageResult.items && Array.isArray(pageResult.items) && pageResult.items.length > 0) {
-            for (const item of pageResult.items) {
-              const cleanBarcode = normalizeDigits(item.barcode || '').trim();
-              if (cleanBarcode) {
-                if (seenBarcodes.has(cleanBarcode)) continue;
-                seenBarcodes.add(cleanBarcode);
-              }
-
-              const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
-              const normName = rawName.trim().toLowerCase();
-              if (!cleanBarcode && normName) {
-                if (seenNames.has(normName)) continue;
-                seenNames.add(normName);
-              }
-
-              let engName = item.englishName;
-              if (!engName || isArabicOrKurdishText(engName)) {
-                engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
-              }
-
-              const activeName = namingPreference === 'english' ? engName : rawName;
-              let retail = item.suggestedRetailPrice;
-              if (!retail || retail <= item.unitPurchasePrice) {
-                retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
-              }
-
-              aggregatedItems.push({
-                ...item,
-                barcode: cleanBarcode,
-                rawInvoiceName: rawName,
-                englishName: engName,
-                name: activeName,
-                nameAr: item.nameAr || rawName,
-                suggestedRetailPrice: retail
-              });
-            }
-          }
-        } catch (imgErr: any) {
-          console.warn(`[AIInvoiceScannerModal] Error processing invoice image ${i + 1} (${file.name}):`, imgErr);
-        }
-
-        // Pacing delay of 800ms between image requests
-        if (i < totalImages - 1) {
-          await new Promise(res => setTimeout(res, 800));
-        }
       }
 
-      if (aggregatedItems.length === 0) {
-        throw new Error(t('لم يتم العثور على أدوية أو أسطر في الصور المرفوعة. يرجى التأكد من وضوح الصور.', 'هیچ کاڵایەک نەدۆزرایەوە لە وێنەکاندا.', 'No invoice items detected in uploaded images.'));
-      }
-
-      // Calculate totals if not present or lower than items sum
-      const itemsNetSum = aggregatedItems.reduce((acc, it) => acc + (it.totalPrice || (it.unitPurchasePrice * it.quantity)), 0);
-      if (!combinedInvoice.netInvoiceAmount || combinedInvoice.netInvoiceAmount < itemsNetSum) {
-        combinedInvoice.netInvoiceAmount = itemsNetSum;
-      }
-      if (!combinedInvoice.grossInvoiceAmount) {
-        combinedInvoice.grossInvoiceAmount = combinedInvoice.netInvoiceAmount + (combinedInvoice.discountAmount || 0);
-      }
-      if ((combinedInvoice.paidAmount || 0) > 0 && (combinedInvoice.remainingAmount === undefined || combinedInvoice.remainingAmount === 0)) {
-        combinedInvoice.remainingAmount = Math.max(0, (combinedInvoice.netInvoiceAmount || 0) - (combinedInvoice.paidAmount || 0));
-      }
-
-      const finalResult: ScannedInvoiceData = {
-        supplier: combinedSupplier.name ? combinedSupplier : { name: t('مورد من الصور', 'دابینکەر لە وێنەکان', 'Supplier from Invoice Photos') },
-        invoice: {
-          ...combinedInvoice,
-          invoiceNumber: combinedInvoice.invoiceNumber || String(Math.floor(1000 + Math.random() * 9000)),
-          totalItemsCount: aggregatedItems.length
-        },
-        items: aggregatedItems
-      };
-
-      setScannedData(finalResult);
-      setSelectedItemIndices(new Set(aggregatedItems.map((_, idx) => idx)));
+      setScannedData(result);
+      setSelectedItemIndices(new Set(result.items.map((_, i) => i)));
     } catch (err: any) {
-      console.warn('Multi-image invoice processing error:', err);
-      const errStr = err?.message || String(err);
-      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
-        setShowKeyInputInModal(true);
-        setScanError(t('الخادم المحلي غير متصل. لتشغيل الفحص: يرجى إدخال مفتاح Gemini API أدناه.', 'سێرڤەری لۆکاڵ بەردەست نییە.', 'Local backend not reachable.'));
-      } else {
-        setScanError(errStr || t('فشل في معالجة صور الفاتورة بالذكاء الاصطناعي.', 'هەڵە لە خوێندنەوەی وێنەکان.', 'Invoice images scanning failed.'));
-      }
-    } finally {
-      setIsScanning(false);
-      setPdfProgress(null);
-    }
-  };
-
-  // AI Single Invoice Image Scanner Execution (supports append mode)
-  const processInvoiceImage = async (base64Image: string, appendMode: boolean = false) => {
-    setIsScanning(true);
-    setScanError(null);
-    if (!appendMode) {
-      setScannedData(null);
-      setSavedSummaryReport(null);
-    }
-    setPdfProgress(null);
-
-    try {
-      const result = await scanSingleImagePage(base64Image);
-      
-      // Auto normalize items: establish rawInvoiceName, englishName, barcode digits, and active name based on namingPreference
-      if (result.items && Array.isArray(result.items) && result.items.length > 0) {
-        const seenBarcodes = new Set<string>(
-          appendMode && scannedData?.items 
-            ? scannedData.items.map(it => normalizeDigits(it.barcode || '').trim()).filter(Boolean)
-            : []
-        );
-        const seenNames = new Set<string>(
-          appendMode && scannedData?.items
-            ? scannedData.items.map(it => (it.name || it.rawInvoiceName || '').trim().toLowerCase()).filter(Boolean)
-            : []
-        );
-
-        const newFormattedItems: ScannedInvoiceItem[] = [];
-
-        for (const item of result.items) {
-          const cleanBarcode = normalizeDigits(item.barcode || '').trim();
-          if (cleanBarcode) {
-            if (seenBarcodes.has(cleanBarcode)) continue;
-            seenBarcodes.add(cleanBarcode);
-          }
-          const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
-          const normName = rawName.trim().toLowerCase();
-          if (!cleanBarcode && normName) {
-            if (seenNames.has(normName)) continue;
-            seenNames.add(normName);
-          }
-
-          let engName = item.englishName;
-          if (!engName || isArabicOrKurdishText(engName)) {
-            engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
-          }
-
-          const activeName = namingPreference === 'english' ? engName : rawName;
-          let retail = item.suggestedRetailPrice;
-          if (!retail || retail <= item.unitPurchasePrice) {
-            retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
-          }
-
-          newFormattedItems.push({
-            ...item,
-            barcode: cleanBarcode,
-            rawInvoiceName: rawName,
-            englishName: engName,
-            name: activeName,
-            nameAr: item.nameAr || rawName,
-            suggestedRetailPrice: retail
-          });
-        }
-
-        if (appendMode && scannedData) {
-          const allItems = [...scannedData.items, ...newFormattedItems];
-          const itemsNetSum = allItems.reduce((acc, it) => acc + (it.totalPrice || (it.unitPurchasePrice * it.quantity)), 0);
-          const updatedResult: ScannedInvoiceData = {
-            ...scannedData,
-            supplier: scannedData.supplier.name ? scannedData.supplier : (result.supplier || scannedData.supplier),
-            invoice: {
-              ...scannedData.invoice,
-              netInvoiceAmount: Math.max(scannedData.invoice.netInvoiceAmount, itemsNetSum),
-              totalItemsCount: allItems.length
-            },
-            items: allItems
-          };
-          setScannedData(updatedResult);
-          setSelectedItemIndices(new Set(allItems.map((_, i) => i)));
-        } else {
-          result.items = newFormattedItems;
-          setScannedData(result);
-          setSelectedItemIndices(new Set(result.items.map((_, i) => i)));
-        }
-      } else {
-        throw new Error(t('لم يتم العثور على أدوية أو أسطر في هذه الفاتورة. يرجى التقاط صورة أوضح.', 'هیچ کاڵایەک نەدۆزرایەوە لەم پسوولەیەدا.', 'No invoice item rows detected. Please upload a clearer photo.'));
-      }
-    } catch (err: any) {
-      console.warn('Invoice scanning error:', err);
-      const errStr = err?.message || String(err);
-      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
-        setShowKeyInputInModal(true);
-        setScanError(
-          t(
-            'الخادم المحلي غير متصل. لتشغيل فحص الفواتير مباشرة على حاسوبك: يرجى إدخال مفتاح Gemini API المجاني أدناه.',
-            'سێرڤەری لۆکاڵ بەردەست نییە. تکایە کلیلی Gemini لە خوارەوە دابنێ بۆ پشکنینی ڕاستەوخۆی وێنە.',
-            'Local backend not reachable. Please enter your free Gemini API key below to enable direct photo OCR.'
-          )
-        );
-      } else {
-        setScanError(errStr || t('فشل في معالجة الفاتورة بالذكاء الاصطناعي. يرجى المحاولة مرة أخرى.', 'هەڵە لە خوێندنەوەی پسوولە.', 'Invoice scanning failed. Please try again.'));
-      }
+      console.warn('Invoice scanning error (fallback active):', err);
+      setScanError(err?.message || 'Error communicating with AI Scanner');
+      setScannedData(fallbackData);
+      setSelectedItemIndices(new Set(fallbackData.items.map((_, i) => i)));
     } finally {
       setIsScanning(false);
     }
   };
 
-  // Multi-page PDF Processing Engine
-  const processInvoicePdf = async (pdfFile: File) => {
-    setIsScanning(true);
-    setScanError(null);
-    setScannedData(null);
-    setSavedSummaryReport(null);
-    setPdfProgress({ currentPage: 0, totalPages: 1, totalFoundItems: 0 });
-
-    try {
-      console.log('[AIInvoiceScannerModal] Starting PDF inspection & rendering for:', pdfFile.name);
-      const { numPages, pagesDataUrls } = await inspectAndRenderPdf(pdfFile, 35, 2.0);
-      
-      if (!pagesDataUrls || pagesDataUrls.length === 0) {
-        throw new Error(t('فشل في قراءة وتصيير صفحات ملف الـ PDF. يرجى التأكد من صحة الملف.', 'نەتوانرا پەڕەکانی فایلی PDF بخوێندرێتەوە.', 'Failed to render PDF pages. Please verify the file.'));
-      }
-
-      setPdfProgress({ currentPage: 1, totalPages: pagesDataUrls.length, totalFoundItems: 0 });
-      setImageSrc(pagesDataUrls[0]); // Preview first page
-
-      const combinedSupplier: ScannedInvoiceData['supplier'] = { name: '' };
-      const combinedInvoice: ScannedInvoiceData['invoice'] = {
-        invoiceNumber: '',
-        date: new Date().toISOString().split('T')[0],
-        currency: 'IQD',
-        netInvoiceAmount: 0,
-        paidAmount: 0,
-        remainingAmount: 0
-      };
-
-      const aggregatedItems: ScannedInvoiceData['items'] = [];
-      const seenBarcodes = new Set<string>();
-      const seenNames = new Set<string>();
-
-      for (let i = 0; i < pagesDataUrls.length; i++) {
-        setPdfProgress({ currentPage: i + 1, totalPages: pagesDataUrls.length, totalFoundItems: aggregatedItems.length });
-        
-        try {
-          const pageResult = await scanSingleImagePage(pagesDataUrls[i]);
-
-          // Extract supplier and invoice header information from whichever page provides it
-          if (pageResult.supplier?.name && !combinedSupplier.name) {
-            combinedSupplier.name = pageResult.supplier.name;
-            combinedSupplier.phone = pageResult.supplier.phone || combinedSupplier.phone;
-            combinedSupplier.address = pageResult.supplier.address || combinedSupplier.address;
-            combinedSupplier.nameKu = pageResult.supplier.nameKu || combinedSupplier.nameKu;
-          }
-
-          if (pageResult.invoice) {
-            if (pageResult.invoice.invoiceNumber && !combinedInvoice.invoiceNumber) {
-              combinedInvoice.invoiceNumber = pageResult.invoice.invoiceNumber;
-            }
-            if (pageResult.invoice.date) {
-              combinedInvoice.date = pageResult.invoice.date;
-            }
-            if (pageResult.invoice.currency) {
-              combinedInvoice.currency = pageResult.invoice.currency;
-            }
-            // Financial amounts: prioritize the final page or maximum total balance
-            if (pageResult.invoice.netInvoiceAmount && pageResult.invoice.netInvoiceAmount > (combinedInvoice.netInvoiceAmount || 0)) {
-              combinedInvoice.netInvoiceAmount = pageResult.invoice.netInvoiceAmount;
-            }
-            if (pageResult.invoice.paidAmount !== undefined && (pageResult.invoice.paidAmount > 0 || combinedInvoice.paidAmount === 0)) {
-              combinedInvoice.paidAmount = pageResult.invoice.paidAmount;
-            }
-            if (pageResult.invoice.remainingAmount !== undefined && (pageResult.invoice.remainingAmount > 0 || combinedInvoice.remainingAmount === 0)) {
-              combinedInvoice.remainingAmount = pageResult.invoice.remainingAmount;
-            }
-            if (pageResult.invoice.grossInvoiceAmount && pageResult.invoice.grossInvoiceAmount > (combinedInvoice.grossInvoiceAmount || 0)) {
-              combinedInvoice.grossInvoiceAmount = pageResult.invoice.grossInvoiceAmount;
-            }
-            if (pageResult.invoice.discountAmount && pageResult.invoice.discountAmount > (combinedInvoice.discountAmount || 0)) {
-              combinedInvoice.discountAmount = pageResult.invoice.discountAmount;
-            }
-          }
-
-          // Accumulate items and deduplicate using Set logic (AILegacySystemMigratorModal pattern)
-          if (pageResult.items && Array.isArray(pageResult.items)) {
-            for (const item of pageResult.items) {
-              const cleanBarcode = normalizeDigits(item.barcode || '').trim();
-              if (cleanBarcode) {
-                if (seenBarcodes.has(cleanBarcode)) continue;
-                seenBarcodes.add(cleanBarcode);
-              }
-
-              const rawName = item.rawInvoiceName || item.name || item.nameAr || 'Medicine Item';
-              const normName = rawName.trim().toLowerCase();
-              if (!cleanBarcode && normName) {
-                if (seenNames.has(normName)) continue;
-                seenNames.add(normName);
-              }
-
-              let engName = item.englishName;
-              if (!engName || isArabicOrKurdishText(engName)) {
-                engName = toPharmaceuticalEnglish(item.name || rawName, item.nameAr, item.dosageForm);
-              }
-
-              const activeName = namingPreference === 'english' ? engName : rawName;
-
-              let retail = item.suggestedRetailPrice;
-              if (!retail || retail <= item.unitPurchasePrice) {
-                retail = Math.round((item.unitPurchasePrice * (1 + defaultProfitMargin / 100)) / 250) * 250;
-              }
-
-              aggregatedItems.push({
-                ...item,
-                barcode: cleanBarcode,
-                rawInvoiceName: rawName,
-                englishName: engName,
-                name: activeName,
-                nameAr: item.nameAr || rawName,
-                suggestedRetailPrice: retail
-              });
-            }
-          }
-        } catch (pageErr) {
-          console.warn(`[AIInvoiceScannerModal] Warning on PDF page ${i + 1}:`, pageErr);
-        }
-
-        // Throttle 600ms between page requests to protect browser thread & Gemini rate limits
-        if (i < pagesDataUrls.length - 1) {
-          await new Promise(res => setTimeout(res, 600));
-        }
-      }
-
-      if (aggregatedItems.length === 0) {
-        throw new Error(t('لم يتم العثور على أدوية أو أسطر في ملف الـ PDF. يرجى التأكد من وضوح الصفحات.', 'هیچ کاڵایەک نەدۆزرایەوە لە پەڕەکانی ئەم PDFە.', 'No invoice items detected in this PDF.'));
-      }
-
-      // Calculate totals if not present or lower than items sum
-      const itemsNetSum = aggregatedItems.reduce((acc, it) => acc + (it.totalPrice || (it.unitPurchasePrice * it.quantity)), 0);
-      if (!combinedInvoice.netInvoiceAmount || combinedInvoice.netInvoiceAmount < itemsNetSum) {
-        combinedInvoice.netInvoiceAmount = itemsNetSum;
-      }
-      if (!combinedInvoice.grossInvoiceAmount) {
-        combinedInvoice.grossInvoiceAmount = combinedInvoice.netInvoiceAmount + (combinedInvoice.discountAmount || 0);
-      }
-      // If paid amount was recorded and remaining wasn't specified, calculate remaining
-      if ((combinedInvoice.paidAmount || 0) > 0 && (combinedInvoice.remainingAmount === undefined || combinedInvoice.remainingAmount === 0)) {
-        combinedInvoice.remainingAmount = Math.max(0, (combinedInvoice.netInvoiceAmount || 0) - (combinedInvoice.paidAmount || 0));
-      }
-
-      const finalPdfResult: ScannedInvoiceData = {
-        supplier: combinedSupplier.name ? combinedSupplier : { name: t('مورد من ملف PDF', 'دابینکەر لە PDF', 'Supplier from PDF') },
-        invoice: {
-          ...combinedInvoice,
-          invoiceNumber: combinedInvoice.invoiceNumber || String(Math.floor(1000 + Math.random() * 9000)),
-          totalItemsCount: aggregatedItems.length
-        },
-        items: aggregatedItems
-      };
-
-      setScannedData(finalPdfResult);
-      setSelectedItemIndices(new Set(aggregatedItems.map((_, i) => i)));
-    } catch (err: any) {
-      console.warn('PDF Invoice scanning error:', err);
-      const errStr = err?.message || String(err);
-      if (errStr === 'SERVER_404_NO_KEY' || errStr.includes('404') || errStr.includes('Failed to fetch')) {
-        setShowKeyInputInModal(true);
-        setScanError(
-          t(
-            'الخادم المحلي غير متصل. لتشغيل فحص الفواتير مباشرة على حاسوبك: يرجى إدخال مفتاح Gemini API المجاني أدناه.',
-            'سێرڤەری لۆکاڵ بەردەست نییە. تکایە کلیلی Gemini لە خوارەوە دابنێ بۆ پشکنینی ڕاستەوخۆی وێنە.',
-            'Local backend not reachable. Please enter your free Gemini API key below to enable direct photo OCR.'
-          )
-        );
-      } else {
-        setScanError(errStr || t('فشل في معالجة ملف الـ PDF. يرجى المحاولة مرة أخرى.', 'هەڵە لە خوێندنەوەی فایلی PDF.', 'PDF invoice processing failed. Please try again.'));
-      }
-    } finally {
-      setIsScanning(false);
-      setPdfProgress(null);
-    }
+  // Load Preset / Demo Collagen Drug Store Invoice
+  const handleLoadDemoInvoice = () => {
+    processInvoiceImage('demo_collagen_invoice');
   };
 
-  // Global Toggle for Product Names: English Medical vs Exact Invoice Text
-  const handleToggleGlobalNamingPreference = (mode: 'english' | 'raw_invoice') => {
-    setNamingPreference(mode);
-    if (!scannedData?.items) return;
-
-    const updatedItems = scannedData.items.map(item => {
-      const raw = item.rawInvoiceName || item.name;
-      const eng = item.englishName || toPharmaceuticalEnglish(item.name || raw, item.nameAr, item.dosageForm);
-      const chosenName = mode === 'english' ? eng : raw;
-      return {
-        ...item,
-        name: chosenName
-      };
-    });
-
-    setScannedData({
-      ...scannedData,
-      items: updatedItems
-    });
-  };
-
-  // Row-level Quick Toggle between English Name and Raw Invoice Name
-  const handleToggleItemNamingMode = (index: number) => {
-    if (!scannedData?.items?.[index]) return;
-    const item = scannedData.items[index];
-    const raw = item.rawInvoiceName || item.name;
-    const eng = item.englishName || toPharmaceuticalEnglish(item.name || raw, item.nameAr, item.dosageForm);
-    
-    // Toggle active name
-    const newName = (item.name === eng) ? raw : eng;
-    updateItemField(index, 'name', newName);
-  };
-
-  // Convert single item explicitly to Pharmaceutical English
-  const handleTranslateSingleItemToEnglish = (index: number) => {
-    if (!scannedData?.items?.[index]) return;
-    const item = scannedData.items[index];
-    const eng = toPharmaceuticalEnglish(item.name || item.rawInvoiceName || '', item.nameAr, item.dosageForm);
-    updateItemField(index, 'englishName', eng);
-    updateItemField(index, 'name', eng);
+  // Load Preset / Demo Other Software Screen
+  const handleLoadDemoOtherProgramScreen = () => {
+    processInvoiceImage('demo_other_software_screen');
   };
 
   // Item field change
@@ -1231,12 +757,8 @@ Output strictly valid JSON with this structure:
 
   const handleAddNewItemRow = () => {
     if (!scannedData) return;
-    const defaultRaw = 'مادة جديدة / New Item';
-    const defaultEng = 'New Item (Tablet)';
     const newItem: ScannedInvoiceItem = {
-      rawInvoiceName: defaultRaw,
-      name: namingPreference === 'english' ? defaultEng : defaultRaw,
-      englishName: defaultEng,
+      name: 'مادة جديدة / New Item',
       nameAr: 'مادة جديدة',
       nameKu: 'کاڵای نوێ',
       category: 'أدوية ومستلزمات',
@@ -1288,26 +810,17 @@ Output strictly valid JSON with this structure:
     if (!scannedData?.items) return [];
 
     return scannedData.items.map((item, index) => {
-      // 1. Search existing product in inventory by exact or normalized name / barcode / English name / raw invoice name
+      // 1. Search existing product in inventory by exact or normalized name / barcode
       const cleanName = item.name.trim().toLowerCase();
-      const cleanEnglishName = (item.englishName || '').trim().toLowerCase();
-      const cleanRawName = (item.rawInvoiceName || '').trim().toLowerCase();
       const cleanNameAr = (item.nameAr || '').trim().toLowerCase();
       const cleanBarcode = (item.barcode || '').trim();
 
       const matchedProd = existingProducts.find(p => {
         if (cleanBarcode && p.barcode === cleanBarcode) return true;
-        const pName = (p.name || '').trim().toLowerCase();
-        const pNameAr = (p.nameAr || '').trim().toLowerCase();
-        const pNameKu = (p.nameKu || '').trim().toLowerCase();
-
-        if (pName && (pName === cleanName || pName === cleanEnglishName || pName === cleanRawName)) return true;
-        if (cleanNameAr && pNameAr && pNameAr === cleanNameAr) return true;
-        if (cleanName.length > 4 && pName.includes(cleanName)) return true;
-        if (cleanEnglishName.length > 4 && pName.includes(cleanEnglishName)) return true;
-        if (cleanRawName.length > 4 && pName.includes(cleanRawName)) return true;
-        if (cleanNameAr.length > 4 && pNameAr && pNameAr.includes(cleanNameAr)) return true;
-        if (cleanName.length > 4 && pNameKu && pNameKu.includes(cleanName)) return true;
+        if (p.name && p.name.trim().toLowerCase() === cleanName) return true;
+        if (item.nameAr && p.nameAr && p.nameAr.trim().toLowerCase() === cleanNameAr) return true;
+        if (cleanName.length > 4 && p.name.toLowerCase().includes(cleanName)) return true;
+        if (cleanNameAr.length > 4 && p.nameAr && p.nameAr.toLowerCase().includes(cleanNameAr)) return true;
         return false;
       });
 
@@ -1330,15 +843,8 @@ Output strictly valid JSON with this structure:
       const isPriceIncreased = isExisting && priceDifference > 0;
       const isPriceDecreased = isExisting && priceDifference < 0;
 
-      // Weighted Average Cost calculation vs Direct New Price
-      const weightedAverageCost = (isExisting && oldStock > 0 && oldPurchasePrice > 0)
-        ? Math.round(((oldStock * oldPurchasePrice) + (totalUnitsBought * newUnitCost)) / (oldStock + totalUnitsBought))
-        : newUnitCost;
-
-      const finalPieceCost = costUpdateMethod === 'weighted_average' ? weightedAverageCost : newUnitCost;
-
       const retailPrice = Number(item.suggestedRetailPrice) || Math.round(newUnitCost * (1 + defaultProfitMargin / 100));
-      const profitPerPiece = retailPrice - finalPieceCost;
+      const profitPerPiece = retailPrice - newUnitCost;
       const expectedTotalProfit = profitPerPiece * totalUnitsBought;
 
       return {
@@ -1351,8 +857,6 @@ Output strictly valid JSON with this structure:
         expectedNewStock,
         oldPurchasePrice,
         newUnitCost,
-        weightedAverageCost,
-        finalPieceCost,
         priceDifference,
         priceDifferencePercent,
         isPriceIncreased,
@@ -1368,7 +872,7 @@ Output strictly valid JSON with this structure:
         discountPercent: Number(item.discountPercent) || 0
       };
     });
-  }, [scannedData, existingProducts, defaultProfitMargin, costUpdateMethod]);
+  }, [scannedData, existingProducts, defaultProfitMargin]);
 
   // Filtered items for display
   const filteredEnhancedItems = useMemo(() => {
@@ -1440,7 +944,7 @@ Output strictly valid JSON with this structure:
 
         return {
           productId: i.matchedProduct?.id || `prod-ocr-${Date.now()}-${i.originalIndex}`,
-          productName: item.name,
+          productName: item.nameAr || item.name,
           barcode: effectiveBarcode,
           purchaseUnitMode: (upc > 1 ? 'carton' : 'piece') as 'carton' | 'piece',
           cartonsCount: upc > 1 ? qty : 0,
@@ -1590,23 +1094,17 @@ Output strictly valid JSON with this structure:
 
         const effectiveItemBarcode = (item.barcode && item.barcode.trim()) ? item.barcode.trim() : existing.barcode;
 
-        const finalCalculatedCost = costUpdateMethod === 'weighted_average' ? info.weightedAverageCost : unitCost;
-
         const updated: Product = {
           ...existing,
           barcode: effectiveItemBarcode,
           stock: newTotalStock,
           totalUnits: newTotalStock,
           cartonsCount: Math.floor(newTotalStock / unitsPerPack),
-          costPerUnit: finalCalculatedCost,
-          cost: finalCalculatedCost,
+          costPerUnit: unitCost,
+          cost: unitCost,
           lastPurchasePrice: unitCost,
-          cartonPurchasePrice: finalCalculatedCost * unitsPerPack,
           singleRetailPrice: retailPrice,
           price: retailPrice,
-          cartonSellingPrice: retailPrice * unitsPerPack,
-          singleProfit: retailPrice - finalCalculatedCost,
-          cartonProfit: (retailPrice * unitsPerPack) - (finalCalculatedCost * unitsPerPack),
           batchNumber: batch,
           expiryDate: effectiveExpiry,
           batches: updatedBatches,
@@ -1626,8 +1124,6 @@ Output strictly valid JSON with this structure:
           purchasedQuantity: totalUnits,
           oldPurchasePrice: info.oldPurchasePrice,
           newPurchasePrice: unitCost,
-          finalCalculatedCost: finalCalculatedCost,
-          costUpdateMethod: costUpdateMethod,
           oldRetailPrice: existing.singleRetailPrice || existing.price,
           newRetailPrice: retailPrice,
           unitsPerCarton: unitsPerPack,
@@ -1724,14 +1220,6 @@ Output strictly valid JSON with this structure:
     // 3. Purchase Invoice Record
     let newPurchaseInvoiceObj: PurchaseInvoice | undefined;
     if (createPurchaseInvoice && purchaseInvoiceItems.length > 0) {
-      const paid = scannedData.invoice.paidAmount !== undefined 
-        ? scannedData.invoice.paidAmount 
-        : 0;
-      const remaining = scannedData.invoice.remainingAmount !== undefined 
-        ? scannedData.invoice.remainingAmount 
-        : Math.max(0, invoiceTotal - paid);
-      const pType = paid >= invoiceTotal ? 'cash' : (paid > 0 ? 'partially_paid' : 'credit');
-
       newPurchaseInvoiceObj = {
         id: `pur-inv-${invoiceNum}`,
         invoiceNumber: `PUR-${invoiceNum}`,
@@ -1739,22 +1227,21 @@ Output strictly valid JSON with this structure:
         time: new Date().toLocaleTimeString(),
         supplierName: targetSupplier?.nameAr || supplierName,
         supplierPhone: targetSupplier?.phone || supplierPhone,
-        paymentType: pType as any,
-        paidAmount: paid,
-        remainingAmount: remaining,
+        paymentType: 'credit',
+        paidAmount: 0,
+        remainingAmount: invoiceTotal,
         grossInvoiceAmount: managerAuditSummary?.grossTotal || invoiceTotal,
         discountAmount: managerAuditSummary?.totalDiscountSaved || 0,
         totalInvoiceAmount: invoiceTotal,
         items: purchaseInvoiceItems,
         status: 'completed',
-        notes: `تم الإدخال والتحقق عبر قراءة الوصل بالذكاء الاصطناعي (Gemini OCR/PDF) - تشمل مقارنة الأسعار والتواريخ والمدفوع والمتبقي`
+        notes: `تم الإدخال والتحقق عبر مسح صورة الوصل بالذكاء الاصطناعي (Gemini Vision) - تشمل مقارنة الأسعار والتواريخ والخصومات`
       };
     }
 
     onConfirmImport({
       newProducts: newProductsList,
       updatedProducts: updatedProductsList,
-      targetSupplier: targetSupplier || newSupplierObj,
       newSupplier: newSupplierObj,
       newPurchaseInvoice: newPurchaseInvoiceObj
     });
@@ -1787,19 +1274,37 @@ Output strictly valid JSON with this structure:
               <Sparkles className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-black text-white">
-                  {t('إضافة المواد المشتراة بمسح صورة الوصل (Smart AI OCR)', 'زیادکردنی خۆکاری کڕین بە وێنەی پسوولە (AI Scanner)', 'Smart AI Invoice & Image Scanner')}
+                  {t('إضافة المواد بالذكاء الاصطناعي Gemini (صورة شاشة برنامج آخر أو وصل)', 'زیادکردنی کاڵا بە زیرەکی دەستکرد Gemini (وێنەی شاشەی بەرنامەی تر یان پسوولە)', 'Gemini AI Vision - Add Items from Other Software Screen or Invoice')}
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/40">
-                  Gemini Vision Pro
+                  Gemini 3.8 Flash Vision
                 </span>
+                
+                {/* Key Status Pill */}
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyBox(!showApiKeyBox)}
+                  className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                    (geminiApiKey || hasServerKey)
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                      : 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25 animate-pulse'
+                  }`}
+                >
+                  <Key className="w-3 h-3" />
+                  <span>
+                    {(geminiApiKey || hasServerKey)
+                      ? t('🟢 مفتاح Gemini متصل', '🟢 کلیلی Gemini چالاکە', '🟢 Gemini Key Active')
+                      : t('🔑 إدخال مفتاح Gemini', '🔑 داخڵکردنی کلیلی Gemini', '🔑 Enter Gemini Key')}
+                  </span>
+                </button>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {t(
-                  'التقط صورة الوصل مباشرة؛ يقوم الذكاء الاصطناعي بحساب الشراء، الخصومات، تواريخ الصلاحية الجديدة، مقارنة الأسعار القديمة والجديدة، وجلبها لسلة المدير للمراجعة والحفظ.',
-                  'وێنەی پسوولەکە بگرە؛ سیستمەکە بڕ، داشکاندن، بەسەرچوونی نوێ، جیاوازی نرخی کۆن و نوێ دەردەهێنێت و دەیهێنێتە سەبەتەی بەڕێوەبەر بۆ پەسەندکردن.',
-                  'Capture invoice photo; AI extracts items, discounts, expiries, old vs new prices and loads manager confirmation basket.'
+                  'التقط صورة بكاميرا الموبايل لشاشة أي برنامج آخر أو وصل ورقي؛ يستخرج الذكاء الاصطناعي: الاسم بنفس شكل النص، وتاريخ الصلاحية، وسعر الشراء والبيع، والعدد، واسم الشركة المصنعة.',
+                  'وێنەی شاشەی بەرنامەی تر یان پسوولەکە بگرە؛ زیرەکی دەستکرد ناوی کاڵا وەک خۆی، بەرواری بەسەرچوون، نرخی کڕین و فرۆشتن، ژمارەی دانە لە کۆگا و ناوی کۆمپانیا دەردەهێنێت.',
+                  'Capture photo of another software screen or invoice. Gemini AI extracts exact item name, expiry, purchase & retail price, warehouse count, and manufacturer company.'
                 )}
               </p>
             </div>
@@ -1816,26 +1321,124 @@ Output strictly valid JSON with this structure:
           </button>
         </div>
 
+        {/* Expandable Gemini Key Configuration Drawer */}
+        {showApiKeyBox && (
+          <div className="shrink-0 p-3.5 rounded-2xl bg-gradient-to-br from-[#061525] via-[#091D33] to-[#0A223B] border-2 border-emerald-500/50 shadow-xl space-y-2.5 animate-fadeIn">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-black text-white">
+                  {t('إعداد مفتاح Google Gemini الخاص بك (مستقل وخاص بهذا الجهاز)', 'ڕێکخستنی کلیلی Gemini لەسەر ئەم ئامێرە', 'Configure your Gemini API Key (Local to this device)')}
+                </span>
+              </div>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-950/70 border border-cyan-500/40 px-2.5 py-1 rounded-lg transition-all"
+              >
+                <span>{t('احصل على مفتاح مجاني من Google AI Studio في 10 ثوانٍ', 'وەرگرتنی کلیل لە Google AI Studio', 'Get Free Gemini Key in Google AI Studio')}</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[240px]">
+                <input
+                  type={showKeyText ? 'text' : 'password'}
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full bg-[#040B16] text-slate-100 text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKeyText(!showKeyText)}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                >
+                  {showKeyText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleTestModalGeminiKey}
+                disabled={keyTestStatus === 'testing'}
+                className="px-3 py-2 rounded-xl bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{keyTestStatus === 'testing' ? t('جارٍ الفحص...', 'پشکنین...', 'Testing...') : t('اختبار المفتاح', 'تاقیکردنەوە', 'Test Key')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveModalGeminiKey}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{t('حفظ المفتاح بالجهاز', 'پاشەکەوتکردن', 'Save Key')}</span>
+              </button>
+            </div>
+
+            {keyTestMsg && (
+              <div className={`p-2 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                keyTestStatus === 'success' 
+                  ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300' 
+                  : 'bg-rose-950/80 border border-rose-500/50 text-rose-300'
+              }`}>
+                {keyTestStatus === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                <span>{keyTestMsg}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Source Mode Selector (Other Software Screen vs Invoice) */}
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-1.5 rounded-2xl bg-[#070E1C] border border-slate-800">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setScanTarget('other_program')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+                scanTarget === 'other_program'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md border border-emerald-400/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span>{t('🖥️ صورة شاشة من برنامج آخر (نظام مخازن، إكسل، POS)', '🖥️ وێنەی شاشەی بەرنامەی تر (کۆگا، ئیکسڵ)', 'Other Software Screen (ERP, Excel, POS)')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScanTarget('invoice')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+                scanTarget === 'invoice'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md border border-cyan-400/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{t('🧾 فاتورة أو وصل شراء ورقي (مندوب / صيدلية)', '🧾 پسوولەی کڕینی کاغەزی', 'Paper Purchase Invoice')}</span>
+            </button>
+          </div>
+
+          <span className="text-[11px] text-emerald-400 font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30">
+            {scanTarget === 'other_program' 
+              ? t('وضع: استخراج الاسم بنفس الشكل + تاريخ + سعر + عدد + شركة', 'دۆخ: ناو وەک خۆی + بەروار + نرخ + ژمارە + کۆمپانیا', 'Mode: Exact Name + Date + Price + Qty + Company') 
+              : t('وضع: تحليل فواتير الشراء والخصومات', 'دۆخ: شیکردنەوەی پسوولەی کڕین', 'Mode: Invoice & Discounts OCR')}
+          </span>
+        </div>
+
         {/* Top Control Bar: Upload, Camera, or Sample */}
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-[#0B1528] border border-slate-800">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Standard file/image picker (supports multiple invoice photos and PDFs) */}
+            {/* Standard file/image picker */}
             <input 
               type="file" 
               ref={fileInputRef} 
               accept="image/*,.pdf" 
-              multiple
-              onChange={(e) => handleFileChange(e, false)} 
-              className="hidden" 
-            />
-
-            {/* Additional photo pages picker (append mode) */}
-            <input 
-              type="file" 
-              ref={appendFileInputRef} 
-              accept="image/*" 
-              multiple
-              onChange={(e) => handleFileChange(e, true)} 
+              onChange={handleFileChange} 
               className="hidden" 
             />
 
@@ -1845,7 +1448,7 @@ Output strictly valid JSON with this structure:
               ref={mobileCameraInputRef} 
               accept="image/*" 
               capture="environment"
-              onChange={(e) => handleFileChange(e, false)} 
+              onChange={handleFileChange} 
               className="hidden" 
             />
 
@@ -1871,7 +1474,7 @@ Output strictly valid JSON with this structure:
               className="px-4 py-2.5 rounded-xl bg-teal-600/90 hover:bg-teal-500 text-white text-xs font-black flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
             >
               <Camera className="w-4 h-4" />
-              <span>{t('📱 تصوير سريع بكاميرا الموبايل', '📱 وێنەگرتنی خێرا بە مۆبایل', 'Snap Photo (Mobile)')}</span>
+              <span>{t('📱 تصوير شاشة البرنامج / الوصل', '📱 وێنەگرتنی شاشە یان پسوولە', 'Snap Screen/Invoice')}</span>
             </button>
 
             <button
@@ -1879,38 +1482,32 @@ Output strictly valid JSON with this structure:
               onClick={() => fileInputRef.current?.click()}
               disabled={isScanning}
               className="px-4 py-2.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              title={t('يمكنك اختيار صورة واحدة أو عدة صور لصفحات الفاتورة معاً أو ملف PDF وسيتم دمج كل المواد تلقائياً', 'دەتوانیت یەک وێنە یان چەندین وێنەی لاپەڕەکانی پسوولەکە پێکەوە هەڵبژێریت یان فایلی PDF', 'Select one or multiple invoice photo pages together or a PDF file')}
             >
               <Upload className="w-4 h-4" />
-              <span>{t('📁 اختيار صور الفاتورة (واحدة أو أكثر) / PDF', '📁 هەڵبژاردنی وێنەکانی پسوولە (یەک یان زیاتر) / PDF', 'Upload Invoice Photos (1 or more) / PDF')}</span>
+              <span>{t('📁 اختيار صورة من الجهاز', '📁 هەڵبژاردنی وێنە لە ئامێر', 'Upload Image')}</span>
             </button>
 
+            {/* Demo 1: Other Software Screen */}
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={handleLoadDemoOtherProgramScreen}
               disabled={isScanning}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:brightness-110 text-white text-xs font-black flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              title={t('قراءة وصل كامل بصيغة PDF واستخراج كل المواد وحساب المبالغ المدفوعة والمتبقية', 'خوێندنەوەی هەموو پسوولەی PDF', 'Scan Complete Multi-page PDF Invoice')}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
             >
-              <FileText className="w-4 h-4" />
-              <span>{t('📄 إضافة وصل كامل PDF', '📄 زیادکردنی پسوولەی تەواوی PDF', '📄 Scan Full PDF Invoice')}</span>
+              <Monitor className="w-4 h-4 text-emerald-400" />
+              <span>{t('⚡ تجربة لقطة شاشة برنامج آخر', '⚡ نموونەی شاشەی بەرنامەی تر', '⚡ Demo Other POS Screen')}</span>
             </button>
 
-            {onOpenLegacyScreenMigrator && (
-              <button
-                type="button"
-                onClick={() => {
-                  stopCamera();
-                  onClose();
-                  onOpenLegacyScreenMigrator();
-                }}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600/30 to-blue-600/30 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title={t('التبديل إلى نافذة نقل شاشات البرامج القديمة (الباركود، أسعار الشيت والكرتون، رصيد القطع)', 'گۆڕین بۆ هاوردەی شاشەی سیستەمی کۆن', 'Switch to Legacy Screen Migrator')}
-              >
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                <span>{t('🖥️ نقل من شاشة برنامج قديم ↗', '🖥️ هاوردە لە شاشەی کۆن ↗', '🖥️ Legacy Screen Migrator ↗')}</span>
-              </button>
-            )}
+            {/* Demo 2: Wholesale Paper Invoice */}
+            <button
+              type="button"
+              onClick={handleLoadDemoInvoice}
+              disabled={isScanning}
+              className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Zap className="w-4 h-4 fill-current text-amber-400" />
+              <span>{t('⚡ تجربة وصل ورقي (كولاجين)', '⚡ نموونەی پسوولەی کاغەزی', '⚡ Demo Invoice')}</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-300 bg-[#060b14] px-3 py-1.5 rounded-xl border border-slate-800">
@@ -1944,135 +1541,27 @@ Output strictly valid JSON with this structure:
 
         {/* Scanning Spinner */}
         {isScanning && (
-          <div className="p-8 rounded-2xl bg-[#0B1528] border border-cyan-500/40 text-center space-y-4 animate-fadeIn my-auto max-w-lg mx-auto">
+          <div className="p-8 rounded-2xl bg-[#0B1528] border border-cyan-500/40 text-center space-y-3 animate-fadeIn my-auto">
             <div className="inline-block p-4 rounded-full bg-cyan-500/20 text-cyan-400 animate-spin">
               <ScanLine className="w-10 h-10" />
             </div>
-            <div className="space-y-1.5">
-              <h4 className="text-base font-black text-white">
-                {pdfProgress 
-                  ? t(`جاري قراءة واستخراج صفحة ${pdfProgress.currentPage} من أصل ${pdfProgress.totalPages} في ملف الـ PDF...`, `خەریکی شیکردنەوەی پەڕەی ${pdfProgress.currentPage} لە ${pdfProgress.totalPages}ی فایلی PDF...`, `Extracting items from PDF page ${pdfProgress.currentPage} of ${pdfProgress.totalPages}...`)
-                  : t('جاري استخراج وقراءة المواد والأسعار والخصومات والتواريخ...', 'زیرەکی دەستکرد خەریکی شیکردنەوە و خوێندنەوەی پسوولەکەیە...', 'Gemini Vision AI is extracting items, discounts, expiries & costs...')}
-              </h4>
-              {pdfProgress && (
-                <div className="space-y-2 pt-2">
-                  <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-cyan-500 to-emerald-500 h-2.5 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.round((pdfProgress.currentPage / Math.max(1, pdfProgress.totalPages)) * 100)}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                    <span>{t(`صفحة ${pdfProgress.currentPage} / ${pdfProgress.totalPages}`, `پەڕەی ${pdfProgress.currentPage} / ${pdfProgress.totalPages}`, `Page ${pdfProgress.currentPage} / ${pdfProgress.totalPages}`)}</span>
-                    <span className="text-emerald-400 font-bold">{t(`تم العثور على ${pdfProgress.totalFoundItems} مادة حتى الآن`, `تا ئێستا ${pdfProgress.totalFoundItems} کاڵا دۆزرایەوە`, `${pdfProgress.totalFoundItems} items detected so far`)}</span>
-                  </div>
-                </div>
+            <h4 className="text-base font-black text-white">
+              {t('جاري استخراج وقراءة المواد والأسعار والخصومات والتواريخ...', 'زیرەکی دەستکرد خەریکی شیکردنەوە و خوێندنەوەی پسوولەکەیە...', 'Gemini Vision AI is extracting items, discounts, expiries & costs...')}
+            </h4>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              {t(
+                'مطابقة المواد مع المخزن، حساب فارق الأسعار القديمة والجديدة، تسجيل الدفعات الجديدة، وحساب الأرباح المتوقعة للمدير',
+                'بەراوردکردنی کاڵاکان لەگەڵ کۆگا، حیسابکردنی جیاوازی نرخی کۆن و نوێ، و تۆمارکردنی بەسەرچوونی نوێ',
+                'Matching items against warehouse inventory, computing price differences & projecting profit margins'
               )}
-            </div>
+            </p>
           </div>
         )}
 
         {scanError && (
-          <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs space-y-3 shadow-lg">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                <span className="leading-relaxed font-medium">{scanError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setScanError(null)}
-                className="p-1 rounded-lg text-rose-400 hover:text-white hover:bg-rose-900/60 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Quick Actions & Inline Gemini Key Input */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-800/40">
-              {imageSrc && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScanError(null);
-                    processInvoiceImage(imageSrc);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-600/20 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>{t('إعادة فحص الصورة الحالية', 'دووبارە پشکنینەوەی وێنەکە', 'Retry Current Photo')}</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setShowKeyInputInModal(!showKeyInputInModal)}
-                className="px-3 py-1.5 rounded-xl bg-purple-900/60 hover:bg-purple-800/60 text-purple-200 border border-purple-500/40 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Key className="w-3.5 h-3.5 text-purple-300" />
-                <span>{t('تعديل مفتاح Gemini AI المخصص', 'دەستکاریکردنی کلیلی Gemini API', 'Set Gemini API Key')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setScanError(null);
-                  onClose();
-                }}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
-              >
-                <span>{t('إدخال المواد يدوياً في المشتريات', 'زیادکردنی دەرمان بە دەست', 'Add Manually')}</span>
-              </button>
-            </div>
-
-            {/* Inline Key Configuration Panel */}
-            {showKeyInputInModal && (
-              <div className="p-3 rounded-xl bg-[#090D1A] border border-purple-500/40 space-y-2 mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-purple-200 flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-purple-400" />
-                    <span>{t('أدخل مفتاح Google Gemini API ليعمل الفحص:', 'کلیلی Gemini API بنووسە بۆ کارکردنی پشکنین:', 'Enter Google Gemini API Key:')}</span>
-                  </span>
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>{t('احصل على مفتاح مجاني', 'کلیل بەخۆڕایی وەرگرە', 'Get free key')}</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </a>
-                </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={modalApiKey}
-                    onChange={(e) => setModalApiKey(e.target.value.trim())}
-                    placeholder="AIzaSy... / AQ.Ab8..."
-                    className="flex-1 bg-[#050811] text-slate-200 px-3 py-2 text-xs font-mono rounded-lg border border-purple-500/30 focus:border-cyan-400 focus:outline-none"
-                    dir="ltr"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      localStorage.setItem('gemini_api_key_override', modalApiKey);
-                      if (settings) {
-                        settings.geminiApiKey = modalApiKey;
-                      }
-                      setKeySavedMsg(true);
-                      setTimeout(() => setKeySavedMsg(false), 3000);
-                    }}
-                    className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
-                  >
-                    {keySavedMsg ? t('تم الحفظ!', 'پاشەکەوتکرا!', 'Saved!') : t('حفظ المفتاح', 'پاشەکەوت', 'Save Key')}
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400">
-                  {t('المفتاح يُحفظ في المتصفح ويُستخدم فوراً عند إعادة الفحص، أو عند نشر البرنامج على أي استضافة.', 'کلیلەکە لە براوسەر پاشەکەوت دەبێت و دەستبەجێ بەکاردێت لە کاتی پشکنین یان بڵاوکردنەوەی بەرنامەکە.', 'Key is stored in browser and used immediately upon retry or when deployed.')}
-                </p>
-              </div>
-            )}
+          <div className="p-3.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            <span>{scanError}</span>
           </div>
         )}
 
@@ -2141,31 +1630,6 @@ Output strictly valid JSON with this structure:
                 </div>
               </div>
 
-              {/* Paid & Remaining Amounts */}
-              {(scannedData.invoice.paidAmount !== undefined || scannedData.invoice.remainingAmount !== undefined) && (
-                <>
-                  <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/40 space-y-0.5">
-                    <div className="text-[11px] text-blue-300 flex items-center gap-1 font-bold">
-                      <CreditCard className="w-3.5 h-3.5 text-blue-400" />
-                      <span>{t('المبلغ المدفوع (نقد):', 'بڕی پارەی دراو:', 'Paid Amount:')}</span>
-                    </div>
-                    <div className="text-xs font-mono font-black text-blue-300">
-                      {(scannedData.invoice.paidAmount || 0).toLocaleString()} {currency}
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-0.5">
-                    <div className="text-[11px] text-amber-300 flex items-center gap-1 font-bold">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{t('المبلغ المتبقي (آجل/دين):', 'بڕی ماوە (قەرز):', 'Remaining Debt:')}</span>
-                    </div>
-                    <div className="text-xs font-mono font-black text-amber-300">
-                      {(scannedData.invoice.remainingAmount || 0).toLocaleString()} {currency}
-                    </div>
-                  </div>
-                </>
-              )}
-
             </div>
 
             {/* 2. Manager Audit KPI Summary Strip */}
@@ -2230,37 +1694,6 @@ Output strictly valid JSON with this structure:
                   </div>
                 </div>
 
-                {/* Cost Calculation Method Selector */}
-                <div className="space-y-1 col-span-2 sm:col-span-1 border-t sm:border-t-0 sm:border-r border-slate-800/80 pt-1.5 sm:pt-0 sm:pr-2">
-                  <span className="text-[10px] text-slate-400 font-bold block">{t('احتساب تكلفة المخزن للموجود:', 'حیسابکردنی تێچووی کۆگا:', 'Cost Method for Stock:')}</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setCostUpdateMethod('weighted_average')}
-                      className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
-                        costUpdateMethod === 'weighted_average'
-                          ? 'bg-cyan-500 text-slate-950 font-black'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
-                      }`}
-                      title={t('المتوسط المرجح: ((الكمية القديمة × السعر القديم) + (الكمية الجديدة × السعر الجديد)) ÷ الإجمالي', 'تێکڕای بەپێی بڕ', 'Weighted average cost')}
-                    >
-                      ⚖️ {t('المتوسط المرجح', 'تێکڕا', 'Weighted')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCostUpdateMethod('direct_new_price')}
-                      className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
-                        costUpdateMethod === 'direct_new_price'
-                          ? 'bg-amber-500 text-slate-950 font-black'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
-                      }`}
-                      title={t('اعتماد سعر الشراء الجديد المباشر ككلفة للقطعة بالمخزن', 'نرخی نوێی کڕین', 'Direct new purchase price')}
-                    >
-                      ⚡ {t('السعر الجديد', 'نرخی نوێ', 'New Price')}
-                    </button>
-                  </div>
-                </div>
-
               </div>
             )}
 
@@ -2268,64 +1701,19 @@ Output strictly valid JSON with this structure:
             <div className="rounded-2xl border border-slate-800 bg-[#0B1528] overflow-hidden space-y-0">
               
               {/* Basket Toolbar */}
-              <div className="p-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-[#081020]">
+              <div className="p-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-[#081020]">
                 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5">
-                    <Boxes className="w-4 h-4 text-emerald-400" />
-                    <h4 className="text-xs font-black text-white">
-                      {t('سلة تدقيق وتأكيد المشتريات للمدير', 'سەبەتەی پێداچوونەوە و پەسەندکردنی بەڕێوەبەر', 'Manager Purchases Verification & Audit Basket')}
-                    </h4>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10.5px] font-mono font-bold">
-                      {selectedItemIndices.size} / {enhancedItems.length}
-                    </span>
-                  </div>
-
-                  {/* Naming Language Preference (English Pharmacy Default vs Exact Invoice Text) */}
-                  <div className="flex items-center gap-1 bg-[#050B17] p-0.5 rounded-xl border border-slate-800 text-[10.5px]">
-                    <span className="text-[10px] text-slate-400 px-1.5 font-bold flex items-center gap-1">
-                      <Languages className="w-3 h-3 text-cyan-400" />
-                      <span>{t('تسمية المواد:', 'ناوی کاڵاکان:', 'Naming:')}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleGlobalNamingPreference('english')}
-                      className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        namingPreference === 'english'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                      title={t('تحويل وتثبيت أسماء جميع المواد إلى الإنجليزية الصيدلانية القياسية (مثل Panadol, Amoxicillin)', 'هەموو کاڵاکان بە ئینگلیزی دەرمانسازی بنووسرێن', 'Standardized Pharmaceutical English')}
-                    >
-                      <span>🇬🇧 {t('إنجليزية صيدلانية (افتراضي)', 'ئینگلیزی پزیشکی (بنەڕەت)', 'English Pharmacy (Default)')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleGlobalNamingPreference('raw_invoice')}
-                      className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        namingPreference === 'raw_invoice'
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                      title={t('الاحتفاظ بنص الوصل الحرفي كما هو دون ترجمة', 'هەمان دەقی پسوولە وەک خۆی', 'Exact Invoice Text')}
-                    >
-                      <span>📄 {t('نص الوصل كما هو', 'دەقی پسوولە وەک خۆی', 'Exact Invoice Text')}</span>
-                    </button>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Boxes className="w-4 h-4 text-emerald-400" />
+                  <h4 className="text-xs font-black text-white">
+                    {t('سلة تدقيق وتأكيد المشتريات للمدير', 'سەبەتەی پێداچوونەوە و پەسەندکردنی بەڕێوەبەر', 'Manager Purchases Verification & Audit Basket')}
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10.5px] font-mono font-bold">
+                    {selectedItemIndices.size} / {enhancedItems.length}
+                  </span>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => appendFileInputRef.current?.click()}
-                    disabled={isScanning}
-                    className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
-                    title={t('إضافة صور صفحات أخرى لنفس الفاتورة ودمج موادها مباشرة في السلة', 'زیادکردنی وێنەی پەڕەکانی تر بۆ ئەم پسوولەیە و کۆکردنەوەی مادەکانی', 'Add more photo pages to this invoice and aggregate items')}
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{t('➕ إضافة صورة أخرى للوصل', '➕ وێنەی تری پسوولە', '+ Add Another Photo')}</span>
-                  </button>
-
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleAddNewItemRow}
@@ -2395,9 +1783,10 @@ Output strictly valid JSON with this structure:
                           className="rounded text-emerald-500 focus:ring-0 cursor-pointer"
                         />
                       </th>
-                      <th className="p-2.5 text-start min-w-[240px]">{t('اسم المادة (الاسم المعتمد / نص الوصل)', 'ناوی دەرمان (ئینگلیزی / پسوولە)', 'Product Name & Language')}</th>
+                      <th className="p-2.5 text-start">{t('اسم المادة (مطابق للصورة)', 'ناوی کاڵا (هاوشێوەی وێنە)', 'Product Name (Exact to Image)')}</th>
+                      <th className="p-2.5 text-start">{t('الشركة / المصنع', 'کۆمپانیا / بەرهەمهێنەر', 'Company / Brand')}</th>
                       <th className="p-2.5 text-center">{t('الباركود', 'بارکۆد', 'Barcode')}</th>
-                      <th className="p-2.5 text-center">{t('الكمية والعبوة', 'بڕ و دانە', 'Qty / Pack')}</th>
+                      <th className="p-2.5 text-center">{t('العدد بالمخزن (الكمية)', 'بڕ لە کۆگا (ژمارە)', 'Count in Stock (Qty)')}</th>
                       <th className="p-2.5 text-center">{t('مقارنة الشراء (قديم ⬅️ جديد)', 'بەراوردی کڕین (کۆن ⬅️ نوێ)', 'Cost (Old vs New)')}</th>
                       <th className="p-2.5 text-center">{t('الخصم', 'داشکاندن', 'Discount')}</th>
                       <th className="p-2.5 text-center">{t('مجموع الشراء', 'کۆی کڕین', 'Total Net')}</th>
@@ -2411,7 +1800,6 @@ Output strictly valid JSON with this structure:
                       const idx = info.originalIndex;
                       const item = info.rawItem;
                       const isSelected = selectedItemIndices.has(idx);
-                      const isCurrentEnglish = item.name === (item.englishName || toPharmaceuticalEnglish(item.name || item.rawInvoiceName || '', item.nameAr, item.dosageForm));
 
                       return (
                         <tr 
@@ -2429,56 +1817,21 @@ Output strictly valid JSON with this structure:
                             />
                           </td>
 
-                          {/* 1. Item Name & Warehouse Match Status */}
-                          <td className="p-2.5 font-medium max-w-[280px]">
-                            {/* Primary Active Name Input (English by default, or exact receipt name) */}
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                value={item.name}
-                                onChange={(e) => updateItemField(idx, 'name', e.target.value)}
-                                className="w-full bg-[#050B17] px-2 py-1 rounded text-white font-bold font-sans focus:outline-none border border-slate-700 focus:border-cyan-400 text-xs"
-                                placeholder={t('اسم المادة...', 'ناوی دەرمان...', 'Medicine / Product name...')}
-                              />
-                            </div>
-
-                            {/* Dual Language Badges & Quick Switchers */}
-                            <div className="mt-1 flex items-center gap-1.5 flex-wrap text-[10px]">
-                              {/* Quick switch button between English and Raw */}
-                              <button
-                                type="button"
-                                onClick={() => handleToggleItemNamingMode(idx)}
-                                className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold border transition-all cursor-pointer ${
-                                  isCurrentEnglish
-                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                                }`}
-                                title={t('التبديل بين الاسم الإنجليزي الصيدلاني ونص الوصل الحرفي', 'گۆڕین لە نێوان ئینگلیزی و دەقی پسوولە', 'Toggle English / Raw invoice text')}
-                              >
-                                {isCurrentEnglish ? '🇬🇧 EN' : '📄 الوصل'}
-                              </button>
-
-                              {/* Manual Translate to English Button if needed */}
-                              <button
-                                type="button"
-                                onClick={() => handleTranslateSingleItemToEnglish(idx)}
-                                className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 text-[9px] font-bold transition-all cursor-pointer flex items-center gap-0.5"
-                                title={t('ترجمة وتحويل الاسم إلى إنجليزية صيدلانية قياسية', 'وەرگێڕان بۆ ئینگلیزی پزیشکی', 'Translate to English')}
-                              >
-                                ⚡ {t('ترجمة للإنجليزية', 'وەرگێڕان', 'To EN')}
-                              </button>
-
-                              {/* Secondary text display */}
-                              {isCurrentEnglish ? (
-                                <span className="text-[9.5px] text-slate-400 font-sans truncate max-w-[160px]" title={item.rawInvoiceName || item.nameAr || ''}>
-                                  📄 {item.rawInvoiceName || item.nameAr || '-'}
-                                </span>
-                              ) : (
-                                <span className="text-[9.5px] text-emerald-400 font-mono truncate max-w-[160px]" title={item.englishName || ''}>
-                                  🇬🇧 {item.englishName || '-'}
-                                </span>
-                              )}
-                            </div>
+                          {/* 1. Item Name (Exact as on Image) & Warehouse Match Status */}
+                          <td className="p-2.5 font-medium max-w-[200px]">
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
+                                updateItemField(idx, 'name', e.target.value);
+                                updateItemField(idx, 'nameAr', e.target.value);
+                              }}
+                              placeholder={t('اسم المادة كما بالصورة...', 'ناوی کاڵا...', 'Item name as on image...')}
+                              className="w-full bg-[#050B17] text-white font-bold rounded px-1.5 py-0.5 border border-slate-700 focus:border-cyan-400 focus:outline-none text-xs"
+                            />
+                            {item.nameAr && item.nameAr !== item.name && (
+                              <div className="text-[10px] text-slate-400 font-mono truncate mt-0.5">{item.nameAr}</div>
+                            )}
                             
                             {/* Warehouse status badge */}
                             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
@@ -2493,6 +1846,17 @@ Output strictly valid JSON with this structure:
                                 </span>
                               )}
                             </div>
+                          </td>
+
+                          {/* 2. Company / Manufacturer */}
+                          <td className="p-2.5 text-start">
+                            <input
+                              type="text"
+                              value={item.manufacturer || ''}
+                              placeholder={t('اسم الشركة...', 'ناوی کۆمپانیا...', 'Company name...')}
+                              onChange={(e) => updateItemField(idx, 'manufacturer', e.target.value)}
+                              className="w-28 sm:w-36 bg-[#050B17] border border-slate-700/80 rounded px-1.5 py-0.5 text-xs text-amber-300 font-semibold focus:border-amber-400 focus:outline-none"
+                            />
                           </td>
 
                           {/* 2. Barcode (Auto Extracted, From Stock, or Manual Input / Generator) */}
@@ -2785,51 +2149,6 @@ Output strictly valid JSON with this structure:
               </div>
             </div>
 
-            {/* Quick Direct Navigation Hub */}
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setSavedSummaryReport(null);
-                  stopCamera();
-                  onClose();
-                  onNavigateToTab?.('reports');
-                }}
-                className="p-2.5 rounded-xl bg-blue-950/70 hover:bg-blue-900/80 border border-blue-600/50 text-blue-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-center"
-              >
-                <BarChart3 className="w-4 h-4 text-blue-400" />
-                <span className="text-[10.5px] font-bold leading-tight">{t('تقارير المشتريات', 'ڕاپۆرتی کڕین', 'Purchases Reports')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSavedSummaryReport(null);
-                  stopCamera();
-                  onClose();
-                  onNavigateToTab?.('purchases');
-                }}
-                className="p-2.5 rounded-xl bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-600/50 text-cyan-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-center"
-              >
-                <ShoppingCart className="w-4 h-4 text-cyan-400" />
-                <span className="text-[10.5px] font-bold leading-tight">{t('سجل فواتير الشراء', 'فایلی کڕین', 'Purchases Hub')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSavedSummaryReport(null);
-                  stopCamera();
-                  onClose();
-                  onNavigateToTab?.('suppliers');
-                }}
-                className="p-2.5 rounded-xl bg-purple-950/70 hover:bg-purple-900/80 border border-purple-600/50 text-purple-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-center"
-              >
-                <Truck className="w-4 h-4 text-purple-400" />
-                <span className="text-[10.5px] font-bold leading-tight">{t('حساب المورد والمندوب', 'هەژماری دابینکەر', 'Supplier Account')}</span>
-              </button>
-            </div>
-
             <button
               type="button"
               onClick={() => {
@@ -2839,7 +2158,7 @@ Output strictly valid JSON with this structure:
               }}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 font-black text-xs shadow-lg transition-all cursor-pointer"
             >
-              {t('إغلاق والعودة', 'داخستن و گەڕانەوە', 'Close & Return')}
+              {t('إغلاق والعودة لواجهة الشراء والمخزن', 'داخستن و گەڕانەوە', 'Close & Return to Purchases')}
             </button>
 
           </div>

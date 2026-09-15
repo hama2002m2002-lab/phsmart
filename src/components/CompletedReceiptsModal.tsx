@@ -50,6 +50,8 @@ export const CompletedReceiptsModal: React.FC<CompletedReceiptsModalProps> = ({
   onOpenReturnForSale,
   onOpenCashDrawer
 }) => {
+  if (!isOpen) return null;
+
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
@@ -66,8 +68,6 @@ export const CompletedReceiptsModal: React.FC<CompletedReceiptsModalProps> = ({
   const [editingSaleCashier, setEditingSaleCashier] = useState<SaleTransaction | null>(null);
   const [selectedNewCashier, setSelectedNewCashier] = useState<string>('');
   const [customCashierInput, setCustomCashierInput] = useState<string>('');
-
-  if (!isOpen) return null;
 
   const handleSaveNewCashier = () => {
     if (!editingSaleCashier) return;

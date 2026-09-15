@@ -1,37 +1,38 @@
-// 7amo.pos Offline Service Worker
-// Enables 100% offline standalone POS operations with instantaneous offline startup
-
-const CACHE_NAME = '7amo-pos-cache-v4';
-const DATA_CACHE_NAME = '7amo-pos-data-v4';
-
-// Core assets to pre-cache immediately on install
-const PRECACHE_ASSETS = [
+const CACHE_NAME = '7amo-pos-v5.0-instant-offline';
+const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.json',
-  '/pwa-icon.svg'
+  '/manifest.json'
 ];
 
-// Install Event: pre-cache application shell and take control immediately
+// Skip waiting immediately when instructed
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Install event: Pre-cache essential offline shell assets
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[SW] Pre-caching warning (non-fatal):', err);
+      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
+        console.warn('[ServiceWorker] Pre-cache warning:', err);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
-// Activate Event: clean up legacy caches and claim all clients immediately
+// Activate event: Clean up previous caches and claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME && key !== DATA_CACHE_NAME) {
-            console.log('[SW] Removing deprecated cache:', key);
-            return caches.delete(key);
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('[ServiceWorker] Clearing old cache:', cache);
+            return caches.delete(cache);
           }
         })
       );
@@ -39,99 +40,90 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event: intercept network requests and serve from cache when offline
+// Helper: Fast fetch with timeout to prevent hanging on offline/poor networks
+function fetchWithTimeout(request, timeoutMs = 600) {
+  return new Promise((resolve, reject) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error('Network timeout'));
+    }, timeoutMs);
+
+    fetch(request, { signal: controller.signal })
+      .then((response) => {
+        clearTimeout(timeoutId);
+        resolve(response);
+      })
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      });
+  });
+}
+
+// Fetch event: Ultra-fast offline-first serving
 self.addEventListener('fetch', (event) => {
   const request = event.request;
+  if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
 
-  // Only handle GET requests; pass through others
-  if (request.method !== 'GET') {
+  // Ignore non-http / chrome-extension URLs
+  if (!url.protocol.startsWith('http')) return;
+
+  // Ignore Firebase WebSocket and direct streaming connections
+  if (url.pathname.includes('/google.firestore') || url.pathname.includes('/channel')) {
     return;
   }
 
-  // 1. Navigation requests (HTML page loads, reloads, and desktop app launches)
-  // Cache-First with background revalidation: Opens INSTANTLY (0ms) offline without waiting for network timeouts
-  if (request.mode === 'navigate') {
+  const isHtml = request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html');
+
+  // 1. Navigation / HTML Requests: Fast Race with Cache Fallback
+  if (isHtml) {
     event.respondWith(
       (async () => {
-        // Look up cached shell immediately
-        const cachedShell = (await caches.match('/index.html')) || (await caches.match('/'));
-        
-        // If we have the cached index shell, serve it immediately!
-        if (cachedShell) {
-          // In the background, if online, update the cache quietly
-          if (typeof navigator !== 'undefined' && navigator.onLine) {
-            fetch(request)
-              .then((networkResponse) => {
-                if (networkResponse && networkResponse.status === 200) {
-                  const clone = networkResponse.clone();
-                  caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
-                }
-              })
-              .catch(() => {});
-          }
-          return cachedShell;
+        // If offline, serve from cache instantly with zero network delay
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          const cached = await caches.match('/index.html') || await caches.match('/');
+          if (cached) return cached;
         }
 
-        // If not cached yet (first visit), attempt fetch with an aggressive 1.2s timeout to prevent offline hang
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1200);
-          const networkResponse = await fetch(request, { signal: controller.signal });
-          clearTimeout(timeoutId);
-
+          // Attempt network fetch with strict 400ms timeout
+          const networkResponse = await fetchWithTimeout(request, 400);
           if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            const cache = await caches.open(CACHE_NAME);
-            cache.put('/index.html', clone);
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            return networkResponse;
           }
-          return networkResponse;
-        } catch (err) {
-          const fallback = (await caches.match('/index.html')) || (await caches.match('/'));
-          if (fallback) return fallback;
-          return new Response('7amo.pos Offline Ready', {
-            status: 200,
-            headers: { 'Content-Type': 'text/html; charset=utf-8' }
-          });
+        } catch {
+          // Network timed out or offline -> serve cached index.html immediately
         }
+
+        const cachedHtml = await caches.match('/index.html') || await caches.match('/') || await caches.match(request);
+        if (cachedHtml) return cachedHtml;
+
+        // Fallback network attempt if not in cache
+        return fetch(request).catch(() => new Response('Offline', { status: 503, statusText: 'Offline' }));
       })()
     );
     return;
   }
 
-  // 2. API requests (/api/*)
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request).catch(() => {
-        // When completely offline, return an offline JSON fallback instead of network error
-        return new Response(
-          JSON.stringify({
-            offline: true,
-            status: 'offline',
-            message: '7amo.pos يعمل بدون إنترنت (أوفلاين) - تم حفظ كافة العمليات في قاعدة البيانات المحلية.'
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-      })
-    );
-    return;
-  }
-
-  // 3. Static assets (JS chunks, CSS, fonts, SVG, images)
-  // Cache-First with background revalidation: returns cached chunk in <1ms
+  // 2. Static Assets (JS, CSS, Fonts, Images): Stale-While-Revalidate / Cache-First
+  // This ensures instant (<5ms) loading of all scripts and styles when offline
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
+    (async () => {
+      const cachedResponse = await caches.match(request);
+
+      // If cached, return immediately for instant offline boot
       if (cachedResponse) {
-        // Background cache update for freshest assets when online
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
+        // Asynchronously revalidate in background if online
+        if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
           fetch(request)
             .then((networkResponse) => {
-              if (networkResponse && networkResponse.status === 200) {
-                const clone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+              if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, networkResponse));
               }
             })
             .catch(() => {});
@@ -139,25 +131,18 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
 
-      // If not in cache, fetch and store
-      return fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          return new Response('', { status: 408, statusText: 'Offline Asset' });
-        });
-    })
+      // If not in cache, fetch from network and store in cache
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return networkResponse;
+      } catch (err) {
+        // If it's an image or script, try fallback
+        return cachedResponse || new Response('Network error', { status: 408 });
+      }
+    })()
   );
-});
-
-// Support communication with client
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
 });

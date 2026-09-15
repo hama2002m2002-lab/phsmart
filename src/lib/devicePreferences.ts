@@ -4,12 +4,13 @@ import { defaultPOSShortcuts } from '../data/mockData';
 export interface DeviceLocalPreferences {
   themeMode: 'dark' | 'light';
   language: Language;
-  printerType: 'thermal80mm' | 'thermal58mm' | 'network' | 'browser' | 'a4' | 'a5' | 'label_barcode';
+  printerType: 'thermal80mm' | 'thermal58mm' | 'a4' | 'a5' | 'label_barcode' | 'network' | 'browser';
   connectedPrinterName?: string;
   printerIpAddress?: string;
-  paperSize?: '80mm' | '58mm' | 'A4' | 'A5' | '50x30mm' | '40x20mm' | 'a4';
+  paperSize?: '80mm' | '58mm' | 'a4' | 'A4' | 'A5' | '50x30mm' | '40x20mm';
   autoPrintReceipt?: boolean;
   posShortcuts?: POSKeyboardShortcuts;
+  geminiApiKey?: string;
   isCloudSyncEnabled?: boolean; // When false, this device operates completely standalone (100% offline & isolated)
 }
 
@@ -24,6 +25,7 @@ export const defaultDevicePreferences: DeviceLocalPreferences = {
   paperSize: '80mm',
   autoPrintReceipt: true,
   posShortcuts: defaultPOSShortcuts,
+  geminiApiKey: '',
   isCloudSyncEnabled: false, // Isolated & private by default so other laptops cannot see or interfere with each other
 };
 
@@ -98,11 +100,7 @@ export function mergeWithDevicePreferences(
     paperSize: devicePrefs.paperSize,
     autoPrintReceipt: devicePrefs.autoPrintReceipt,
     posShortcuts: devicePrefs.posShortcuts || defaultPOSShortcuts,
-    autoBackupEnabled: settings?.autoBackupEnabled ?? true,
-    autoBackupFrequency: settings?.autoBackupFrequency || 'hourly',
-    autoBackupDestination: settings?.autoBackupDestination || 'both',
-    lastAutoBackupTime: settings?.lastAutoBackupTime || '',
-    keepBackupHistoryCount: settings?.keepBackupHistoryCount ?? 15,
+    geminiApiKey: devicePrefs.geminiApiKey || settings?.geminiApiKey || '',
   };
 }
 

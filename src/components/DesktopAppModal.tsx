@@ -18,6 +18,8 @@ export const DesktopAppModal: React.FC<DesktopAppModalProps> = ({
   deferredPrompt,
   onTriggerInstall
 }) => {
+  if (!isOpen) return null;
+
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [firebaseStatus, setFirebaseStatus] = useState<string>('Local Isolated Storage 📦');
@@ -36,8 +38,6 @@ export const DesktopAppModal: React.FC<DesktopAppModalProps> = ({
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  if (!isOpen) return null;
 
   const lang = settings.language;
   const isAr = lang === 'ar';

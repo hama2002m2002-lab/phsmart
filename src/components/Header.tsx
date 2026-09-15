@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, HardDrive, Wifi, WifiOff, ShieldCheck } from 'lucide-react';
+import React from 'react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, Lock } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -28,7 +28,6 @@ interface HeaderProps {
   onOpenDesktopApp?: () => void;
   onOpenCSharpCode?: () => void;
   onOpenAccountsModal?: () => void;
-  onOpenLocalDataNetwork?: () => void;
   isFirebaseSynced?: boolean;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
@@ -46,28 +45,12 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCashDrawer,
   onOpenShiftReport,
   onOpenCustomerDisplay,
-  onOpenLocalDataNetwork,
   onToggleSidebar,
   isSidebarOpen = false,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
-
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const cashierName = currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير الرئيسي' : isKu ? 'کاشێری سەرەکی' : 'Main Cashier');
   const storeDisplayName = isKu ? (settings.storeNameKu || settings.storeNameAr || settings.storeName) : isAr ? (settings.storeNameAr || settings.storeName) : settings.storeName;
@@ -166,41 +149,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Local-First Storage & Offline Guarantee Badge / Indicator */}
-          {!isOnline ? (
-            <div
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-300 text-[10px] sm:text-xs font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0"
-              title={isKu ? 'سیستەم بە تەواوی ئۆفلاین کار دەکات - هەموو داتاکان پارێزراون' : isAr ? 'النظام يعمل أوفلاين 100% بدون إنترنت - كافة عمليات البيع والمخزن محفوظة محلياً' : '100% Offline Independent Mode Active'}
-            >
-              <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
-              <span className="hidden xs:inline">{isKu ? 'ئۆفلاین ١٠٠٪' : isAr ? 'أوفلاين 100%' : 'Offline 100%'}</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            </div>
-          ) : (
-            <div
-              className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-700/60 text-slate-300 text-[10px] font-bold transition-all shrink-0"
-              title={isKu ? 'سیستەم ئامادەیە بۆ کارکردنی ئۆفلاین و ئۆنلاین بە بێ کێشە' : isAr ? 'المنظومة مدعومة للعمل أوفلاين بالكامل بدون الحاجة لإنترنت' : 'Offline Capable'}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>{isKu ? 'ئۆفلاین ئامادەیە' : isAr ? 'أوفلاين 100%' : 'Offline Ready'}</span>
-            </div>
-          )}
-
-          {onOpenLocalDataNetwork && (
-            <button
-              type="button"
-              onClick={onOpenLocalDataNetwork}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-500/40 text-emerald-300 text-[10px] sm:text-xs font-bold transition-all cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.2)] active:scale-95 shrink-0"
-              title={isKu ? 'دۆخی هەڵگرتنی ناوخۆیی و گواستنەوە' : isAr ? 'نظام الحفظ والتخزين المحلي المستقل' : 'Local-First Offline Storage Status'}
-            >
-              <HardDrive className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="hidden sm:inline">
-                {isKu ? 'خەزنی ناوخۆیی' : isAr ? 'تخزين محلي' : 'Local Storage'}
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            </button>
-          )}
-
           {/* Theme Switcher Button (Day / Night Mode - وضع ليلي و نهار) */}
           <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-0.5">
             <button
@@ -235,6 +183,19 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
           </div>
+
+          {/* Quick Lock Screen / Logout Button */}
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-2 sm:px-2.5 py-1 rounded-xl bg-gradient-to-r from-rose-950/80 to-slate-900 border border-rose-500/40 hover:border-rose-400 text-rose-300 hover:text-white text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+              title={isAr ? 'قفل الشاشة وتسجيل الخروج (يطلب الرمز عند الفتح)' : isKu ? 'داخستنی شاشە و چوونەدەرەوە' : 'Lock Screen & Logout'}
+            >
+              <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span className="hidden sm:inline">{isAr ? 'قفل' : isKu ? 'داخستن' : 'Lock'}</span>
+            </button>
+          )}
 
           {/* Right: Actions when in POS mode */}
           {isPOSMode && (

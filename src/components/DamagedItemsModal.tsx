@@ -51,6 +51,13 @@ export const DamagedItemsModal: React.FC<DamagedItemsModalProps> = ({
   settings,
   cashierName
 }) => {
+  if (!isOpen) return null;
+
+  const lang = settings.language;
+  const isAr = lang === 'ar';
+  const isKu = lang === 'ku';
+  const t = (ar: string, ku: string, en: string) => isKu ? ku : isAr ? ar : en;
+
   const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY'>('NEW');
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -123,13 +130,6 @@ export const DamagedItemsModal: React.FC<DamagedItemsModalProps> = ({
     }
     return results;
   }, [products, indexedProducts, deferredSearch]);
-
-  if (!isOpen) return null;
-
-  const lang = settings.language;
-  const isAr = lang === 'ar';
-  const isKu = lang === 'ku';
-  const t = (ar: string, ku: string, en: string) => isKu ? ku : isAr ? ar : en;
 
   const handleSelectProduct = (p: Product) => {
     setSelectedProduct(p);

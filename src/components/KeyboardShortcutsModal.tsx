@@ -116,6 +116,8 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   settings,
   setSettings,
 }) => {
+  if (!isOpen) return null;
+
   const isAr = settings.language === 'ar';
   const isKu = settings.language === 'ku';
 
@@ -127,8 +129,6 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   const [localShortcuts, setLocalShortcuts] = useState<POSKeyboardShortcuts>(currentShortcuts);
   const [activeListeningKey, setActiveListeningKey] = useState<keyof POSKeyboardShortcuts | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleShortcutChange = (keyName: keyof POSKeyboardShortcuts, newValue: string) => {
     setLocalShortcuts(prev => ({

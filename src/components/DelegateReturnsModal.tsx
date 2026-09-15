@@ -70,6 +70,8 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
   settings,
   cashierName
 }) => {
+  if (!isOpen) return null;
+
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
@@ -112,8 +114,6 @@ export const DelegateReturnsModal: React.FC<DelegateReturnsModalProps> = ({
       console.warn('Failed to save delegate returns logs:', err);
     }
   }, [delegateLogs]);
-
-  if (!isOpen) return null;
 
   // When a product is selected, auto-fill delegate and costs
   const handleSelectProduct = (p: Product) => {

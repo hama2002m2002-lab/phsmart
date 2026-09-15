@@ -17,12 +17,12 @@ export const CSharpExporterModal: React.FC<CSharpExporterModalProps> = ({
   products,
   sales
 }) => {
+  if (!isOpen) return null;
+
   const [activeFile, setActiveFile] = useState<
     'AppDbContext.cs' | 'Entities.cs' | 'PosViewModel.cs' | 'PosView.xaml' | 'EscPosService.cs' | 'App.xaml.cs' | 'Program.cs' | 'PhSmartPOS.csproj'
   >('PosViewModel.cs');
   const [copiedFile, setCopiedFile] = useState<boolean>(false);
-
-  if (!isOpen) return null;
 
   const lang = settings.language;
   const isAr = lang === 'ar';

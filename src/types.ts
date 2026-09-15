@@ -190,7 +190,6 @@ export interface Supplier {
   taxNumber?: string;
   address?: string;
   isSaved?: boolean;      // الشركات المحفوظة / المفضلة
-  lastSupplyDate?: string; // تاريخ آخر توريد
   payments?: SupplierPayment[];
 }
 
@@ -334,40 +333,11 @@ export interface StoreSettings {
   printerConnectionType?: 'system' | 'usb' | 'network' | 'bluetooth';
   printerIpAddress?: string;
   labelPrinterName?: string;
-  paperSize?: '80mm' | '58mm' | 'A4' | 'A5' | '50x30mm' | '40x20mm' | 'a4';
-  cashierPaperSize?: '80mm' | '58mm';
-  receiptShowItemBarcodes?: boolean;
-  receiptShowInvoiceBarcode?: boolean;
-  receiptBarcodeType?: 'code128' | 'qrcode' | 'both';
+  paperSize?: '80mm' | '58mm' | 'a4' | 'A4' | 'A5' | '50x30mm' | '40x20mm';
   autoPrintPriceLabels?: boolean;
   printerCopies?: number;
   posShortcuts?: POSKeyboardShortcuts;
-  geminiApiKey?: string;
-  // Automated Scheduled Backup Configuration
-  autoBackupEnabled?: boolean;
-  autoBackupFrequency?: 'hourly' | 'daily' | 'disabled';
-  autoBackupDestination?: 'local_archive' | 'auto_download' | 'both';
-  lastAutoBackupTime?: string;
-  keepBackupHistoryCount?: number;
-}
-
-export interface AutoBackupSnapshot {
-  id: string;
-  timestamp: string; // ISO string
-  formattedDate: string;
-  triggerType: 'hourly' | 'daily' | 'manual';
-  itemsCount: {
-    products: number;
-    sales: number;
-    purchases: number;
-    customers: number;
-    suppliers: number;
-    invoices?: number;
-    audits?: number;
-  };
-  totalRecords: number;
-  sizeBytes: number;
-  dataJson?: string;
+  geminiApiKey?: string; // مفتاح Google Gemini API للتعرف البصري على شاشات البرامج الأخرى وفواتير المواد
 }
 
 export interface UserPermissions {

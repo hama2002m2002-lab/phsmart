@@ -44,6 +44,8 @@ export const CashDrawerModal: React.FC<CashDrawerModalProps> = ({
   settings,
   onOpenShiftReport
 }) => {
+  if (!isOpen) return null;
+
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
@@ -65,8 +67,6 @@ export const CashDrawerModal: React.FC<CashDrawerModalProps> = ({
   const [adjAmount, setAdjAmount] = useState<string>('');
   const [adjReason, setAdjReason] = useState<string>('');
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
-
-  if (!isOpen) return null;
 
   // Calculate Cash Totals
   const cashSales = salesHistory
