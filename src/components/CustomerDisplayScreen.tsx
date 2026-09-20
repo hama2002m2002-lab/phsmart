@@ -484,22 +484,14 @@ export const CustomerDisplayScreen: React.FC<CustomerDisplayScreenProps> = ({
                               {item.scientificName}
                             </span>
                           )}
-                          <span className={`px-1.5 py-0.2 rounded font-semibold text-[9px] sm:text-[10px] ${
-                            isCarton 
-                              ? 'bg-purple-950 text-purple-300 border border-purple-500/30' 
-                              : isWholesale
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
-                              : isBlister
-                              ? 'bg-amber-950 text-amber-300 border border-amber-500/30'
-                              : 'bg-slate-800 text-slate-300'
+                          <span className={`px-1.5 py-0.2 rounded font-bold text-[9px] sm:text-[10px] ${
+                            isBlister
+                              ? 'bg-cyan-950 text-cyan-300 border border-cyan-500/30'
+                              : 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
                           }`}>
-                            {isCarton 
-                              ? (isAr ? '📦 كرتون' : isKu ? '📦 کارتۆن' : '📦 Carton')
-                              : isWholesale
-                              ? (isAr ? '🏷️ جملة' : isKu ? '🏷️ کۆ' : '🏷️ Wholesale')
-                              : isBlister
-                              ? (isAr ? '💊 شريط' : isKu ? '💊 شریت' : '💊 Blister')
-                              : (isAr ? 'علبة / مفرد' : isKu ? 'دانە' : 'Unit')}
+                            {isBlister
+                              ? (isAr ? '💊 شيت' : isKu ? '💊 شیت' : '💊 Sheet')
+                              : (isAr ? '📦 باكت' : isKu ? '📦 باکەت' : '📦 Box')}
                           </span>
                         </div>
                       </div>

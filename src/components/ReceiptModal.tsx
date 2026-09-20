@@ -9,7 +9,8 @@ import {
   connectWebSerialPrinter,
   sendRawToWebSerialPrinter,
   buildEscPosBuffer,
-  printThermalSilentIframe
+  printThermalSilentIframe,
+  print80mmCashierReceipt
 } from '../lib/thermalPrinter';
 
 export type PaperFormatType = 'thermal80mm' | 'thermal58mm' | 'a4' | 'a5';
@@ -21,8 +22,6 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, settings }) => {
-  if (!sale) return null;
-
   const [viewMode, setViewMode] = useState<'details' | 'print_preview'>('details');
   const [activeFormat, setActiveFormat] = useState<PaperFormatType>(
     (settings.printerType as PaperFormatType) || 'thermal80mm'
@@ -31,12 +30,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   const [showBarcode, setShowBarcode] = useState<boolean>(true);
   const [showSignatures, setShowSignatures] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
+  const [directPrintStatus, setDirectPrintStatus] = useState<string>('');
 
   useEffect(() => {
     if (settings.printerType && ['thermal80mm', 'thermal58mm', 'a4', 'a5'].includes(settings.printerType)) {
       setActiveFormat(settings.printerType as PaperFormatType);
     }
   }, [settings.printerType]);
+
+  if (!sale) return null;
 
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -55,8 +57,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   const isFullyRefunded = sale.status === 'refunded';
   const isRefundReceipt = isFullyRefunded || returnedTotal > 0;
 
-  const [directPrintStatus, setDirectPrintStatus] = useState<string>('');
-
   const handlePrint = () => {
     setIsPrinting(true);
     setTimeout(() => {
@@ -73,6 +73,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
       window.print();
     } finally {
       setTimeout(() => setIsPrinting(false), 500);
+    }
+  };
+
+  const handle80mmCashierPrint = () => {
+    setIsPrinting(true);
+    try {
+      print80mmCashierReceipt(sale, settings);
+    } catch (e) {
+      handleSilentPrint();
+    } finally {
+      setTimeout(() => setIsPrinting(false), 600);
     }
   };
 
@@ -170,13 +181,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
             top: 0 !important;
             width: ${
               activeFormat === 'thermal80mm'
-                ? '78mm'
+                ? '68mm'
                 : activeFormat === 'thermal58mm'
-                ? '54mm'
+                ? '48mm'
                 : '100%'
             } !important;
             margin: 0 auto !important;
-            padding: ${activeFormat.startsWith('thermal') ? '4px' : '12px'} !important;
+            padding: ${activeFormat.startsWith('thermal') ? '2px 1px' : '12px'} !important;
             background: #ffffff !important;
             color: #000000 !important;
             box-shadow: none !important;
@@ -351,8 +362,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                           <div>
                             <p>{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</p>
                             {item.saleType && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 inline-block mt-0.5">
-                                {item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Blister') : t('مفرد', 'تاک', 'Unit')}
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 inline-block mt-0.5 font-bold">
+                                {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
                               </span>
                             )}
                           </div>
@@ -575,8 +586,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                   : activeFormat === 'a5'
                   ? 'bg-[#080E1D] p-5 rounded-2xl border border-slate-700 space-y-4 shadow-xl w-full max-w-2xl'
                   : activeFormat === 'thermal58mm'
-                  ? 'bg-[#070D1A] p-3 rounded-2xl border border-slate-800 space-y-3 max-w-[290px] shadow-xl font-mono text-[11px]'
-                  : 'bg-[#070D1A] p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-4 max-w-[380px] shadow-xl font-mono'
+                  ? 'bg-[#070D1A] p-2 rounded-xl border border-slate-800 space-y-2 max-w-[240px] shadow-xl font-mono text-[9px]'
+                  : 'bg-[#070D1A] p-2.5 sm:p-3 rounded-2xl border border-slate-800 space-y-2 max-w-[265px] shadow-xl font-mono text-[9.5px]'
               }`}
             >
               {/* LAYOUT CHOICE: A4 OR A5 FORMAL INVOICE */}
@@ -711,6 +722,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                               <td className="p-2.5 text-slate-500 font-mono text-[10px]">{idx + 1}</td>
                               <td className="p-2.5 font-medium">
                                 <div className="text-white font-bold">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</div>
+                                {item.barcode && (
+                                  <div className="text-[10px] font-mono font-bold text-cyan-300 print:text-black flex items-center gap-1 mt-0.5">
+                                    🏷️ <span>{item.barcode}</span>
+                                  </div>
+                                )}
                                 {item.dosageInstruction && (
                                   <div className="text-[10px] text-cyan-300 font-bold bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30 inline-block mt-0.5">
                                     💊 {item.dosageInstruction}
@@ -723,8 +739,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                                 </span>
                               </td>
                               <td className="p-2.5 text-center">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-cyan-300 border border-slate-700">
-                                  {item.saleType === 'wholesale' ? t('جملة', 'کۆ', 'Wholesale') : item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Strip') : t('مفرد', 'تاک', 'Retail')}
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-800 text-cyan-300 border border-slate-700">
+                                  {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
                                 </span>
                               </td>
                               <td className="p-2.5 text-center font-bold text-white font-mono">{item.quantity}</td>
@@ -814,153 +830,126 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                 </div>
               ) : (
                 /* LAYOUT CHOICE: THERMAL 80mm OR 58mm RECEIPT TAPE */
-                <div className="space-y-3 text-slate-200">
+                <div className="space-y-2 text-slate-200 text-[9.5px]">
                   {/* Thermal Header */}
-                  <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-700">
+                  <div className="text-center space-y-1 pb-2 border-b border-dashed border-slate-700">
                     {isRefundReceipt && (
-                      <div className="bg-rose-950/90 border-2 border-rose-500 text-rose-300 rounded-xl p-2 text-center print-red my-1 font-bold shadow-lg">
-                        <div className="text-xs font-black">
+                      <div className="bg-rose-950/90 border-2 border-rose-500 text-rose-300 rounded-lg p-1.5 text-center print-red my-1 font-bold shadow-lg">
+                        <div className="text-[10px] font-black">
                           🔴 {t('وصل إرجاع مواد (فاتورة مرتجعة)', 'پسوولەی گەڕاندنەوەی کاڵا (مەرتەجەع)', 'REFUND RECEIPT')} 🔴
                         </div>
                       </div>
                     )}
-                    <div className="w-9 h-9 mx-auto rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center">
-                      <ShoppingBag className="w-4 h-4" />
+                    <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center">
+                      <ShoppingBag className="w-3.5 h-3.5" />
                     </div>
-                    <h2 className="text-base font-black text-white tracking-tight">{storeDisplayName}</h2>
-                    <p className="text-[10px] text-slate-400">{settings.address}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">{settings.phone}</p>
-
-                    {showBarcode && (
-                      <div className="pt-2 flex justify-center">
-                        <div className="bg-white p-1.5 rounded-lg inline-block">
-                          <BarcodeGraphic value={sale.invoiceNumber} height={32} showText={true} />
-                        </div>
-                      </div>
-                    )}
+                    <h2 className="text-sm font-black text-white tracking-tight">{storeDisplayName}</h2>
+                    <p className="text-[9px] text-slate-400">{settings.address}</p>
+                    <p className="text-[9px] text-slate-400 font-mono">{settings.phone}</p>
                   </div>
 
                   {/* Thermal Meta Info */}
-                  <div className="space-y-1 text-[11px] bg-[#0F172A] p-2.5 rounded-xl border border-slate-800">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{t('الوصل:', 'پسوولە:', 'Inv:')}</span>
-                      <strong className="text-cyan-400 font-mono">{sale.invoiceNumber}</strong>
+                  <div className="space-y-1 text-[9.5px] bg-[#0F172A] print:bg-transparent p-2 rounded-xl border border-slate-800 print:border-black/40">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 print:text-black font-bold">{t('رقم الوصل:', 'ژمارەی پسوولە:', 'Invoice No:')}</span>
+                      <strong className="text-cyan-400 print:text-black font-mono text-[10.5px]" dir="ltr">#{sale.invoiceNumber}</strong>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{t('تاريخ الوصل:', 'بەروار:', 'Date:')}</span>
-                      <span className="text-slate-200 font-mono text-[10px]">{formatDisplayDateTime(sale.timestamp, lang)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{t('أول إضافة للمواد:', 'کاتی یەکەم کاڵا:', 'First Added:')}</span>
-                      <span className="text-amber-300 font-mono text-[10px]">{formatDisplayTime(safeItems[0]?.addedAtTime || sale.timestamp, lang)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{t('الكاشير:', 'کاشێر:', 'Cashier:')}</span>
-                      <span className="text-slate-200">{sale.cashierName}</span>
-                    </div>
-                    {sale.customerName && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">{t('الزبون:', 'کڕیار:', 'Customer:')}</span>
-                        <span className="text-blue-400 font-bold">{sale.customerName}</span>
+                    <div className="flex justify-between items-center text-[9px]">
+                      <div>
+                        <span className="text-slate-400 print:text-black font-bold">{t('التاريخ:', 'بەروار:', 'Date:')} </span>
+                        <span className="text-slate-200 print:text-black font-mono" dir="ltr">{formatDisplayDate(sale.timestamp, lang)}</span>
                       </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{t('الدفع:', 'پارەدان:', 'Pay:')}</span>
-                      <span className="text-emerald-400 uppercase font-mono font-bold">{sale.paymentMethod === 'cash' ? t('نقد', 'کاش', 'Cash') : sale.paymentMethod}</span>
+                      <div>
+                        <span className="text-slate-400 print:text-black font-bold">{t('الوقت:', 'کات:', 'Time:')} </span>
+                        <span className="text-slate-200 print:text-black font-mono" dir="ltr">{formatDisplayTime(sale.timestamp, lang)}</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 print:text-black">{t('الكاشير:', 'کاشێر:', 'Cashier:')}</span>
+                      <span className="text-slate-200 print:text-black font-semibold">{sale.cashierName || '-'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 print:text-black">{t('طريقة الدفع:', 'شێوازی پارەدان:', 'Payment:')}</span>
+                      <span className="text-emerald-400 print:text-black font-mono font-bold">{sale.paymentMethod === 'cash' ? t('نقداً (كاش)', 'نەقد (کاش)', 'Cash') : sale.paymentMethod === 'card' ? t('بطاقة مصرفية', 'کارت / فیزا', 'Card') : sale.paymentMethod === 'debt' ? t('آجل (دين)', 'قەرز', 'Credit') : (sale.paymentMethod || t('نقداً', 'نەقد', 'Cash'))}</span>
                     </div>
                   </div>
 
                   {/* Thermal Items List */}
-                  <div className="space-y-1 pt-1">
-                    <div className="flex justify-between text-[10px] font-bold text-cyan-400 border-b border-slate-700 pb-1 uppercase font-sans">
-                      <span>{t('الصنف (الكمية × السعر)', 'کاڵا (بڕ × نرخ)', 'Item (Qty x Price)')}</span>
+                  <div className="space-y-1 pt-0.5">
+                    <div className="flex justify-between text-[9px] font-bold text-cyan-400 print:text-black border-b border-slate-700 print:border-black pb-1 uppercase font-sans">
+                      <span>{t('الصنف', 'کاڵا', 'Item')}</span>
                       <span>{t('الإجمالي', 'کۆی گشتی', 'Total')}</span>
                     </div>
 
-                    <div className="space-y-2 py-1">
+                    <div className="space-y-1.5 py-1">
                       {safeItems.map((item, idx) => (
-                        <div key={idx} className="space-y-0.5 border-b border-slate-800/60 pb-1.5">
-                          <div className="flex justify-between items-start text-white font-bold text-xs font-sans">
-                            <div>
-                              <span className="truncate max-w-[190px] inline-block">{(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}</span>
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 inline-block mx-1 font-sans">
-                                {item.saleType === 'carton' 
-                                  ? t('كرتون', 'کارتۆن', 'Carton') 
-                                  : item.saleType === 'wholesale' 
-                                  ? t('جملة', 'کۆ', 'Wholesale') 
-                                  : item.saleType === 'blister' 
-                                  ? t('شريط', 'شریت', 'Strip') 
-                                  : t('مفرد', 'تاک', 'Unit')}
-                              </span>
+                        <div key={idx} className="space-y-0.5 border-b border-slate-800/60 pb-1 print:border-black/30">
+                          <div className="flex justify-between items-start text-white print:text-black font-bold text-[9.5px] font-sans">
+                            <div className="min-w-0 flex-1 pe-1">
+                              <div className="font-bold text-slate-100 print:text-black text-[9.5px] leading-snug">
+                                {idx + 1}. {(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}
+                              </div>
                             </div>
-                            <span className="font-mono text-emerald-400 shrink-0">{settings.currencySymbol}{formatNumber(item.total)}</span>
+                            <span className="font-mono text-emerald-400 print:text-black shrink-0 font-bold" dir="ltr">{settings.currencySymbol}{formatNumber(item.total)}</span>
                           </div>
                           {item.dosageInstruction && (
-                            <div className="text-[10px] text-cyan-300 font-medium italic">
+                            <div className="text-[8.5px] text-cyan-300 print:text-black font-medium italic">
                               💊 {item.dosageInstruction}
                             </div>
                           )}
-                          <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
-                            <span>{item.quantity} x {settings.currencySymbol}{formatNumber(item.price)}</span>
-                            <span className="text-[9px] text-cyan-300 font-mono bg-cyan-950/80 px-1 py-0.2 rounded border border-cyan-800">
-                              🕒 {formatDisplayTime(item.addedAtTime || safeItems[0]?.addedAtTime || sale.timestamp, lang)}
-                            </span>
+                          <div className="flex justify-between items-center text-[8.5px] text-slate-400 print:text-black font-mono">
+                            <span dir="ltr">{item.quantity} x {settings.currencySymbol}{formatNumber(item.price)}</span>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Returned Items if any */}
-                  {safeReturnedItems.length > 0 && (
-                    <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-1 text-[11px]">
-                      <div className="flex justify-between text-rose-300 font-bold border-b border-rose-500/30 pb-1 font-sans">
+                  {/* Returned Items if any (only on partial returns, not duplicate if full refund) */}
+                  {!isFullyRefunded && safeReturnedItems.length > 0 && returnedTotal > 0 && (
+                    <div className="p-1.5 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-1 text-[9px] print:border-black/50">
+                      <div className="flex justify-between text-rose-300 print:text-black font-bold border-b border-rose-500/30 print:border-black pb-0.5 font-sans">
                         <span>{t('خصم المرجوعات:', 'گەڕاوەکان:', 'Returns:')}</span>
-                        <span className="font-mono">-{settings.currencySymbol}{formatNumber(returnedTotal)}</span>
+                        <span className="font-mono" dir="ltr">-{settings.currencySymbol}{formatNumber(returnedTotal)}</span>
                       </div>
                       {safeReturnedItems.map((ret, rIdx) => (
-                        <div key={rIdx} className="flex justify-between text-[10px] text-rose-300 font-sans">
+                        <div key={rIdx} className="flex justify-between text-[8.5px] text-rose-300 print:text-black font-sans">
                           <span>{(isKu && ret.productNameKu) ? ret.productNameKu : (ret.productNameAr || ret.productName)} ({ret.quantity})</span>
-                          <span className="font-mono">-{settings.currencySymbol}{formatNumber(ret.total)}</span>
+                          <span className="font-mono" dir="ltr">-{settings.currencySymbol}{formatNumber(ret.total)}</span>
                         </div>
                       ))}
                     </div>
                   )}
 
                   {/* Thermal Totals */}
-                  <div className="border-t border-dashed border-slate-700 pt-2 space-y-1 text-xs font-mono">
-                    <div className="flex justify-between text-slate-400">
+                  <div className="border-t border-dashed border-slate-700 print:border-black pt-1.5 space-y-1 text-[9.5px] font-mono">
+                    <div className="flex justify-between text-slate-400 print:text-black">
                       <span className="font-sans">{t('المجموع:', 'کۆی گشتی:', 'Subtotal:')}</span>
-                      <span>{settings.currencySymbol}{formatNumber(sale.subtotal)}</span>
+                      <span dir="ltr">{settings.currencySymbol}{formatNumber(sale.subtotal)}</span>
                     </div>
 
                     {sale.discount > 0 && (
-                      <div className="flex justify-between text-amber-400">
+                      <div className="flex justify-between text-amber-400 print:text-black">
                         <span className="font-sans">{t('الخصم:', 'داشکاندن:', 'Discount:')}</span>
-                        <span>-{settings.currencySymbol}{formatNumber(sale.discount)}</span>
+                        <span dir="ltr">-{settings.currencySymbol}{formatNumber(sale.discount)}</span>
                       </div>
                     )}
 
-                    <div className="flex justify-between text-slate-400">
-                      <span className="font-sans">{t(`الضريبة (${settings.taxRate}%):`, `باج (${settings.taxRate}%):`, `Tax (${settings.taxRate}%):`)}</span>
-                      <span>{settings.currencySymbol}{formatNumber(sale.tax)}</span>
-                    </div>
-
-                    <div className="flex justify-between text-sm font-black text-white pt-1.5 border-t border-slate-700">
+                    <div className="flex justify-between text-xs font-black text-white print:text-black pt-1 border-t border-slate-700 print:border-black">
                       <span className="font-sans">{t('الإجمالي الصافي:', 'کۆی گشتی و کۆتایی:', 'Net Total:')}</span>
-                      <span className="text-emerald-400">{settings.currencySymbol}{formatNumber(sale.total)}</span>
+                      <span className="text-emerald-400 print:text-black" dir="ltr">{sale.total < 0 ? '-' : ''}{settings.currencySymbol}{formatNumber(Math.abs(sale.total))}</span>
                     </div>
 
-                    {sale.amountTendered && (
-                      <div className="flex justify-between text-[10px] text-slate-400 pt-1 font-sans">
-                        <span>{t('المستلم:', 'وەرگیراو:', 'Tender:')} {settings.currencySymbol}{formatNumber(sale.amountTendered)}</span>
-                        <span>{t('المتبقي:', 'ماوە / بەجێماو:', 'Change:')} {settings.currencySymbol}{formatNumber(sale.changeDue || 0)}</span>
+                    {sale.amountTendered ? (
+                      <div className="flex justify-between text-[9px] text-slate-400 print:text-black pt-0.5 font-sans">
+                        <span dir="ltr">{t('المستلم:', 'وەرگیراو:', 'Tender:')} {settings.currencySymbol}{formatNumber(sale.amountTendered)}</span>
+                        <span dir="ltr">{t('المتبقي:', 'ماوە / بەجێماو:', 'Change:')} {settings.currencySymbol}{formatNumber(sale.changeDue || 0)}</span>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Footer message */}
-                  <div className="text-center pt-2 border-t border-slate-800 text-[10px] text-slate-400 font-sans">
+                  <div className="text-center pt-1.5 border-t border-slate-800 text-[8.5px] text-slate-400 font-sans">
                     <p>{settings.receiptFooterMsg}</p>
                   </div>
                 </div>
@@ -980,6 +969,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
         {/* Action Buttons Bar */}
         <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-slate-800">
           
+          {/* Direct 80mm Cashier Roll Print Button */}
+          <button
+            type="button"
+            onClick={handle80mmCashierPrint}
+            disabled={isPrinting}
+            title={t('طباعة فورية على ورق كاشير 80 مم مع تفاصيل المواد والباركود', 'چاپی خێرا لەسەر وەرەقەی کاشێری 80 ملم بە بارکۆدەوە', 'Print 80mm Cashier Thermal Roll')}
+            className="py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] cursor-pointer active:scale-95 transition-all border border-emerald-300/50 shrink-0 font-sans"
+          >
+            <Printer className="w-4 h-4 text-slate-950" />
+            <span>{t('طباعة ورق كاشير 80 مم', 'چاپی کاشێر 80 ملم', 'Print 80mm Cashier')}</span>
+          </button>
+
           {/* Direct ESC/POS Thermal Print (Web Serial) */}
           {activeFormat.startsWith('thermal') && isWebSerialSupported() && (
             <button
@@ -987,10 +988,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
               onClick={handleDirectEscPosPrint}
               disabled={isPrinting}
               title={t('طباعة حرارية مباشرة عبر منفذ USB/Serial بدون فتح نافذة المتصفح', 'چاپی ڕاستەوخۆ بە بێ پەنجەرەی وێبگەڕ لە ڕێگەی USB/Serial', 'Direct ESC/POS Thermal Printing via USB/Serial')}
-              className="py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(245,158,11,0.4)] cursor-pointer active:scale-95 transition-all border border-amber-300/50 shrink-0 font-sans"
+              className="py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[0_0_25px_rgba(245,158,11,0.4)] cursor-pointer active:scale-95 transition-all border border-amber-300/50 shrink-0 font-sans"
             >
               <Zap className="w-4 h-4 text-slate-950 fill-slate-950" />
-              <span>{t('طباعة حرارية مباشرة (ESC/POS)', 'چاپی ڕاستەوخۆی گەرمی (ESC/POS)', 'Direct ESC/POS Thermal')}</span>
+              <span>{t('حراري مباشر (ESC/POS)', 'گەرمی ڕاستەوخۆ', 'ESC/POS')}</span>
             </button>
           )}
 

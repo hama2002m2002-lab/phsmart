@@ -26,16 +26,22 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  X
+  X,
+  Clock,
+  ShieldAlert,
+  Monitor
 } from 'lucide-react';
 import { Product, Category, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { getSavedCategories } from './ProductModal';
 import { PriceHistoryTooltip } from './PriceHistoryTooltip';
 import { InventoryAuditView } from './InventoryAuditView';
+import { ExpiryManagementView } from './ExpiryManagementView';
 import { exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
 import { FastSearchInput } from './FastSearchInput';
+import { parseDate } from '../lib/dateUtils';
+import { findBestFuzzyProductMatch } from '../lib/fuzzyMatching';
 
 interface ProductsTabProps {
   products: Product[];
@@ -51,6 +57,7 @@ interface ProductsTabProps {
   onOpenInvoices?: () => void;
   onNavigateToReports?: () => void;
   onOpenAIInvoiceScanner?: () => void;
+  onOpenLegacyScreenMigrator?: () => void;
 }
 
 const CATEGORIES = [
@@ -79,6 +86,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   onOpenInvoices,
   onNavigateToReports,
   onOpenAIInvoiceScanner,
+  onOpenLegacyScreenMigrator,
 }) => {
   const lang = settings.language;
   const isAr = lang === 'ar';
@@ -102,10 +110,10 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const canViewInvoices = isAdmin || Boolean(perms?.canViewInvoices ?? perms?.canManageOrders);
 
   // Retain active subview in session so updates and hot reloads don't kick user out of their open warehouse view
-  const [activeSubView, setActiveSubView] = useState<'catalog' | 'stockStatus' | 'inventoryAudit' | null>(() => {
+  const [activeSubView, setActiveSubView] = useState<'catalog' | 'stockStatus' | 'inventoryAudit' | 'expiryAlerts' | null>(() => {
     try {
       const saved = sessionStorage.getItem('supermarket_warehouse_subview');
-      if (saved === 'catalog' || saved === 'stockStatus' || saved === 'inventoryAudit') return saved;
+      if (saved === 'catalog' || saved === 'stockStatus' || saved === 'inventoryAudit' || saved === 'expiryAlerts') return saved;
     } catch (e) {}
     return null;
   });
@@ -128,7 +136,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(100);
+  const [pageSize, setPageSize] = useState<number>(40);
 
   const safeProducts = useMemo(() => Array.isArray(products) ? products.filter(Boolean) : [], [products]);
 
@@ -173,6 +181,65 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       outOfStockProducts: outOfStock,
       debtStockProducts: debtStock,
     };
+  }, [safeProducts]);
+
+  // Expiry statistics calculation for quick badges & hub warnings - Optimized with date cache
+  const expiryStats = useMemo(() => {
+    let expiredCount = 0;
+    let nearExpiryCount = 0;
+    let totalWithExpiry = 0;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const nowTime = now.getTime();
+    const dayMs = 1000 * 60 * 60 * 24;
+    const dateCache = new Map<string, number>();
+
+    const getDaysFast = (dateStr: string): number => {
+      const cached = dateCache.get(dateStr);
+      if (cached !== undefined) return cached;
+      const expDate = parseDate(dateStr);
+      const days = Math.ceil((expDate.getTime() - nowTime) / dayMs);
+      dateCache.set(dateStr, days);
+      return days;
+    };
+
+    for (let i = 0; i < safeProducts.length; i++) {
+      const p = safeProducts[i];
+      if (!p) continue;
+
+      let hasExp = false;
+      let earliestDays: number | null = null;
+
+      if (Array.isArray(p.batches) && p.batches.length > 0) {
+        for (const b of p.batches) {
+          if (b.expiryDate && b.expiryDate.trim() !== '' && b.expiryDate !== 'N/A') {
+            hasExp = true;
+            const days = getDaysFast(b.expiryDate);
+            if (earliestDays === null || days < earliestDays) {
+              earliestDays = days;
+            }
+          }
+        }
+      }
+
+      if (earliestDays === null && p.expiryDate && p.expiryDate.trim() !== '' && p.expiryDate !== 'N/A') {
+        hasExp = true;
+        earliestDays = getDaysFast(p.expiryDate);
+      }
+
+      if (hasExp) {
+        totalWithExpiry++;
+        if (earliestDays !== null) {
+          if (earliestDays < 0) {
+            expiredCount++;
+          } else if (earliestDays <= 90) {
+            nearExpiryCount++;
+          }
+        }
+      }
+    }
+
+    return { expiredCount, nearExpiryCount, totalWithExpiry };
   }, [safeProducts]);
 
   const deferredSearch = useDeferredValue(search);
@@ -493,7 +560,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
             <button
               type="button"
               onClick={onOpenAIInvoiceScanner}
-              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] sm:col-span-2 lg:col-span-3 ${
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
                 isLight
                   ? 'bg-gradient-to-r from-purple-50 via-fuchsia-50 to-indigo-50 border-purple-300 hover:border-purple-600 shadow-sm hover:shadow-md'
                   : 'bg-gradient-to-r from-[#1E0E35] via-[#2A1348] to-[#140827] border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_30px_rgba(168,85,247,0.35)]'
@@ -507,7 +574,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                   <span className={`text-sm sm:text-base font-black transition-colors ${
                     isLight ? 'text-purple-950 group-hover:text-purple-700' : 'text-white group-hover:text-purple-300'
                   }`}>
-                    {t('إدخال المواد عبر صورة الوصل بالذكاء الاصطناعي (AI OCR Scanner)', 'خوێندنەوە و زیادکردنی مادەکان بە وێنەی پسوولە بە AI', 'AI Invoice Image Scanner & Auto-Importer')}
+                    {t('إدخال المواد عبر صورة الوصل (AI OCR)', 'خوێندنەوە و زیادکردنی مادەکان بە وێنەی پسوولە بە AI', 'AI Invoice Image Scanner')}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold border border-purple-500/30">
                     Gemini Vision
@@ -515,9 +582,45 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate sm:whitespace-normal">
                   {t(
-                    'التقط أو ارفع صورة وصل الشراء؛ يقوم النظام بقراءة أسماء الأدوية والمواد، التواريخ، الباتش، وأسعار الشراء والبيع وإدخالها فورياً إلى المخزن وحسابات الموردين',
-                    'وێنەی پسوولەکە دابنێ؛ ناوەکان، بەرواری بەسەرچوون، باچ، و نرخەکان بە تەواوی و خۆکار دەخرێنە کۆگاوە',
-                    'Snap or upload invoice photo: extracts items, batches, expiries, quantities & wholesale costs directly to warehouse'
+                    'التقط أو ارفع صورة وصل الشراء؛ يقوم النظام بقراءة أسماء الأدوية والمواد، التواريخ، وأسعار الشراء والبيع وحفظها فورياً',
+                    'وێنەی پسوولەکە دابنێ؛ ناوەکان، بەرواری بەسەرچوون، و نرخەکان بە تەواوی و خۆکار دەخرێنە کۆگاوە',
+                    'Snap or upload invoice photo: extracts items, batches, expiries & wholesale costs directly to warehouse'
+                  )}
+                </p>
+              </div>
+            </button>
+          )}
+
+          {/* Button: نقل المواد من شاشات البرامج السابقة (حتى 500 صورة دفعة واحدة) */}
+          {canEditProducts && onOpenLegacyScreenMigrator && (
+            <button
+              type="button"
+              onClick={onOpenLegacyScreenMigrator}
+              className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+                isLight
+                  ? 'bg-gradient-to-r from-cyan-50 via-sky-50 to-blue-50 border-cyan-300 hover:border-cyan-600 shadow-sm hover:shadow-md'
+                  : 'bg-gradient-to-r from-[#071F2C] via-[#0B2E42] to-[#0A1D2E] border-cyan-500/50 hover:border-cyan-400 hover:shadow-[0_0_30px_rgba(6,182,212,0.35)]'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-teal-500 to-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg group-hover:scale-105 transition-transform">
+                <Monitor className="w-6 h-6 text-white stroke-[2.5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm sm:text-base font-black transition-colors ${
+                    isLight ? 'text-cyan-950 group-hover:text-cyan-700' : 'text-white group-hover:text-cyan-300'
+                  }`}>
+                    {t('نقل المواد من صور البرنامج القديم (حتى 500 صورة)', 'هاوردەکردنی کاڵاکان لە وێنەی بەرنامەی کۆن (تا 500 وێنە)', 'Legacy System Screen Migrator (up to 500 images)')}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold border border-cyan-500/30">
+                    {t('متعدد حتى 500', 'کۆمەڵ تا 500', 'Batch 500')}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate sm:whitespace-normal">
+                  {t(
+                    'حدد صور شاشات برنامجك السابق (حتى 500 صورة)؛ يقوم النظام بقراءة الأسماء، الباركود، وأسعار الشيت والكرتون ونقلها دفعة واحدة',
+                    'تا 500 وێنەی شاشەی سیستەمە کۆنەکەت دیاریبکە؛ سیستمەکە بە یەکجار هەموو دەرمانەکان هاوردە دەکات',
+                    'Select up to 500 legacy screen photos: extracts barcodes, names, pack & blister prices in automated bulk batches'
                   )}
                 </p>
               </div>
@@ -621,7 +724,44 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
             </span>
           </button>
 
-          {/* Button 4: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
+          {/* Button 5: المواد المنتهية والصلاحيات (تتبع الصلاحية وانتهاء المدة) */}
+          <button
+            type="button"
+            onClick={() => setActiveSubView('expiryAlerts')}
+            className={`group flex items-center gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 text-left rtl:text-right cursor-pointer active:scale-[0.98] ${
+              isLight
+                ? 'bg-white border-rose-200 hover:border-rose-500 shadow-sm hover:shadow-md'
+                : 'bg-gradient-to-br from-[#200A12] to-[#2E0F1A] border-rose-500/40 hover:border-rose-400 hover:shadow-[0_0_20px_rgba(244,63,94,0.25)]'
+            }`}
+          >
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-rose-600 to-red-500 flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <Clock className="w-6 h-6 text-white stroke-[2.2]" />
+            </div>
+            <div className="flex flex-col flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <span className={`text-sm sm:text-base font-black transition-colors ${
+                  isLight
+                    ? 'text-slate-900 group-hover:text-rose-700'
+                    : 'text-white group-hover:text-rose-300'
+                }`}>
+                  {t('المواد المنتهية والصلاحيات', 'کاڵا بەسەرچووەکان و بەروار', 'Expiry & Expiration Management')}
+                </span>
+                {expiryStats.expiredCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black font-mono bg-rose-600 text-white animate-pulse">
+                    {expiryStats.expiredCount} {t('منتهية', 'بەسەرچوو', 'expired')}
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] text-slate-400 font-semibold mt-0.5 truncate">
+                {expiryStats.nearExpiryCount > 0 
+                  ? t(`يوجد ${expiryStats.nearExpiryCount} مادة قريبة من الانتهاء (≤ 90 يوم)`, `${expiryStats.nearExpiryCount} کاڵا نزیکن لە بەسەرچوون`, `${expiryStats.nearExpiryCount} items near expiry (≤ 90d)`)
+                  : t('كشف المواد المنتهية، القريبة من الانتهاء، وتتبع الباتشات', 'چاودێری بەرواری بەسەرچوون و باچەکان', 'Track expired, near-expiry & batch items')
+                }
+              </span>
+            </div>
+          </button>
+
+          {/* Button 6: مواد متلفة ومكسورة ومنتهية (کاڵای تێکچوو و بەسەرچوو) */}
           {canManageDamaged && (
             <button
               type="button"
@@ -760,6 +900,28 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
               )}
             </button>
 
+            {/* Expiry Alerts subview tab button */}
+            <button
+              onClick={() => setActiveSubView('expiryAlerts')}
+              className={`px-3 py-1.5 rounded-lg font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeSubView === 'expiryAlerts'
+                  ? isLight
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Clock className={`w-3.5 h-3.5 ${activeSubView === 'expiryAlerts' ? 'text-white' : 'text-rose-500'}`} />
+              <span>{t('المواد المنتهية والصلاحيات', 'کاڵا بەسەرچووەکان و بەروار', 'Expiry Alerts')}</span>
+              {(expiryStats.expiredCount > 0 || expiryStats.nearExpiryCount > 0) && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rose-500 text-white rounded font-bold">
+                  {expiryStats.expiredCount + expiryStats.nearExpiryCount}
+                </span>
+              )}
+            </button>
+
             {canManageAudit && (
               <button
                 onClick={() => setActiveSubView('inventoryAudit')}
@@ -781,7 +943,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         </div>
 
         {/* Action Buttons for Catalog View */}
-        {activeSubView !== 'inventoryAudit' && (
+        {activeSubView !== 'inventoryAudit' && activeSubView !== 'expiryAlerts' && (
           <div className="flex flex-wrap items-center gap-2">
             {/* Hidden File Input for Importing Products / Backup */}
             <input
@@ -797,16 +959,49 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                   if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
                     const excelParsed = await parseExcelBackupFile(file);
                     if (excelParsed.products && excelParsed.products.length > 0) {
-                      const merged = [...excelParsed.products];
-                      products.forEach((p) => {
-                        if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                          merged.push(p);
+                      const merged = [...products];
+                      let newCount = 0;
+                      let updatedCount = 0;
+
+                      excelParsed.products.forEach((importedP) => {
+                        let matchIdx = merged.findIndex(p =>
+                          (importedP.barcode && p.barcode && p.barcode.trim() === importedP.barcode.trim()) ||
+                          p.id === importedP.id ||
+                          p.name.toLowerCase() === importedP.name.toLowerCase()
+                        );
+
+                        // Fuzzy Matching check for slight spelling variations
+                        if (matchIdx === -1 && importedP.name) {
+                          const fuzzyMatch = findBestFuzzyProductMatch(importedP.name, merged, {
+                            barcode: importedP.barcode,
+                            threshold: 0.82
+                          });
+                          if (fuzzyMatch.matchedProduct) {
+                            matchIdx = merged.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
+                          }
+                        }
+
+                        if (matchIdx !== -1) {
+                          // Update existing item to avoid duplicate
+                          merged[matchIdx] = {
+                            ...merged[matchIdx],
+                            stock: (merged[matchIdx].stock || 0) + (importedP.stock || 0),
+                            totalUnits: (merged[matchIdx].totalUnits || 0) + (importedP.totalUnits || 0),
+                            price: importedP.price || merged[matchIdx].price,
+                            cost: importedP.cost || merged[matchIdx].cost,
+                            lastPriceUpdate: new Date().toISOString()
+                          };
+                          updatedCount++;
+                        } else {
+                          merged.unshift(importedP);
+                          newCount++;
                         }
                       });
+
                       setProducts(merged);
                       localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
                       syncBulkWriteCollection('products', merged);
-                      setImportBanner(isAr ? `✅ تم استيراد وترتيب ${excelParsed.products.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${excelParsed.products.length} products!`);
+                      setImportBanner(isAr ? `✅ تم استيراد وترتيب المواد بنجاح (${newCount} مادة جديدة، وتحديث ${updatedCount} مادة موجودة بدون تكرار)!` : `✅ Successfully imported products (${newCount} new, ${updatedCount} updated without duplicates)!`);
                       setTimeout(() => setImportBanner(''), 6000);
                     } else {
                       alert(isAr ? 'لم يتم العثور على ورقة مواد صالحة في ملف الإكسل!' : 'No valid products sheet found in Excel file!');
@@ -822,16 +1017,48 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                           : (parsedData.products && Array.isArray(parsedData.products) ? parsedData.products : []);
 
                         if (importedProds.length > 0) {
-                          const merged = [...importedProds];
-                          products.forEach((p) => {
-                            if (!merged.some(m => m.barcode && p.barcode && m.barcode === p.barcode)) {
-                              merged.push(p);
+                          const merged = [...products];
+                          let newCount = 0;
+                          let updatedCount = 0;
+
+                          importedProds.forEach((importedP) => {
+                            let matchIdx = merged.findIndex(p =>
+                              (importedP.barcode && p.barcode && p.barcode.trim() === importedP.barcode.trim()) ||
+                              p.id === importedP.id ||
+                              p.name.toLowerCase() === importedP.name.toLowerCase()
+                            );
+
+                            // Fuzzy Matching check for slight spelling variations
+                            if (matchIdx === -1 && importedP.name) {
+                              const fuzzyMatch = findBestFuzzyProductMatch(importedP.name, merged, {
+                                barcode: importedP.barcode,
+                                threshold: 0.82
+                              });
+                              if (fuzzyMatch.matchedProduct) {
+                                matchIdx = merged.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
+                              }
+                            }
+
+                            if (matchIdx !== -1) {
+                              merged[matchIdx] = {
+                                ...merged[matchIdx],
+                                stock: (merged[matchIdx].stock || 0) + (importedP.stock || 0),
+                                totalUnits: (merged[matchIdx].totalUnits || 0) + (importedP.totalUnits || 0),
+                                price: importedP.price || merged[matchIdx].price,
+                                cost: importedP.cost || merged[matchIdx].cost,
+                                lastPriceUpdate: new Date().toISOString()
+                              };
+                              updatedCount++;
+                            } else {
+                              merged.unshift(importedP);
+                              newCount++;
                             }
                           });
+
                           setProducts(merged);
                           localStorage.setItem('supermarket_products_v1', JSON.stringify(merged));
                           syncBulkWriteCollection('products', merged);
-                          setImportBanner(isAr ? `✅ تم استيراد وترتيب ${importedProds.length} مادة وإضافتها للمخزن بنجاح!` : `✅ Successfully imported and arranged ${importedProds.length} products!`);
+                          setImportBanner(isAr ? `✅ تم استيراد وترتيب المواد بنجاح (${newCount} مادة جديدة، وتحديث ${updatedCount} مادة موجودة بدون تكرار)!` : `✅ Successfully imported products (${newCount} new, ${updatedCount} updated without duplicates)!`);
                           setTimeout(() => setImportBanner(''), 6000);
                         } else {
                           alert(isAr ? 'لم يتم العثور على قائمة مواد صالحة في ملف JSON!' : 'No valid products list found in JSON!');
@@ -849,6 +1076,17 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 }
               }}
             />
+
+            {canEditProducts && onOpenLegacyScreenMigrator && (
+              <button
+                onClick={onOpenLegacyScreenMigrator}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_15px_rgba(6,182,212,0.35)] hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border border-cyan-400/40"
+                title={t('نقل المواد من شاشات وجداول البرامج القديمة بالذكاء الاصطناعي (بارکۆد، نرخی پاکەت وشیت، کۆمپانیا)', 'هاوردەی کاڵا لە شاشەی سیستەمی کۆن بە AI', 'Migrate Legacy System Screen (AI)')}
+              >
+                <Monitor className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
+                <span>{t('نقل من برنامج قديم (AI)', 'نقل لە سیستەمی کۆن (AI)', 'Legacy Screen (AI)')}</span>
+              </button>
+            )}
 
             {canEditProducts && onOpenAIInvoiceScanner && (
               <button
@@ -917,8 +1155,22 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         />
       )}
 
+      {/* View 4: Dedicated Expiry & Near-Expiry Management Sub-View (واجهة المواد المنتهية والصلاحيات) */}
+      {activeSubView === 'expiryAlerts' && (
+        <ExpiryManagementView
+          products={products}
+          setProducts={setProducts}
+          settings={settings}
+          currentUser={currentUser}
+          onEditProduct={onEditProduct}
+          onOpenPrintBarcode={onOpenPrintBarcode}
+          onOpenDamagedItems={onOpenDamagedItems}
+          onBackToWarehouseMenu={() => setActiveSubView(null)}
+        />
+      )}
+
       {/* Catalog & Stock Status Search + Views */}
-      {activeSubView !== 'inventoryAudit' && (
+      {activeSubView !== 'inventoryAudit' && activeSubView !== 'expiryAlerts' && (
         <>
           {/* Import Notification Banner */}
           {importBanner && (

@@ -57,8 +57,6 @@ export const ShiftReportModal: React.FC<ShiftReportModalProps> = ({
   onViewReceipt,
   onOpenSalesReturn
 }) => {
-  if (!isOpen) return null;
-
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
@@ -141,6 +139,8 @@ export const ShiftReportModal: React.FC<ShiftReportModalProps> = ({
     }
     return isKu ? 'سەرجەم کاتەکان' : isAr ? 'كل الأوقات' : 'All Time';
   }, [dateFilterMode, selectedCustomDate, lang, isAr, isKu]);
+
+  if (!isOpen) return null;
 
   // Calculations based on filtered sales
   const invoiceCount = filteredSales.length;

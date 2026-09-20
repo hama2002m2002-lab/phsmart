@@ -1,16 +1,25 @@
-import React, { useState, useRef } from 'react';
-import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop, Trash2, AlertTriangle, Lock, Cloud, Sparkles, Key, Eye, EyeOff, ExternalLink, HelpCircle } from 'lucide-react';
-import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Settings as SettingsIcon, Store, Globe, DollarSign, Percent, Save, CheckCircle2, Database, Download, Upload, RefreshCw, Keyboard, FileText, Wifi, Moon, Sun, Zap, FileSpreadsheet, ShieldCheck, Printer, Laptop, Trash2, AlertTriangle, Lock, Cloud, Sparkles, Key, Eye, EyeOff, ExternalLink, Cpu, Clock, Calendar, History, Shield, Check, AlertCircle, HardDrive } from 'lucide-react';
+import { StoreSettings, Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, PurchaseInvoice, UserAccount, AutoBackupSnapshot } from '../types';
+import {
+  createFullSystemBackup,
+  getStoredBackupSnapshots,
+  restoreBackupSnapshot,
+  deleteBackupSnapshot,
+  downloadBackupSnapshot,
+  clearAllBackupSnapshots,
+  getTimeRemainingUntilNextBackup,
+  formatBackupDateTime
+} from '../lib/autoBackupManager';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { DatabaseStorageModal } from './DatabaseStorageModal';
 import { StressTestDataModal } from './StressTestDataModal';
 import { KioskPrintModal } from './KioskPrintModal';
 import { GoogleDriveBackupModal } from './GoogleDriveBackupModal';
-import { downloadKioskPrintingBatchFile } from '../lib/thermalPrinter';
+import { downloadKioskPrintingBatchFile, print80mmCashierReceipt } from '../lib/thermalPrinter';
 import { getTranslation } from '../lib/translations';
 import { exportStoreToExcel, exportProductsToExcel, parseExcelBackupFile } from '../lib/excelExport';
 import { syncBulkWriteCollection } from '../lib/firestoreSync';
-import { saveDeviceLocalPreferences } from '../lib/devicePreferences';
 
 interface SettingsTabProps {
   settings: StoreSettings;
@@ -61,51 +70,159 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  // Gemini API Key State & Test
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [geminiTestStatus, setGeminiTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [geminiTestMsg, setGeminiTestMsg] = useState<string>('');
+  // Auto-backup states
+  const [backupSnapshots, setBackupSnapshots] = useState<AutoBackupSnapshot[]>([]);
+  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
+  const [isTakingBackup, setIsTakingBackup] = useState(false);
+  const [backupNotice, setBackupNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [snapshotToRestore, setSnapshotToRestore] = useState<AutoBackupSnapshot | null>(null);
+  const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
+
+  const loadSnapshots = async () => {
+    setIsLoadingSnapshots(true);
+    try {
+      const list = await getStoredBackupSnapshots();
+      setBackupSnapshots(list);
+    } catch (err) {
+      console.warn('Error loading backup snapshots:', err);
+    } finally {
+      setIsLoadingSnapshots(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSnapshots();
+
+    const handleBackupEvent = () => {
+      loadSnapshots();
+    };
+
+    window.addEventListener('pos_backup_created', handleBackupEvent);
+    return () => window.removeEventListener('pos_backup_created', handleBackupEvent);
+  }, []);
+
+  const handleBackupNow = async () => {
+    setIsTakingBackup(true);
+    try {
+      const download = settings.autoBackupDestination === 'auto_download' || settings.autoBackupDestination === 'both';
+      const snap = await createFullSystemBackup('manual', download);
+      setSettings(prev => ({
+        ...prev,
+        lastAutoBackupTime: snap.timestamp
+      }));
+      await loadSnapshots();
+      setBackupNotice({
+        type: 'success',
+        text: isKu
+          ? `✅ کۆپیکردنی یەدەگ بە سەرکەوتوویی تەواو بوو (${snap.itemsCount.products} کاڵا، ${snap.itemsCount.sales} فرۆشتن)`
+          : isAr
+          ? `✅ تم إنشاء وحفظ نسخة احتياطية كاملة بنجاح (${snap.itemsCount.products} مادة، ${snap.itemsCount.sales} عملية بيع، ${snap.itemsCount.purchases} فاتورة شراء)!`
+          : `✅ Complete backup created (${snap.itemsCount.products} products, ${snap.itemsCount.sales} sales)!`
+      });
+      setTimeout(() => setBackupNotice(null), 6000);
+    } catch (err: any) {
+      setBackupNotice({
+        type: 'error',
+        text: isAr ? `فشل النسخ الاحتياطي: ${err.message}` : `Backup failed: ${err.message}`
+      });
+    } finally {
+      setIsTakingBackup(false);
+    }
+  };
+
+  const handleConfirmRestoreSnapshot = async (snap: AutoBackupSnapshot) => {
+    if (!snap) return;
+    setIsRestoringSnapshot(true);
+    try {
+      const res = await restoreBackupSnapshot(snap.id, (data) => {
+        if (onImportBackup) {
+          onImportBackup(data);
+        }
+      });
+      if (res.success) {
+        setBackupNotice({
+          type: 'success',
+          text: isKu
+            ? `✅ داتاکانی ئەم کۆپییە بە سەرکەوتوویی گەڕێنرانەوە!`
+            : isAr
+            ? `✅ تم استعادة كافة بيانات هذه النسخة الاحتياطية (${snap.formattedDate}) بنجاح!`
+            : `✅ Snapshot restored successfully!`
+        });
+        setSnapshotToRestore(null);
+        setTimeout(() => setBackupNotice(null), 6000);
+      } else {
+        alert(res.message);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error restoring snapshot');
+    } finally {
+      setIsRestoringSnapshot(false);
+    }
+  };
+
+  const handleDeleteSnapshotItem = async (snapId: string) => {
+    const ok = window.confirm(
+      isKu ? 'دڵنیایت لە سڕینەوەی ئەم کۆپییە لە ئەرشیف؟' : isAr ? 'هل أنت متأكد من حذف هذه النسخة الاحتياطية من الأرشيف؟' : 'Delete this backup from archive?'
+    );
+    if (!ok) return;
+    await deleteBackupSnapshot(snapId);
+    await loadSnapshots();
+  };
+
+  // Google Gemini AI Key State
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [testStatus, setTestStatus] = useState<{
+    loading: boolean;
+    success?: boolean;
+    message?: string;
+    model?: string;
+  }>({ loading: false });
+
+  const handleTestGeminiKey = async () => {
+    setTestStatus({ loading: true });
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (settings.geminiApiKey) {
+        headers['x-gemini-api-key'] = settings.geminiApiKey;
+      }
+      const res = await fetch('/api/gemini/test-key', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ apiKey: settings.geminiApiKey || undefined })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setTestStatus({
+          loading: false,
+          success: true,
+          model: data.model,
+          message: data.message || (isKu ? 'پەیوەندی بە سەرکەوتوویی ئەنجامدرا!' : isAr ? 'تم التحقق بنجاح! الذكاء الاصطناعي متصل وجاهز للعمل.' : 'Connected successfully!')
+        });
+      } else {
+        setTestStatus({
+          loading: false,
+          success: false,
+          message: data.error || (isKu ? 'نەتوانرا پەیوەندی بە Gemini بکرێت. کلیلی خۆت بپشکنە.' : isAr ? 'تعذر الاتصال بخوادم Gemini. تأكد من صحة المفتاح.' : 'Connection to Gemini failed.')
+        });
+      }
+    } catch (err: any) {
+      setTestStatus({
+        loading: false,
+        success: false,
+        message: err.message || (isKu ? 'هەڵە لە پەیوەندی کردن بە سێرڤەر.' : isAr ? 'حدث خطأ أثناء فحص المفتاح.' : 'Error checking key.')
+      });
+    }
+  };
 
   const handleChange = (field: keyof StoreSettings, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleTestGeminiKey = async () => {
-    setGeminiTestStatus('testing');
-    setGeminiTestMsg('');
-    try {
-      const res = await fetch('/api/gemini/test-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: settings.geminiApiKey || '' })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setGeminiTestStatus('success');
-        setGeminiTestMsg(isKu ? 'پەیوەندی بە سەرکەوتوویی ئەنجامدرا!' : isAr ? 'تم الاتصال بمفتاح Gemini بنجاح!' : 'Gemini API connected successfully!');
-      } else {
-        setGeminiTestStatus('error');
-        setGeminiTestMsg(data.error || (isKu ? 'نەتوانرا پەیوەندی بکرێت بە کلیلەکە' : isAr ? 'فشل الاتصال: يرجى التأكد من صحة المفتاح' : 'Connection failed. Please check key validity.'));
-      }
-    } catch (err: any) {
-      setGeminiTestStatus('error');
-      setGeminiTestMsg(err?.message || (isKu ? 'هەڵە لە پەیوەندیکردن' : isAr ? 'خطأ في الاتصال بالخادم' : 'Server connection error'));
-    }
-  };
-
   const handleManualSave = () => {
     localStorage.setItem('supermarket_settings_v3', JSON.stringify(settings));
-    saveDeviceLocalPreferences({
-      geminiApiKey: settings.geminiApiKey || '',
-      themeMode: settings.themeMode,
-      language: settings.language,
-      printerType: settings.printerType,
-      connectedPrinterName: settings.connectedPrinterName,
-      paperSize: settings.paperSize,
-      autoPrintReceipt: settings.autoPrintReceipt,
-      posShortcuts: settings.posShortcuts
-    });
-    setIsSavedMessage(isKu ? 'ڕێکخستنەکان بە سەرکەوتوویی پاشەکەوت کران!' : isAr ? 'تم حفظ كافة الإعدادات ومفتاح Gemini بنجاح!' : 'Settings & Gemini Key saved successfully!');
+    setIsSavedMessage(isKu ? 'ڕێکخستنەکان بە سەرکەوتوویی پاشەکەوت کران!' : isAr ? 'تم حفظ كافة الإعدادات بنجاح!' : 'Settings saved successfully!');
     setTimeout(() => setIsSavedMessage(''), 3500);
   };
 
@@ -316,105 +433,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
 
-        {/* Google Gemini AI Vision & Product Scanner Configuration */}
-        <div className="space-y-4 pt-4 border-t border-slate-800">
-          <div className="border-b border-slate-800 pb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-400 animate-pulse" />
-              <span>{isKu ? 'کلیلی زیرەکی دەستکرد Gemini (خوێندنەوەی کاڵا لە سیستەمی تر بە وێنە)' : isAr ? 'مفتاح الذكاء الاصطناعي Gemini (إضافة المواد من البرامج الأخرى بالصورة)' : 'Google Gemini AI Key (Import Items from Other Software by Photo)'}</span>
-            </h3>
-            <span className="text-[10px] text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-bold">
-              Gemini 3.8 Flash Vision
-            </span>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#07131F] via-[#091827] to-[#0D1F33] border border-emerald-500/30 space-y-3">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div className="space-y-1 max-w-2xl">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-white">
-                    {isKu ? 'تایبەتمەندی ناسینەوەی خشتەی کاڵاکان بە وێنە لە بەرنامەی ترەوە' : isAr ? 'التعرف البصري الفوري على شاشات البرامج الأخرى وجرد المواد' : 'Visual Extraction from Other Software Screens & Invoices'}
-                  </span>
-                  {settings.geminiApiKey && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold flex items-center gap-1 border border-emerald-500/40">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>{isKu ? 'کلیل دانراوە' : isAr ? 'المفتاح مُفعّل' : 'Configured'}</span>
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  {isKu 
-                    ? 'دەتوانیت وێنەی شاشەی بەرنامەی کۆنت (وەک ئەلئەمین، بەیان، کویک بۆکس یان خشتەی ئیکسڵ) بگریت، زیرەکی دەستکرد خۆکارانە: ناوی کاڵا بە تەواوی وەک خۆی، بەرواری بەسەرچوون، نرخی کڕین و فرۆشتن، ژمارەی دانەکان لە کۆگا و ناوی کۆمپانیا دەردەهێنێت و دەیهێنێتە کۆگاوە.'
-                    : isAr 
-                    ? 'يتيح لك التقاط صورة بكاميرا الموبايل لشاشة أي برنامج آخر (الأمين، البيان، البسيط، إكسل، الصيدلية القديمة). يقوم الذكاء الاصطناعي باستخراج: اسم المادة بنفس شكل النص تماماً، وتاريخ الصلاحية، وسعر الشراء وسعر البيع، والعدد بالمخزن، واسم الشركة المصنعة.'
-                    : 'Allows capturing photos of other accounting/POS software screens (Al-Ameen, QuickBooks, Excel). AI extracts exact item name, expiry date, purchase & retail price, warehouse count, and manufacturer company.'}
-                </p>
-              </div>
-
-              <a 
-                href="https://aistudio.google.com/app/apikey" 
-                target="_blank" 
-                rel="noreferrer" 
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-950/60 border border-cyan-500/40 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-              >
-                <span>{isKu ? '🔑 وەرگرتنی کلیلی خۆڕایی لە Google AI Studio' : isAr ? '🔑 الحصول على مفتاح مجاني من Google AI Studio' : '🔑 Get Free Gemini API Key'}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[11px] text-slate-300 font-bold block">
-                {isKu ? 'کلیلی Gemini API (GEMINI_API_KEY):' : isAr ? 'رمز مفتاح Gemini API الخاص بك:' : 'Your Gemini API Key:'}
-              </label>
-              
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-[260px]">
-                  <input
-                    type={showGeminiKey ? 'text' : 'password'}
-                    value={settings.geminiApiKey || ''}
-                    onChange={(e) => handleChange('geminiApiKey', e.target.value.trim())}
-                    placeholder="AIzaSy..."
-                    className="w-full bg-[#050B17] text-slate-200 px-3 py-2.5 rounded-xl border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-xs pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowGeminiKey(!showGeminiKey)}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
-                    title={showGeminiKey ? 'إخفاء المفتاح' : 'إظهار المفتاح'}
-                  >
-                    {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleTestGeminiKey}
-                  disabled={geminiTestStatus === 'testing'}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>
-                    {geminiTestStatus === 'testing' 
-                      ? (isKu ? 'تاقیکردنەوە...' : isAr ? 'جارٍ التحقق...' : 'Testing...') 
-                      : (isKu ? 'تاقیکردنەوەی کلیل' : isAr ? 'اختبار المفتاح' : 'Test Key')}
-                  </span>
-                </button>
-              </div>
-
-              {geminiTestMsg && (
-                <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                  geminiTestStatus === 'success' 
-                    ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300' 
-                    : 'bg-rose-950/80 border border-rose-500/50 text-rose-300'
-                }`}>
-                  {geminiTestStatus === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
-                  <span>{geminiTestMsg}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Store Profile Information */}
         <div className="space-y-4 pt-4 border-t border-slate-800">
           <h3 className="text-sm font-bold text-cyan-400 border-b border-slate-800 pb-2 flex items-center gap-2">
@@ -538,6 +556,117 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
+          {/* 80mm Cashier Paper & Thermal Configuration */}
+          <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-cyan-950/30 to-slate-900 border border-emerald-500/30 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                  <Printer className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>{isKu ? 'تایبەتمەندی چاپی وەرەقەی کاشێر (80 ملم)' : isAr ? 'خاصية طباعة ورق كاشير (80 ملم - 80mm)' : '80mm Cashier Roll Printing'}</span>
+                    <span className="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">Standard 80mm</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {isKu 
+                      ? 'قەبارەی پەسەندکراوی پسوولەی کاشێر بۆ هەموو مارکێت و کۆگاکان لەگەڵ بارکۆدی تەواو' 
+                      : isAr 
+                      ? 'القياس المعتمد لطابعات الفواتير والكاشير (Epson, Xprinter, Rongta, Bixolon) مع إظهار باركود الأصناف والفاتورة بدقة.' 
+                      : 'Standard 80mm thermal roll layout with crisp item and invoice barcodes.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Test Print 80mm Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const sampleSale: SaleTransaction = {
+                    id: 'test-80mm-' + Date.now(),
+                    invoiceNumber: 'INV-80MM-' + Math.floor(1000 + Math.random() * 9000),
+                    cashierName: 'كاشير تجريبي',
+                    customerName: 'زبون عام',
+                    timestamp: new Date().toLocaleString(),
+                    items: [
+                      {
+                        productId: 'sample-1',
+                        productName: 'باراسيتامول 500 ملغ',
+                        productNameAr: 'باراسيتامول 500 ملغ',
+                        productNameKu: 'پاراسیتامۆڵ 500 ملغ',
+                        barcode: '200245819402',
+                        quantity: 2,
+                        saleType: 'retail',
+                        price: 1500,
+                        total: 3000,
+                      },
+                      {
+                        productId: 'sample-2',
+                        productName: 'أمۆکسیسيلين كبسول',
+                        productNameAr: 'أموكسيسيلين كبسول',
+                        productNameKu: 'ئەمۆکسیسلین کەپسول',
+                        barcode: '200245138592',
+                        quantity: 1,
+                        saleType: 'blister',
+                        price: 2500,
+                        total: 2500,
+                      }
+                    ],
+                    subtotal: 5500,
+                    discount: 0,
+                    tax: 0,
+                    total: 5500,
+                    amountTendered: 10000,
+                    changeDue: 4500,
+                    paymentMethod: 'cash',
+                    status: 'completed',
+                  };
+                  print80mmCashierReceipt(sampleSale, settings);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer transition-all active:scale-95 shrink-0"
+              >
+                <Printer className="w-4 h-4 text-slate-950" />
+                <span>{isKu ? 'تاقیکردنەوەی چاپی 80 ملم' : isAr ? 'تجربة طباعة وصل 80 مم' : 'Test 80mm Print'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs pt-1">
+              <div>
+                <label className="text-slate-400 mb-1 block">{isKu ? 'قەبارەی پێشوەختەی پسوولە' : isAr ? 'قياس الورق الافتراضي للكاشير' : 'Default Paper Size'}</label>
+                <select
+                  value={settings.printerType || 'thermal80mm'}
+                  onChange={(e) => handleChange('printerType', e.target.value)}
+                  className="w-full bg-[#0B1120] text-emerald-300 p-2.5 rounded-xl border border-emerald-500/30 focus:border-emerald-400 focus:outline-none font-bold"
+                >
+                  <option value="thermal80mm">🧾 {isKu ? 'وەرەقەی کاشێر 80 ملم (پێشنیارکراو)' : isAr ? 'ورق كاشير 80 مم (الموصى به)' : '80mm Cashier Roll (Recommended)'}</option>
+                  <option value="thermal58mm">🧾 {isKu ? 'وەرەقەی کاشێر 58 ملم (بچووک)' : isAr ? 'ورق كاشير 58 مم (شريط صغير)' : '58mm Cashier Roll'}</option>
+                  <option value="a4">📄 {isKu ? 'قەبارەی A4 (پەڕەی گەورە)' : isAr ? 'ورق A4 كامل' : 'A4 Full Page'}</option>
+                  <option value="a5">📄 {isKu ? 'قەبارەی A5 (نیوە پەڕە)' : isAr ? 'ورق A5 نصف صفحة' : 'A5 Half Page'}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 mb-1 block">{isKu ? 'ژمارەی لەبەرگیراوەکان (نسخ)' : isAr ? 'عدد نسخ الطباعة لكل عملية' : 'Print Copies'}</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={settings.printerCopies || 1}
+                  onChange={(e) => handleChange('printerCopies', Math.max(1, Number(e.target.value)))}
+                  className="w-full bg-[#0B1120] text-slate-200 p-2.5 text-center font-mono font-bold rounded-xl border border-blue-500/20 focus:border-cyan-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 mb-1 block">{isKu ? 'کۆنترۆڵی بارکۆدی پسوولە' : isAr ? 'إظهار باركود الفاتورة والمواد' : 'Show Barcode on Receipts'}</label>
+                <div className="p-2 bg-[#0B1120] rounded-xl border border-emerald-500/20 flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-bold">{isKu ? 'چالاکە' : isAr ? 'مفعل دائماً' : 'Enabled'}</span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold">80mm Ready</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Direct Silent Printing Setup Block */}
           <div className="mt-4 p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -578,6 +707,156 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <span>{isKu ? 'ڕێبەری تەواو' : isAr ? 'خيارات الربط والدليل' : 'Setup Guide'}</span>
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Google Gemini AI Vision & OCR Configuration Section */}
+        <div className="space-y-4 pt-4 border-t border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-purple-300 border border-purple-400/40">
+                <Sparkles className="w-4 h-4 text-purple-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-300 to-cyan-300 flex items-center gap-2">
+                  <span>{isKu ? 'ڕێکخستنی زیرەکی دەستکرد (Google Gemini AI)' : isAr ? 'مفتاح وإعدادات الذكاء الاصطناعي (Google Gemini AI)' : 'Google Gemini AI Configuration'}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono border border-purple-500/30">Vision OCR</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  {isKu 
+                    ? 'بۆ پشکنینی ڕاستەوخۆی پسوولەکان، خوێندنەوەی دەرمان و پاکەت، و گواستنەوەی داتاکان'
+                    : isAr 
+                    ? 'لفحص الفواتير الورقية آلياً، وقراءة علب الأدوية واستيراد المواد من شاشات البرامج القديمة'
+                    : 'For automatic invoice OCR, medicine package recognition, and legacy system migration'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 border border-purple-500/40 font-bold flex items-center gap-1.5 transition-all"
+              >
+                <ExternalLink className="w-3 h-3 text-purple-300" />
+                <span>{isKu ? 'وەرگرتنی کلیلی بەخۆڕایی' : isAr ? 'الحصول على مفتاح مجاني (Google AI Studio)' : 'Get Free API Key'}</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={handleTestGeminiKey}
+                disabled={testStatus.loading}
+                className="text-[11px] px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all cursor-pointer disabled:opacity-50"
+              >
+                {testStatus.loading ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Zap className="w-3 h-3 text-cyan-300" />
+                )}
+                <span>{isKu ? 'تاقیکردنەوەی پەیوەندی' : isAr ? 'فحص الاتصال وتجربة الذكاء الاصطناعي' : 'Test AI Connection'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#11162B] to-[#0A0E1C] border border-purple-500/30 shadow-xl space-y-4">
+            {/* Explanatory note about publishing/deployment */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-950/50 via-purple-950/40 to-slate-900 border border-purple-500/30 flex items-start gap-3 text-xs">
+              <Key className="w-4 h-4 text-purple-300 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-[11px] leading-relaxed text-slate-300">
+                <p className="font-bold text-purple-200">
+                  {isKu 
+                    ? '💡 چۆنیەتی کارکردنی کلیلەکە لە کاتی بڵاوکردنەوەی بەرنامە (Deployment / Hosting):' 
+                    : isAr 
+                    ? '💡 آلية عمل مفتاح الذكاء الاصطناعي عند نشر البرنامج (Deployment / Production):' 
+                    : '💡 How the Gemini API Key works when deployed or hosted:'}
+                </p>
+                <p>
+                  {isKu
+                    ? 'سیستەمەکە لەسەر مۆدێلی خێرای (gemini-3.1-flash-lite) کار دەکات. لە کاتی بڵاوکردنەوە، کلیلەکە دەتوانیت لە ڕێکخستنی سێرڤەر (GEMINI_API_KEY) دابنێیت یان ڕاستەوخۆ لێرە بینوسیت و پاشەکەوتی بکەیت.'
+                    : isAr
+                    ? 'النظام مهيأ ليعمل بموديل (gemini-3.1-flash-lite) الفائق السرعة والدقة. عند نشر البرنامج، يمكنك إما تعيين متغير البيئة (GEMINI_API_KEY) في إعدادات الاستضافة ليعمل لكل المستخدمين، أو إدخال مفتاحك الشخصي هنا ليُحفظ في المتصفح ويُستخدم تلقائياً.'
+                    : 'The system uses gemini-3.1-flash-lite for high speed and accuracy. When deployed, set GEMINI_API_KEY in your hosting environment variables, or enter your personal key below to save it locally.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Input Field */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{isKu ? 'کلیلی تایبەتی Gemini API (بەپێی ئارەزوو):' : isAr ? 'مفتاح Gemini API المخصص (اختياري، أو لتجاوز إعدادات الخادم):' : 'Custom Gemini API Key:'}</span>
+                </span>
+                {settings.geminiApiKey ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                    {isKu ? 'کلیلی تایبەت دانراوە' : isAr ? 'مفتاح مخصص محفوظ' : 'Custom Key Active'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                    {isKu ? 'کلیلی بنەڕەتی سێرڤەر چالاکە' : isAr ? 'يستخدم المفتاح الافتراضي للخادم' : 'Server Environment Key'}
+                  </span>
+                )}
+              </label>
+
+              <div className="relative flex items-center">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={settings.geminiApiKey || ''}
+                  onChange={(e) => handleChange('geminiApiKey', e.target.value.trim())}
+                  placeholder={isKu ? 'نموونە: AIzaSy... یان AQ.Ab8...' : isAr ? 'مثال: AIzaSy... أو AQ.Ab8...' : 'e.g. AIzaSy... or AQ.Ab8...'}
+                  className="w-full bg-[#070A14] text-slate-200 px-4 py-3 pl-11 pr-24 text-xs font-mono rounded-xl border border-purple-500/30 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                  dir="ltr"
+                />
+                <Key className="w-4 h-4 text-purple-400/60 absolute left-3.5 pointer-events-none" />
+
+                <div className="absolute right-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all cursor-pointer"
+                    title={showApiKey ? 'إخفاء المفتاح' : 'إظهار المفتاح'}
+                  >
+                    {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {settings.geminiApiKey && (
+                    <button
+                      type="button"
+                      onClick={() => handleChange('geminiApiKey', '')}
+                      className="px-2 py-1 text-[10px] rounded-lg bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-500/30 transition-all cursor-pointer font-bold"
+                    >
+                      {isKu ? 'سڕینەوە' : isAr ? 'مسح' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Test Status Feedback Banner */}
+            {testStatus.message && (
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 animate-fadeIn ${
+                  testStatus.success
+                    ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
+                    : 'bg-red-950/70 border-red-500/50 text-red-300'
+                }`}
+              >
+                {testStatus.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                )}
+                <div className="flex-1">
+                  <p className="font-bold">{testStatus.message}</p>
+                  {testStatus.model && (
+                    <p className="text-[10px] opacity-80 mt-0.5 font-mono">
+                      Active Model: {testStatus.model} | Mode: Vision OCR & Multimodal
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -873,6 +1152,455 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
 
             </div>
+
+            {/* Automated Scheduled Backup Section (النسخ الاحتياطي التلقائي المجدول: كل ساعة أو يومياً + أوفلاين) */}
+            <div className="mt-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-cyan-950/30 via-slate-900/90 to-blue-950/30 border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.15)] relative overflow-hidden">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-cyan-500/20 pb-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-3 rounded-2xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                    <Clock className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm sm:text-base font-black text-white">
+                        {isKu ? 'کۆپیکردنی یەدەگی خۆکار (هەموو کاتژمێرێک یان ڕۆژانە)' : isAr ? 'النسخ الاحتياطي التلقائي المجدول (كل ساعة / يومياً)' : 'Automated Scheduled Backup (Hourly / Daily)'}
+                      </h4>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                        settings.autoBackupEnabled !== false && settings.autoBackupFrequency !== 'disabled'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-slate-700/40 text-slate-400 border-slate-600/40'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          settings.autoBackupEnabled !== false && settings.autoBackupFrequency !== 'disabled' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+                        }`} />
+                        {settings.autoBackupEnabled !== false && settings.autoBackupFrequency !== 'disabled'
+                          ? (isKu ? 'چالاکە (لە پاشبنەما کار دەکات)' : isAr ? 'نشط (يعمل في الخلفية أوفلاين)' : 'Active Offline')
+                          : (isKu ? 'ناچالاکە' : isAr ? 'معطل' : 'Disabled')}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-2xl">
+                      {isKu
+                        ? 'سیستەم بە شێوەیەکی ئۆتۆماتیکی و بەبێ پێویستی بە ئینتەرنێت، کۆپییەکی تەواو لە هەموو کاڵاکان، فرۆشتنەکان، کڕینەکان و قەرزەکان هەڵدەگرێت بۆ پاراستنی داتاکانت.'
+                        : isAr
+                        ? 'يقوم البرنامج تلقائياً وبشكل دوري في الخلفية بحفظ نسخة احتياطية شاملة لكافة المواد، المبيعات، الفواتير، والعملاء بدون الحاجة لأي اتصال بالإنترنت (100% أوفلاين).'
+                        : 'The system automatically creates a full database backup in the background according to your schedule, working 100% offline without requiring internet.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Immediate Backup Now Action Button */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleBackupNow}
+                    disabled={isTakingBackup}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:brightness-110 active:scale-95 border border-cyan-400/40 disabled:opacity-50"
+                  >
+                    {isTakingBackup ? (
+                      <RefreshCw className="w-4 h-4 animate-spin text-cyan-200" />
+                    ) : (
+                      <Zap className="w-4 h-4 text-cyan-200" />
+                    )}
+                    <span>
+                      {isTakingBackup
+                        ? (isKu ? 'کۆپیکردن...' : isAr ? 'جاري النسخ الآن...' : 'Backing up...')
+                        : (isKu ? '⚡ کۆپیکردنی یەدەگ ئێستا' : isAr ? '⚡ أخذ نسخة احتياطية الآن' : '⚡ Backup Now')}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Notice Banner */}
+              {backupNotice && (
+                <div className={`mt-3 p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 transition-all animate-in fade-in ${
+                  backupNotice.type === 'success'
+                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                    : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{backupNotice.text}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBackupNotice(null)}
+                    className="text-slate-400 hover:text-white text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Controls Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                
+                {/* 1. Schedule Frequency Selector */}
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 flex flex-col justify-between gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-cyan-400" />
+                      <span>{isKu ? 'وتیرەی کۆپیکردن (Frequency):' : isAr ? 'وتيرة النسخ التلقائي:' : 'Backup Frequency:'}</span>
+                    </label>
+                    
+                    {/* Toggle Enabled / Disabled */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings(prev => ({
+                          ...prev,
+                          autoBackupEnabled: prev.autoBackupEnabled === false ? true : false
+                        }))
+                      }
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        settings.autoBackupEnabled !== false ? 'bg-cyan-600' : 'bg-slate-700'
+                      }`}
+                      title={settings.autoBackupEnabled !== false ? 'إيقاف النسخ التلقائي' : 'تشغيل النسخ التلقائي'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          settings.autoBackupEnabled !== false ? 'translate-x-4 rtl:-translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {/* Hourly Button */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings(prev => ({
+                          ...prev,
+                          autoBackupFrequency: 'hourly',
+                          autoBackupEnabled: true
+                        }))
+                      }
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                        settings.autoBackupFrequency === 'hourly' || !settings.autoBackupFrequency
+                          ? 'bg-cyan-600/30 text-cyan-200 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                          : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>{isKu ? 'هەموو کاتژمێرێک' : isAr ? '⏱️ كل ساعة' : 'Hourly'}</span>
+                    </button>
+
+                    {/* Daily Button */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings(prev => ({
+                          ...prev,
+                          autoBackupFrequency: 'daily',
+                          autoBackupEnabled: true
+                        }))
+                      }
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                        settings.autoBackupFrequency === 'daily'
+                          ? 'bg-emerald-600/30 text-emerald-200 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                          : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>{isKu ? 'ڕۆژانە' : isAr ? '📅 يومياً' : 'Daily'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Destination / Storage Mode */}
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 flex flex-col justify-between gap-2.5">
+                  <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                    <HardDrive className="w-4 h-4 text-emerald-400" />
+                    <span>{isKu ? 'شوێنی هەڵگرتن:' : isAr ? 'طريقة الحفظ والتنزيل:' : 'Backup Destination:'}</span>
+                  </label>
+
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings(prev => ({
+                          ...prev,
+                          autoBackupDestination: 'local_archive'
+                        }))
+                      }
+                      className={`px-1.5 py-2 rounded-lg text-[11px] font-bold text-center transition-all border ${
+                        settings.autoBackupDestination === 'local_archive'
+                          ? 'bg-emerald-600/30 text-emerald-200 border-emerald-400 shadow-sm'
+                          : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                      title="حفظ تلقائي صامت في أرشيف الذاكرة بدون فتح نوافذ تنزيل"
+                    >
+                      {isKu ? 'ئەرشیفی ناوخۆ' : isAr ? '📁 أرشيف محلي' : 'Local'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings(prev => ({
+                          ...prev,
+                          autoBackupDestination: 'auto_download'
+                        }))
+                      }
+                      className={`px-1.5 py-2 rounded-lg text-[11px] font-bold text-center transition-all border ${
+                        settings.autoBackupDestination === 'auto_download'
+                          ? 'bg-cyan-600/30 text-cyan-200 border-cyan-400 shadow-sm'
+                          : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                      title="تنزيل ملف .json تلقائياً إلى مجلد التنزيلات"
+                    >
+                      {isKu ? 'داگرتنی فایل' : isAr ? '💾 تنزيل ملف' : 'Download'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings(prev => ({
+                          ...prev,
+                          autoBackupDestination: 'both'
+                        }))
+                      }
+                      className={`px-1.5 py-2 rounded-lg text-[11px] font-bold text-center transition-all border ${
+                        settings.autoBackupDestination === 'both' || !settings.autoBackupDestination
+                          ? 'bg-purple-600/30 text-purple-200 border-purple-400 shadow-sm'
+                          : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                      title="حفظ في الأرشيف المحلي وتنزيل ملف معاً"
+                    >
+                      {isKu ? 'هەردووکیان' : isAr ? '🔄 كلاهما معاً' : 'Both'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Live Countdown & Status Box */}
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                    <span className="flex items-center gap-1 text-slate-400">
+                      <History className="w-3.5 h-3.5 text-cyan-400" />
+                      {isKu ? 'دواین کۆپیکردن:' : isAr ? 'آخر نسخة مأخوذة:' : 'Last Backup:'}
+                    </span>
+                    <span className="text-cyan-300 font-mono text-[11px]">
+                      {settings.lastAutoBackupTime
+                        ? formatBackupDateTime(settings.lastAutoBackupTime)
+                        : (isKu ? 'هێشتا نەگیراوە' : isAr ? 'لم تنفذ بعد' : 'Not yet')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                    <span className="flex items-center gap-1 text-slate-400">
+                      <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                      {isKu ? 'کۆپیکردنی داهاتوو:' : isAr ? 'النسخة القادمة:' : 'Next Backup:'}
+                    </span>
+                    <span className="text-emerald-300 text-[11px] font-bold">
+                      {getTimeRemainingUntilNextBackup(settings, isKu ? 'ku' : isAr ? 'ar' : 'en').text}
+                    </span>
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800">
+                    <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                      <Shield className="w-3 h-3" />
+                      {isKu ? 'کارکردنی ئۆفلاین ١٠٠٪' : isAr ? 'أوفلاين 100% بدون إنترنت' : '100% Offline Capable'}
+                    </span>
+                    <span className="text-slate-400">
+                      {backupSnapshots.length} {isKu ? 'کۆپی لە ئەرشیف' : isAr ? 'نسخ محفوظة' : 'snapshots'}
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Archived Snapshots Table & History Area */}
+              <div className="mt-4 pt-3 border-t border-slate-800/80">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-black text-slate-200">
+                      {isKu ? 'سجلی کۆپییە یەدەگە هەڵگیراوەکان (Snapshots Archive):' : isAr ? 'سجل أرشيف النسخ الاحتياطية المحفوظة محلياً للرجوع إليها:' : 'Saved Backup Snapshots Archive:'}
+                    </span>
+                  </div>
+                  {backupSnapshots.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = window.confirm(
+                          isKu ? 'دڵنیایت لە پاککردنەوەی هەموو ئەرشیفی کۆپییە یەدەگەکان؟' : isAr ? 'هل أنت متأكد من مسح جميع النسخ المحفوظة في الأرشيف؟' : 'Clear all archived snapshots?'
+                        );
+                        if (!ok) return;
+                        await clearAllBackupSnapshots();
+                        await loadSnapshots();
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-rose-400 font-bold flex items-center gap-1 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>{isKu ? 'سڕینەوەی هەموو ئەرشیف' : isAr ? 'مسح الأرشيف' : 'Clear Archive'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {isLoadingSnapshots ? (
+                  <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+                    <span>{isAr ? 'جاري قراءة سجل النسخ...' : 'Loading snapshots...'}</span>
+                  </div>
+                ) : backupSnapshots.length === 0 ? (
+                  <div className="py-4 px-3 rounded-xl bg-slate-900/50 border border-slate-800 text-center">
+                    <p className="text-xs text-slate-400 font-medium">
+                      {isKu
+                        ? 'تا ئێستا هیچ کۆپییەک تۆمار نەکراوە. دەتوانیت دوگمەی "کۆپیکردنی یەدەگ ئێستا" دابگریت.'
+                        : isAr
+                        ? 'لم يتم إنشاء نسخ احتياطية حتى الآن. انقر على زر "أخذ نسخة احتياطية الآن" لإنشاء أول لقطة فوراً.'
+                        : 'No backup snapshots found yet. Click "Backup Now" above to create your first snapshot.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto custom-scrollbar max-h-56">
+                    <table className="w-full text-right rtl:text-right ltr:text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-900/90 text-slate-400 border-b border-slate-800 text-[11px]">
+                          <th className="py-2 px-3">{isKu ? 'بەروار و کات' : isAr ? 'التاريخ والوقت' : 'Timestamp'}</th>
+                          <th className="py-2 px-3">{isKu ? 'جۆر' : isAr ? 'النوع' : 'Type'}</th>
+                          <th className="py-2 px-3">{isKu ? 'ناوەڕۆک' : isAr ? 'محتويات النسخة' : 'Contents'}</th>
+                          <th className="py-2 px-3">{isKu ? 'قەبارە' : isAr ? 'الحجم' : 'Size'}</th>
+                          <th className="py-2 px-3 text-center">{isKu ? 'کردارەکان' : isAr ? 'إجراءات النسخة' : 'Actions'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {backupSnapshots.map((snap) => (
+                          <tr key={snap.id} className="hover:bg-cyan-950/20 transition-colors">
+                            <td className="py-2 px-3 font-mono text-cyan-200 text-[11px]">
+                              {snap.formattedDate}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                snap.triggerType === 'hourly'
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                  : snap.triggerType === 'daily'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              }`}>
+                                {snap.triggerType === 'hourly'
+                                  ? (isKu ? 'کاتژمێری' : isAr ? 'كل ساعة' : 'Hourly')
+                                  : snap.triggerType === 'daily'
+                                  ? (isKu ? 'ڕۆژانە' : isAr ? 'يومياً' : 'Daily')
+                                  : (isKu ? 'دەستی' : isAr ? 'يدوي' : 'Manual')}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-300 text-[11px]">
+                              <span>{snap.itemsCount?.products || 0} {isKu ? 'کاڵا' : isAr ? 'مادة' : 'products'}</span>
+                              <span className="text-slate-500 mx-1">•</span>
+                              <span>{snap.itemsCount?.sales || 0} {isKu ? 'فرۆشتن' : isAr ? 'مبيعات' : 'sales'}</span>
+                              <span className="text-slate-500 mx-1">•</span>
+                              <span>{snap.itemsCount?.purchases || 0} {isKu ? 'کڕین' : isAr ? 'مشتريات' : 'purchases'}</span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-400 font-mono text-[10px]">
+                              {snap.sizeBytes ? `${Math.round(snap.sizeBytes / 1024)} KB` : '-'}
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {/* Restore Snapshot Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => setSnapshotToRestore(snap)}
+                                  className="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition-all"
+                                  title={isKu ? 'گەڕاندنەوەی ئەم کۆپییە بۆ ناو سیستم' : isAr ? 'استعادة كافة بيانات هذه النسخة فوراً' : 'Restore this snapshot'}
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>{isKu ? 'گەڕاندنەوە' : isAr ? 'استعادة' : 'Restore'}</span>
+                                </button>
+
+                                {/* Download File Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => downloadBackupSnapshot(snap.id)}
+                                  className="px-2 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold flex items-center gap-1 transition-all"
+                                  title={isKu ? 'داگرتنی وەک فایلی JSON بۆ کۆمپیوتەر' : isAr ? 'تنزيل كملف JSON للجهاز' : 'Download JSON file'}
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>{isKu ? 'داگرتن' : isAr ? 'تنزيل' : 'Download'}</span>
+                                </button>
+
+                                {/* Delete Snapshot Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSnapshotItem(snap.id)}
+                                  className="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[10px] transition-all"
+                                  title={isKu ? 'سڕینەوە' : isAr ? 'حذف من الأرشيف' : 'Delete'}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Modal for Confirming Snapshot Restoration */}
+            {snapshotToRestore && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+                <div className="w-full max-w-md p-5 rounded-2xl bg-[#0B1120] border border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.3)] text-white">
+                  <div className="flex items-center gap-3 border-b border-cyan-500/20 pb-3">
+                    <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                      <RefreshCw className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-white">
+                        {isKu ? 'دڵنیابوونەوە لە گەڕاندنەوەی کۆپیی یەدەگ' : isAr ? 'تأكيد استعادة النسخة الاحتياطية' : 'Confirm Snapshot Restore'}
+                      </h4>
+                      <p className="text-xs text-cyan-300 font-mono mt-0.5">{snapshotToRestore.formattedDate}</p>
+                    </div>
+                  </div>
+
+                  <div className="my-4 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs space-y-2">
+                    <p className="text-slate-300">
+                      {isKu
+                        ? 'ئایا دڵنیایت لە گەڕاندنەوەی داتاکانی ئەم کۆپییە؟ داتاکانی ئێستا بە داتاکانی ئەم کاتە دەگۆڕدرێنەوە:'
+                        : isAr
+                        ? 'هل أنت متأكد من استعادة كافة بيانات هذه النسخة؟ سيتم تحديث وتثبيت البيانات التالية مباشرة في المنظومة:'
+                        : 'Are you sure you want to restore this snapshot? The following records will be loaded:'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 pt-1 font-bold text-cyan-200">
+                      <div className="p-2 rounded-lg bg-slate-800/60 border border-slate-700">
+                        📦 {snapshotToRestore.itemsCount?.products || 0} {isKu ? 'کاڵا' : isAr ? 'مادة في المخزن' : 'Products'}
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-800/60 border border-slate-700">
+                        🧾 {snapshotToRestore.itemsCount?.sales || 0} {isKu ? 'فرۆشتن' : isAr ? 'عملية بيع' : 'Sales'}
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-800/60 border border-slate-700">
+                        🚚 {snapshotToRestore.itemsCount?.suppliers || 0} {isKu ? 'دابینکەر' : isAr ? 'مورد' : 'Suppliers'}
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-800/60 border border-slate-700">
+                        👥 {snapshotToRestore.itemsCount?.customers || 0} {isKu ? 'کڕیار' : isAr ? 'عميل' : 'Customers'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSnapshotToRestore(null)}
+                      disabled={isRestoringSnapshot}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                    >
+                      {isKu ? 'پاشگەزبوونەوە' : isAr ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmRestoreSnapshot(snapshotToRestore)}
+                      disabled={isRestoringSnapshot}
+                      className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer disabled:opacity-50"
+                    >
+                      {isRestoringSnapshot ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      <span>{isRestoringSnapshot ? (isAr ? 'جاري الاستعادة...' : 'Restoring...') : (isKu ? 'بەڵێ، گەڕاندنەوە' : isAr ? 'نعم، استعادة الآن' : 'Yes, Restore')}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Factory Reset & Clean Store Preparation for New Client (تهيئة المنظومة لعميل جديد) */}
             <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-rose-950/60 via-red-950/40 to-slate-900/80 border border-rose-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">

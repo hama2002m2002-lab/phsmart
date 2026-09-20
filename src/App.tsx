@@ -1,43 +1,66 @@
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck, CheckCircle2, HardDrive, Smartphone } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
-import { OverviewTab } from './components/OverviewTab';
-import { InvoicesTab } from './components/InvoicesTab';
-import { ProductsTab } from './components/ProductsTab';
-import { PurchasesTab } from './components/PurchasesTab';
-import { POSTab } from './components/POSTab';
-import { VouchersHubTab } from './components/VouchersHubTab';
-import { SuppliersTab } from './components/SuppliersTab';
-import { CustomersTab } from './components/CustomersTab';
-import { OrdersTab } from './components/OrdersTab';
-import { AnalyticsTab } from './components/AnalyticsTab';
-import { ReportsTab } from './components/ReportsTab';
-import { NotificationsTab } from './components/NotificationsTab';
-import { SettingsTab } from './components/SettingsTab';
-import { PrintCenterTab } from './components/PrintCenterTab';
-import { AccountsHubTab } from './components/AccountsHubTab';
 import { LoginScreen } from './components/LoginScreen';
-import { ReceiptModal } from './components/ReceiptModal';
-import { ProductModal } from './components/ProductModal';
-import { CompletedReceiptsModal } from './components/CompletedReceiptsModal';
-import { SalesReturnModal } from './components/SalesReturnModal';
-import { CashDrawerModal } from './components/CashDrawerModal';
-import { ShiftReportModal } from './components/ShiftReportModal';
-import { MobileSyncModal } from './components/MobileSyncModal';
-import { BarcodePrintModal } from './components/BarcodePrintModal';
-import { InventoryAuditModal } from './components/InventoryAuditModal';
+
+// Ultra-fast Code Splitting: Tabs are loaded on-demand, making initial app launch instantaneous
+const OverviewTab = lazy(() => import('./components/OverviewTab').then(m => ({ default: m.OverviewTab })));
+const InvoicesTab = lazy(() => import('./components/InvoicesTab').then(m => ({ default: m.InvoicesTab })));
+const ProductsTab = lazy(() => import('./components/ProductsTab').then(m => ({ default: m.ProductsTab })));
+const PurchasesTab = lazy(() => import('./components/PurchasesTab').then(m => ({ default: m.PurchasesTab })));
+const POSTab = lazy(() => import('./components/POSTab').then(m => ({ default: m.POSTab })));
+const VouchersHubTab = lazy(() => import('./components/VouchersHubTab').then(m => ({ default: m.VouchersHubTab })));
+const SuppliersTab = lazy(() => import('./components/SuppliersTab').then(m => ({ default: m.SuppliersTab })));
+const CustomersTab = lazy(() => import('./components/CustomersTab').then(m => ({ default: m.CustomersTab })));
+const OrdersTab = lazy(() => import('./components/OrdersTab').then(m => ({ default: m.OrdersTab })));
+const AnalyticsTab = lazy(() => import('./components/AnalyticsTab').then(m => ({ default: m.AnalyticsTab })));
+const ReportsTab = lazy(() => import('./components/ReportsTab').then(m => ({ default: m.ReportsTab })));
+const NotificationsTab = lazy(() => import('./components/NotificationsTab').then(m => ({ default: m.NotificationsTab })));
+const SettingsTab = lazy(() => import('./components/SettingsTab').then(m => ({ default: m.SettingsTab })));
+const PrintCenterTab = lazy(() => import('./components/PrintCenterTab').then(m => ({ default: m.PrintCenterTab })));
+const AccountsHubTab = lazy(() => import('./components/AccountsHubTab').then(m => ({ default: m.AccountsHubTab })));
+
+// Modals loaded on-demand
+const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(m => ({ default: m.ReceiptModal })));
+const ProductModal = lazy(() => import('./components/ProductModal').then(m => ({ default: m.ProductModal })));
+const CompletedReceiptsModal = lazy(() => import('./components/CompletedReceiptsModal').then(m => ({ default: m.CompletedReceiptsModal })));
+const SalesReturnModal = lazy(() => import('./components/SalesReturnModal').then(m => ({ default: m.SalesReturnModal })));
+const CashDrawerModal = lazy(() => import('./components/CashDrawerModal').then(m => ({ default: m.CashDrawerModal })));
+const ShiftReportModal = lazy(() => import('./components/ShiftReportModal').then(m => ({ default: m.ShiftReportModal })));
+const MobileSyncModal = lazy(() => import('./components/MobileSyncModal').then(m => ({ default: m.MobileSyncModal })));
+const BarcodePrintModal = lazy(() => import('./components/BarcodePrintModal').then(m => ({ default: m.BarcodePrintModal })));
+const InventoryAuditModal = lazy(() => import('./components/InventoryAuditModal').then(m => ({ default: m.InventoryAuditModal })));
+const DamagedItemsModal = lazy(() => import('./components/DamagedItemsModal').then(m => ({ default: m.DamagedItemsModal })));
+const DelegateReturnsModal = lazy(() => import('./components/DelegateReturnsModal').then(m => ({ default: m.DelegateReturnsModal })));
+const AccountModal = lazy(() => import('./components/AccountModal').then(m => ({ default: m.AccountModal })));
+const DesktopAppModal = lazy(() => import('./components/DesktopAppModal').then(m => ({ default: m.DesktopAppModal })));
+const CSharpExporterModal = lazy(() => import('./components/CSharpExporterModal').then(m => ({ default: m.CSharpExporterModal })));
+const CashierAccountsModal = lazy(() => import('./components/CashierAccountsModal').then(m => ({ default: m.CashierAccountsModal })));
+const CustomerDisplayScreen = lazy(() => import('./components/CustomerDisplayScreen').then(m => ({ default: m.CustomerDisplayScreen })));
+const MobileScannerScreen = lazy(() => import('./components/MobileScannerScreen').then(m => ({ default: m.MobileScannerScreen })));
+const AIInvoiceScannerModal = lazy(() => import('./components/AIInvoiceScannerModal').then(m => ({ default: m.AIInvoiceScannerModal })));
+const AILegacySystemMigratorModal = lazy(() => import('./components/AILegacySystemMigratorModal').then(m => ({ default: m.AILegacySystemMigratorModal })));
+const LocalDataNetworkModal = lazy(() => import('./components/LocalDataNetworkModal').then(m => ({ default: m.LocalDataNetworkModal })));
+
 import { formatNumber } from './lib/formatUtils';
-import { DamagedItemsModal } from './components/DamagedItemsModal';
-import { DelegateReturnsModal } from './components/DelegateReturnsModal';
-import { AccountModal } from './components/AccountModal';
-import { DesktopAppModal } from './components/DesktopAppModal';
-import { CSharpExporterModal } from './components/CSharpExporterModal';
-import { CashierAccountsModal } from './components/CashierAccountsModal';
 import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAvatarSelector';
-import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
-import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
+import { getLaptopSecurityCredentials, subscribeToIncomingScans, playScannerBeep } from './lib/mobileSyncSecurity';
+import { findBestFuzzyProductMatch } from './lib/fuzzyMatching';
+
+// Lightweight skeleton to display during quick tab transitions
+function TabLoadingSkeleton() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center min-h-[350px] p-8 animate-fadeIn">
+      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-[0_0_25px_rgba(6,182,212,0.4)] mb-4 animate-pulse">
+        <span className="text-white font-black text-lg">7P</span>
+      </div>
+      <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mb-3" />
+      <span className="text-xs text-slate-400 font-medium tracking-wide">جاري تحميل الواجهة...</span>
+    </div>
+  );
+}
 
 import {
   initialProducts,
@@ -69,9 +92,13 @@ import {
   localDbGetAll,
   localDbFactoryReset
 } from './lib/localDb';
+import {
+  shouldRunAutoBackup,
+  createFullSystemBackup
+} from './lib/autoBackupManager';
 
-// Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
-function usePersistentState<T>(key: string, initialValue: T | (() => T)): [T, React.Dispatch<React.SetStateAction<T>>] {
+// Optimized Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
+function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
     try {
       const saved = localStorage.getItem(key);
@@ -81,25 +108,55 @@ function usePersistentState<T>(key: string, initialValue: T | (() => T)): [T, Re
     } catch (err) {
       console.warn(`Failed to parse localStorage key "${key}":`, err);
     }
-    return typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue;
+    return initialValue;
   });
 
-  // Async IndexedDB hydration check (for large data exceeding 5MB)
+  const isFirstRender = useRef(true);
+
+  // Non-blocking async IndexedDB hydration check (for large data exceeding 5MB)
   useEffect(() => {
-    const fallbackVal = typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue;
-    localDbGetKV<T>(key, fallbackVal).then((val) => {
-      if (val !== undefined && val !== null) {
-        if (Array.isArray(val) && val.length > 0) {
-          setState((prev) => {
-            if (Array.isArray(prev) && prev.length === 0) return val;
-            return prev;
-          });
-        }
+    const handle = typeof window !== 'undefined' && 'requestIdleCallback' in window
+      ? (window as any).requestIdleCallback(() => {
+          localDbGetKV<T>(key, initialValue).then((val) => {
+            if (val !== undefined && val !== null) {
+              if (Array.isArray(val) && val.length > 0) {
+                setState((prev) => {
+                  if (Array.isArray(prev) && prev.length === 0) return val;
+                  return prev;
+                });
+              }
+            }
+          }).catch(() => {});
+        }, { timeout: 2000 })
+      : setTimeout(() => {
+          localDbGetKV<T>(key, initialValue).then((val) => {
+            if (val !== undefined && val !== null) {
+              if (Array.isArray(val) && val.length > 0) {
+                setState((prev) => {
+                  if (Array.isArray(prev) && prev.length === 0) return val;
+                  return prev;
+                });
+              }
+            }
+          }).catch(() => {});
+        }, 100);
+
+    return () => {
+      if (typeof window !== 'undefined' && 'cancelIdleCallback' in window && typeof handle === 'number') {
+        (window as any).cancelIdleCallback(handle);
+      } else {
+        clearTimeout(handle);
       }
-    }).catch(() => {});
+    };
   }, [key]);
 
+  // Persist mutative updates without blocking initial mount
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
     try {
       if (state === undefined) {
         localStorage.removeItem(key);
@@ -109,8 +166,12 @@ function usePersistentState<T>(key: string, initialValue: T | (() => T)): [T, Re
         } catch {
           // If localStorage quota (5MB) is exceeded, silently rely on IndexedDB
         }
-        // Always persist in High-Capacity IndexedDB KV store
-        localDbSetKV(key, state);
+        // Save in IndexedDB in background
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+          (window as any).requestIdleCallback(() => localDbSetKV(key, state), { timeout: 1000 });
+        } else {
+          setTimeout(() => localDbSetKV(key, state), 50);
+        }
       }
     } catch (err) {
       console.warn(`Failed to save key "${key}":`, err);
@@ -184,6 +245,15 @@ export function App() {
     }
   }, []);
 
+  // Background preloading of critical views during idle time to guarantee 0ms latency on login
+  useEffect(() => {
+    const preloadTimer = setTimeout(() => {
+      import('./components/POSTab').catch(() => {});
+      import('./components/ProductsTab').catch(() => {});
+    }, 500);
+    return () => clearTimeout(preloadTimer);
+  }, []);
+
   const [products, setProducts] = usePersistentState<Product[]>('supermarket_products_v1', initialProducts);
   const [salesHistory, setSalesHistory] = usePersistentState<SaleTransaction[]>('supermarket_sales_v1', initialSalesHistory);
   const [suppliers, setSuppliers] = usePersistentState<Supplier[]>('supermarket_suppliers_v1', initialSuppliers);
@@ -191,10 +261,10 @@ export function App() {
   const [orders, setOrders] = usePersistentState<MarketOrder[]>('supermarket_orders_v1', initialOrders);
   const [notifications, setNotifications] = usePersistentState<MarketNotification[]>('supermarket_notifications_v1', initialNotifications);
   const [purchaseInvoices, setPurchaseInvoices] = usePersistentState<PurchaseInvoice[]>('supermarket_purchases_v1', initialPurchaseInvoices);
-  const [settings, setSettingsState] = usePersistentState<StoreSettings>('supermarket_settings_v3', () => {
-    const localPrefs = getDeviceLocalPreferences();
-    return mergeWithDevicePreferences(defaultSettings, localPrefs);
-  });
+  const [settings, setSettingsState] = usePersistentState<StoreSettings>(
+    'supermarket_settings_v3',
+    mergeWithDevicePreferences(defaultSettings, getDeviceLocalPreferences())
+  );
 
   const setSettings: React.Dispatch<React.SetStateAction<StoreSettings>> = (action) => {
     setSettingsState((prev) => {
@@ -249,8 +319,22 @@ export function App() {
   const [isReportsFullscreen, setIsReportsFullscreen] = useState(false);
   const [isInventoryAuditOpen, setIsInventoryAuditOpen] = useState(false);
   const [isAIInvoiceScannerOpen, setIsAIInvoiceScannerOpen] = useState(false);
+  const [isLegacyMigratorOpen, setIsLegacyMigratorOpen] = useState(false);
+  const [isLocalDataNetworkOpen, setIsLocalDataNetworkOpen] = useState(false);
   const [aiDraftImportData, setAiDraftImportData] = useState<any | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  // Keep-Alive state for instant 0ms switching between POS and Warehouse/Products
+  const isPosActive = activeTopTab === 'overview' && activeTab === 'pos';
+  const isProductsActive = activeTopTab === 'overview' && activeTab === 'products';
+
+  const [hasVisitedPOS, setHasVisitedPOS] = useState<boolean>(isPosActive);
+  const [hasVisitedProducts, setHasVisitedProducts] = useState<boolean>(isProductsActive);
+
+  useEffect(() => {
+    if (isPosActive) setHasVisitedPOS(true);
+    if (isProductsActive) setHasVisitedProducts(true);
+  }, [isPosActive, isProductsActive]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
@@ -276,8 +360,31 @@ export function App() {
 
   const isRTL = settings.language === 'ar' || settings.language === 'ku';
   const isAr = settings.language === 'ar';
-  const lowStockCount = products.filter(p => p.stock <= p.minStock).length;
-  const unreadNotifsCount = notifications.filter(n => !n.read).length;
+  
+  // Memoized counters for high-volume inventory performance
+  const lowStockCount = useMemo(() => {
+    let count = 0;
+    const len = products.length;
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      if (p && (p.stock ?? 0) <= (p.minStock ?? 5)) count++;
+    }
+    return count;
+  }, [products]);
+
+  const inventoryCount = useMemo(() => {
+    let count = 0;
+    const len = products.length;
+    for (let i = 0; i < len; i++) {
+      const p = products[i];
+      if (p && (p.stock ?? 0) > 0) count++;
+    }
+    return count;
+  }, [products]);
+
+  const unreadNotifsCount = useMemo(() => {
+    return notifications.filter(n => !n.read).length;
+  }, [notifications]);
 
   // Apply theme class to document element and body
   useEffect(() => {
@@ -301,6 +408,71 @@ export function App() {
   useEffect(() => {
     setIsFirebaseSynced(true);
   }, []);
+
+  // Automated background backup scheduler (100% offline & local in the background)
+  const [autoBackupToast, setAutoBackupToast] = useState<{
+    show: boolean;
+    message: string;
+    details?: string;
+  }>({ show: false, message: '' });
+
+  useEffect(() => {
+    const handleCheckAndRun = async () => {
+      try {
+        if (shouldRunAutoBackup(settings)) {
+          console.log('[AutoBackup] Running automated backup according to schedule...');
+          const freq = settings.autoBackupFrequency === 'daily' ? 'daily' : 'hourly';
+          const download = settings.autoBackupDestination === 'auto_download' || settings.autoBackupDestination === 'both';
+          const snapshot = await createFullSystemBackup(freq, download);
+
+          setSettings(prev => ({
+            ...prev,
+            lastAutoBackupTime: snapshot.timestamp
+          }));
+        }
+      } catch (err) {
+        console.warn('[AutoBackup] Background backup task warning:', err);
+      }
+    };
+
+    // Check on startup / settings change
+    handleCheckAndRun();
+
+    // Re-check periodically every 60 seconds
+    const interval = setInterval(handleCheckAndRun, 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [settings.autoBackupEnabled, settings.autoBackupFrequency, settings.autoBackupDestination, settings.lastAutoBackupTime]);
+
+  // Listen to backup created events to display sleek feedback toast
+  useEffect(() => {
+    const handleBackupEvent = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      const isHourly = detail.triggerType === 'hourly';
+      const isDaily = detail.triggerType === 'daily';
+      const freqLabel = isHourly ? (isAr ? 'كل ساعة' : 'Hourly') : isDaily ? (isAr ? 'يومياً' : 'Daily') : (isAr ? 'يدوي' : 'Manual');
+      
+      setAutoBackupToast({
+        show: true,
+        message: isAr
+          ? `✅ تم أخذ نسخة احتياطية آلية بنجاح (${freqLabel})`
+          : `✅ Automated backup completed (${freqLabel})`,
+        details: isAr
+          ? `تم حفظ ${detail.snapshot?.itemsCount?.products || 0} مادة و ${detail.snapshot?.itemsCount?.sales || 0} عملية بيع في الأرشيف المحلي الآمن.`
+          : `Saved ${detail.snapshot?.itemsCount?.products || 0} products & ${detail.snapshot?.itemsCount?.sales || 0} sales safely.`
+      });
+
+      const timer = setTimeout(() => {
+        setAutoBackupToast(prev => ({ ...prev, show: false }));
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    };
+
+    window.addEventListener('pos_backup_created', handleBackupEvent);
+    return () => window.removeEventListener('pos_backup_created', handleBackupEvent);
+  }, [isAr]);
 
   // Helper to check if current user has permission for activeTab
   const userHasPermissionForTab = (tabId: MainNavTab, user: UserAccount | null): boolean => {
@@ -466,10 +638,11 @@ export function App() {
   const handleConfirmAIInvoiceImport = (data: {
     newProducts: Product[];
     updatedProducts: Product[];
+    targetSupplier?: Supplier;
     newSupplier?: Supplier;
     newPurchaseInvoice?: PurchaseInvoice;
   }) => {
-    // 1. Update & Add products in local state and Firestore
+    // 1. Update & Add products in local state, localStorage, IndexedDB and Firestore
     setProducts(prev => {
       let updatedList = [...prev];
       // Update existing products with new stock, prices, expiries
@@ -479,9 +652,32 @@ export function App() {
           updatedList[idx] = up;
         }
       });
-      // Prepend brand new products
+      // Prepend brand new products, but protect against subtle spelling duplicates using Fuzzy Matching
       if (data.newProducts.length > 0) {
-        updatedList = [...data.newProducts, ...updatedList];
+        data.newProducts.forEach(newP => {
+          const fuzzyResult = findBestFuzzyProductMatch(newP.name, updatedList, {
+            barcode: newP.barcode,
+            threshold: 0.82
+          });
+          if (fuzzyResult.matchedProduct) {
+            const matchIdx = updatedList.findIndex(p => p.id === fuzzyResult.matchedProduct!.id);
+            if (matchIdx !== -1) {
+              // Merge into existing item to avoid duplicate!
+              updatedList[matchIdx] = {
+                ...updatedList[matchIdx],
+                stock: (updatedList[matchIdx].stock || 0) + (newP.stock || 0),
+                totalUnits: (updatedList[matchIdx].totalUnits || 0) + (newP.totalUnits || 0),
+                costPerUnit: newP.costPerUnit || updatedList[matchIdx].costPerUnit,
+                lastPurchasePrice: newP.lastPurchasePrice || updatedList[matchIdx].lastPurchasePrice,
+                lastPriceUpdate: new Date().toISOString(),
+                expiryDate: newP.expiryDate || updatedList[matchIdx].expiryDate,
+                status: ((updatedList[matchIdx].stock || 0) + (newP.stock || 0)) > 0 ? 'in_stock' : 'out_of_stock'
+              };
+              return;
+            }
+          }
+          updatedList.unshift(newP);
+        });
       }
       try { localStorage.setItem('supermarket_products_v1', JSON.stringify(updatedList)); } catch {}
       localDbBulkPut('products', updatedList);
@@ -489,21 +685,73 @@ export function App() {
       return updatedList;
     });
 
-    // 2. Add or update supplier
-    if (data.newSupplier) {
+    // 2. Add or update supplier & delegate account
+    if (data.newPurchaseInvoice || data.targetSupplier || data.newSupplier) {
       setSuppliers(prev => {
-        const existingIdx = prev.findIndex(s => s.id === data.newSupplier?.id || s.name.toLowerCase() === data.newSupplier?.name.toLowerCase() || (data.newSupplier?.nameAr && s.nameAr === data.newSupplier?.nameAr));
+        const supName = (data.targetSupplier?.nameAr || data.targetSupplier?.name || data.newSupplier?.nameAr || data.newSupplier?.name || data.newPurchaseInvoice?.supplierName || '').trim();
+        const supPhone = (data.targetSupplier?.phone || data.newSupplier?.phone || data.newPurchaseInvoice?.supplierPhone || '').trim();
+        const invoiceTotal = data.newPurchaseInvoice?.totalInvoiceAmount || data.newSupplier?.totalInvoiced || data.targetSupplier?.totalInvoiced || 0;
+        const remainingAmount = data.newPurchaseInvoice?.remainingAmount !== undefined ? data.newPurchaseInvoice.remainingAmount : invoiceTotal;
+        const invoiceDate = data.newPurchaseInvoice?.date || new Date().toISOString().split('T')[0];
+
+        const existingIdx = prev.findIndex(s => 
+          (data.targetSupplier && s.id === data.targetSupplier.id) ||
+          (data.newSupplier && s.id === data.newSupplier.id) ||
+          (supName && (s.name.toLowerCase() === supName.toLowerCase() || (s.nameAr && s.nameAr.toLowerCase() === supName.toLowerCase()))) ||
+          (supPhone && s.phone && s.phone === supPhone)
+        );
+
         let nextSuppliers: Supplier[];
         if (existingIdx !== -1) {
-          nextSuppliers = prev.map((s, idx) => idx === existingIdx ? {
-            ...s,
-            balanceDue: (s.balanceDue || 0) + (data.newSupplier?.balanceDue || 0),
-            totalInvoicesCount: (s.totalInvoicesCount || 0) + 1,
-            lastSupplyDate: new Date().toISOString().split('T')[0],
-          } : s);
+          nextSuppliers = prev.map((s, idx) => {
+            if (idx !== existingIdx) return s;
+            return {
+              ...s,
+              balanceDue: (s.balanceDue || 0) + remainingAmount,
+              totalInvoiced: (s.totalInvoiced || 0) + invoiceTotal,
+              totalInvoicesCount: (s.totalInvoicesCount || 0) + 1,
+              activeOrders: (s.activeOrders || 0) + 1,
+              lastSupplyDate: invoiceDate,
+              phone: s.phone || supPhone,
+              address: s.address || data.targetSupplier?.address || data.newSupplier?.address || 'العراق'
+            };
+          });
+        } else if (data.newSupplier || data.targetSupplier) {
+          const supplierToAdd = data.newSupplier || data.targetSupplier!;
+          nextSuppliers = [{
+            ...supplierToAdd,
+            balanceDue: remainingAmount,
+            totalInvoiced: invoiceTotal,
+            totalInvoicesCount: 1,
+            lastSupplyDate: invoiceDate
+          }, ...prev];
+        } else if (supName) {
+          const created: Supplier = {
+            id: `sup-${Date.now()}`,
+            name: supName,
+            nameAr: supName,
+            contactPerson: supName,
+            phone: supPhone || '07700000000',
+            email: '',
+            categorySupplied: 'أدوية ومستلزمات عامة',
+            activeOrders: 1,
+            totalInvoiced: invoiceTotal,
+            totalPaid: (data.newPurchaseInvoice?.paidAmount || 0),
+            balanceDue: remainingAmount,
+            totalInvoicesCount: 1,
+            lastSupplyDate: invoiceDate,
+            rating: 5.0,
+            avatar: '🏢',
+            taxNumber: '',
+            address: 'العراق',
+            isSaved: true,
+            payments: []
+          };
+          nextSuppliers = [created, ...prev];
         } else {
-          nextSuppliers = [data.newSupplier!, ...prev];
+          return prev;
         }
+
         try { localStorage.setItem('supermarket_suppliers_v1', JSON.stringify(nextSuppliers)); } catch {}
         localDbBulkPut('suppliers', nextSuppliers);
         syncBulkWriteCollection('suppliers', nextSuppliers);
@@ -511,7 +759,7 @@ export function App() {
       });
     }
 
-    // 3. Add purchase invoice
+    // 3. Add purchase invoice (سجل فواتير التوريد والمشتريات)
     if (data.newPurchaseInvoice) {
       setPurchaseInvoices(prev => {
         const nextInvoices = [data.newPurchaseInvoice!, ...prev];
@@ -529,7 +777,7 @@ export function App() {
       title: 'AI Invoice Scanned & Imported',
       titleAr: 'تم مسح وإدراج مواد الوصل بالذكاء الاصطناعي',
       message: `Successfully processed ${totalCount} items from invoice ${data.newPurchaseInvoice?.invoiceNumber || ''}.`,
-      messageAr: `تم بنجاح إدراج وتحديث ${totalCount} مادة من الوصل ${data.newPurchaseInvoice?.invoiceNumber || ''} في المخزن وحساب المورد.`,
+      messageAr: `تم بنجاح إدراج وتحديث ${totalCount} مادة من الوصل ${data.newPurchaseInvoice?.invoiceNumber || ''} في المخزن والتقارير وحساب المورد.`,
       time: 'Just now',
       priority: 'high',
       category: 'inventory',
@@ -537,6 +785,85 @@ export function App() {
     };
     setNotifications(prev => [newNotif, ...prev]);
     syncWriteDocument('notifications', newNotif.id, newNotif);
+  };
+
+  const handleConfirmLegacyMigration = (importedProducts: Product[]) => {
+    if (!importedProducts || importedProducts.length === 0) return;
+
+    setProducts(prev => {
+      const updatedList = [...prev];
+      let newCount = 0;
+      let updatedCount = 0;
+
+      importedProducts.forEach(newP => {
+        let matchIndex = updatedList.findIndex(p => 
+          (newP.barcode && p.barcode && p.barcode.trim() === newP.barcode.trim()) ||
+          p.id === newP.id ||
+          p.name.toLowerCase() === newP.name.toLowerCase()
+        );
+
+        // Fallback: If not matched by exact ID/barcode/name, use intelligent Fuzzy Matching for minor spelling variations
+        if (matchIndex === -1 && newP.name) {
+          const fuzzyMatch = findBestFuzzyProductMatch(newP.name, updatedList, {
+            barcode: newP.barcode,
+            threshold: 0.80
+          });
+          if (fuzzyMatch.matchedProduct) {
+            matchIndex = updatedList.findIndex(p => p.id === fuzzyMatch.matchedProduct!.id);
+          }
+        }
+
+        if (matchIndex !== -1) {
+          // Update existing inventory item
+          updatedList[matchIndex] = {
+            ...updatedList[matchIndex],
+            name: newP.name || updatedList[matchIndex].name,
+            nameAr: newP.nameAr || newP.name || updatedList[matchIndex].nameAr,
+            nameKu: newP.nameKu || newP.name || updatedList[matchIndex].nameKu,
+            stock: (updatedList[matchIndex].stock || 0) + (newP.stock || 0),
+            totalUnits: (updatedList[matchIndex].totalUnits || 0) + (newP.totalUnits || 0),
+            cartonPurchasePrice: newP.cartonPurchasePrice || updatedList[matchIndex].cartonPurchasePrice,
+            cost: newP.cost || updatedList[matchIndex].cost,
+            costPerUnit: newP.costPerUnit || updatedList[matchIndex].costPerUnit,
+            price: newP.price || updatedList[matchIndex].price,
+            singleRetailPrice: newP.singleRetailPrice || updatedList[matchIndex].singleRetailPrice,
+            cartonSellingPrice: newP.cartonSellingPrice || updatedList[matchIndex].cartonSellingPrice,
+            blisterPrice: newP.blisterPrice || updatedList[matchIndex].blisterPrice,
+            blistersPerBox: newP.blistersPerBox || updatedList[matchIndex].blistersPerBox,
+            expiryDate: newP.expiryDate || updatedList[matchIndex].expiryDate,
+            manufacturer: newP.manufacturer || updatedList[matchIndex].manufacturer,
+            dosageForm: newP.dosageForm || updatedList[matchIndex].dosageForm,
+            lastPriceUpdate: new Date().toISOString()
+          };
+          updatedCount++;
+        } else {
+          // Add as fresh product
+          updatedList.unshift(newP);
+          newCount++;
+        }
+      });
+
+      try { localStorage.setItem('supermarket_products_v1', JSON.stringify(updatedList)); } catch {}
+      localDbBulkPut('products', updatedList);
+      syncBulkWriteCollection('products', updatedList);
+
+      // Notification
+      const newNotif: MarketNotification = {
+        id: `notif-mig-${Date.now()}`,
+        title: 'Legacy System Products Migrated',
+        titleAr: 'تم استيراد المواد من شاشة النظام القديم بنجاح',
+        message: `Successfully imported ${newCount} new products and updated ${updatedCount} existing items.`,
+        messageAr: `تم بنجاح إدراج ${newCount} دواء ومادة جديدة وتحديث رصيد وأسعار ${updatedCount} مادة في المخزن.`,
+        time: 'Just now',
+        priority: 'high',
+        category: 'inventory',
+        read: false
+      };
+      setNotifications(nPrev => [newNotif, ...nPrev]);
+      syncWriteDocument('notifications', newNotif.id, newNotif);
+
+      return updatedList;
+    });
   };
 
   const handleImportBackup = (rawBackup: any) => {
@@ -735,10 +1062,20 @@ export function App() {
     return window.location.search.includes('view=customer-display') || window.location.hash.includes('customer-display');
   });
 
+  const [isMobileScannerRoute, setIsMobileScannerRoute] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const search = window.location.search;
+    return search.includes('mode=scanner') || search.includes('mode=mobile-scanner');
+  });
+
+  const [mobileScanToast, setMobileScanToast] = useState<{ barcode: string; time: number } | null>(null);
+
   useEffect(() => {
     const handleUrlChange = () => {
       const isDisplay = window.location.search.includes('view=customer-display') || window.location.hash.includes('customer-display');
       setIsCustomerDisplayRoute(isDisplay);
+      const isScanner = window.location.search.includes('mode=scanner') || window.location.search.includes('mode=mobile-scanner');
+      setIsMobileScannerRoute(isScanner);
     };
 
     window.addEventListener('popstate', handleUrlChange);
@@ -749,9 +1086,52 @@ export function App() {
     };
   }, []);
 
+  // Listen on laptop for scans transmitted by authorized mobile device
+  useEffect(() => {
+    if (isCustomerDisplayRoute || isMobileScannerRoute) return;
+
+    const creds = getLaptopSecurityCredentials(settings.storeNameAr || settings.storeName);
+    const unsubscribe = subscribeToIncomingScans(creds.laptopId, (payload) => {
+      playScannerBeep();
+      setMobileScanToast({ barcode: payload.barcode, time: Date.now() });
+      setTimeout(() => setMobileScanToast(null), 3500);
+
+      window.dispatchEvent(new CustomEvent('phsmart_external_barcode_scan', {
+        detail: { barcode: payload.barcode }
+      }));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [settings.storeName, settings.storeNameAr, isCustomerDisplayRoute, isMobileScannerRoute]);
+
+  // If this window was opened as a standalone Mobile Wireless Barcode Scanner
+  if (isMobileScannerRoute) {
+    return (
+      <Suspense fallback={<TabLoadingSkeleton />}>
+        <MobileScannerScreen
+          onExitToFullApp={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('mode');
+            url.searchParams.delete('lid');
+            url.searchParams.delete('pin');
+            url.searchParams.delete('tok');
+            window.history.pushState({}, '', url.pathname);
+            setIsMobileScannerRoute(false);
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   // If this window was opened specifically as a standalone Customer Display (e.g. secondary monitor / tablet)
   if (isCustomerDisplayRoute) {
-    return <CustomerDisplayScreen isStandalone={true} />;
+    return (
+      <Suspense fallback={<TabLoadingSkeleton />}>
+        <CustomerDisplayScreen isStandalone={true} />
+      </Suspense>
+    );
   }
 
   // If user is not logged in, render the futuristic LoginScreen
@@ -797,6 +1177,91 @@ export function App() {
       </>
     );
   }
+
+  const renderPOSContent = () => {
+    const isAnyModalOpen = Boolean(
+      isCompletedReceiptsOpen ||
+      isSalesReturnOpen ||
+      isCashDrawerOpen ||
+      selectedReceipt ||
+      isProductModalOpen ||
+      showPOSInventory ||
+      isShiftReportOpen ||
+      isMobileSyncOpen ||
+      isBarcodePrintOpen ||
+      isRegisterModalOpen ||
+      isDesktopAppModalOpen ||
+      isCSharpModalOpen ||
+      isAccountsModalOpen
+    );
+    const handleExitPOS = () => {
+      const nextTab = getExitTabForUser(currentUser);
+      if (nextTab === 'pos') {
+        alert(
+          isRTL
+            ? 'حساب الكاشير مقتصر على واجهة البيع (POS) فقط بناءً على صلاحيات الإدارة.'
+            : 'Your cashier account is restricted to the POS view only based on manager permissions.'
+        );
+      } else {
+        setActiveTab(nextTab);
+      }
+    };
+
+    return (
+      <POSTab
+        products={products}
+        setProducts={setProducts}
+        customers={customers}
+        setCustomers={setCustomers}
+        settings={settings}
+        setSettings={setSettings}
+        onSaleCompleted={handleSaleCompleted}
+        showInventory={showPOSInventory}
+        setShowInventory={setShowPOSInventory}
+        showYellowLineModal={isYellowLineModalOpen}
+        setShowYellowLineModal={setIsYellowLineModalOpen}
+        isAnyModalOpen={isAnyModalOpen}
+        salesHistory={salesHistory}
+        onViewReceipt={(sale) => setSelectedReceipt(sale)}
+        onOpenMobileSync={() => setIsMobileSyncOpen(true)}
+        onExitPOS={handleExitPOS}
+        onBackToDashboard={handleExitPOS}
+        onOpenPrintBarcode={(prod) => {
+          setProductForBarcodePrint(prod || null);
+          setIsBarcodePrintOpen(true);
+        }}
+        onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
+        onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
+        onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
+        currentUser={currentUser}
+        isActive={isPosActive}
+      />
+    );
+  };
+
+  const renderProductsContent = () => {
+    return (
+      <ProductsTab
+        products={products}
+        setProducts={setProducts}
+        settings={settings}
+        currentUser={currentUser}
+        onOpenAddModal={handleOpenAddProduct}
+        onEditProduct={handleEditProduct}
+        onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
+        onOpenPrintBarcode={(prod) => {
+          setProductForBarcodePrint(prod || null);
+          setIsBarcodePrintOpen(true);
+        }}
+        onOpenInventoryAudit={() => setActiveTab('inventoryAudit')}
+        onOpenDamagedItems={() => setActiveTab('damagedItems')}
+        onOpenInvoices={() => setActiveTab('invoices')}
+        onNavigateToReports={() => setActiveTopTab('reports')}
+        onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+        onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
+      />
+    );
+  };
 
   // Determine view based on activeTopTab vs activeTab
   const renderMainContent = () => {
@@ -905,87 +1370,11 @@ export function App() {
         );
       }
 
-      case 'pos': {
-        const isAnyModalOpen = Boolean(
-          isCompletedReceiptsOpen ||
-          isSalesReturnOpen ||
-          isCashDrawerOpen ||
-          selectedReceipt ||
-          isProductModalOpen ||
-          showPOSInventory ||
-          isShiftReportOpen ||
-          isMobileSyncOpen ||
-          isBarcodePrintOpen ||
-          isRegisterModalOpen ||
-          isDesktopAppModalOpen ||
-          isCSharpModalOpen ||
-          isAccountsModalOpen
-        );
-        const handleExitPOS = () => {
-          const nextTab = getExitTabForUser(currentUser);
-          if (nextTab === 'pos') {
-            alert(
-              isRTL
-                ? 'حساب الكاشير مقتصر على واجهة البيع (POS) فقط بناءً على صلاحيات الإدارة.'
-                : 'Your cashier account is restricted to the POS view only based on manager permissions.'
-            );
-          } else {
-            setActiveTab(nextTab);
-          }
-        };
-
-        return (
-          <POSTab
-            products={products}
-            setProducts={setProducts}
-            customers={customers}
-            setCustomers={setCustomers}
-            settings={settings}
-            setSettings={setSettings}
-            onSaleCompleted={handleSaleCompleted}
-            showInventory={showPOSInventory}
-            setShowInventory={setShowPOSInventory}
-            showYellowLineModal={isYellowLineModalOpen}
-            setShowYellowLineModal={setIsYellowLineModalOpen}
-            isAnyModalOpen={isAnyModalOpen}
-            salesHistory={salesHistory}
-            onViewReceipt={(sale) => setSelectedReceipt(sale)}
-            onOpenMobileSync={() => setIsMobileSyncOpen(true)}
-            onExitPOS={handleExitPOS}
-            onBackToDashboard={handleExitPOS}
-            onOpenPrintBarcode={(prod) => {
-              setProductForBarcodePrint(prod || null);
-              setIsBarcodePrintOpen(true);
-            }}
-            onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
-            onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
-            onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
-            currentUser={currentUser}
-          />
-        );
-      }
+      case 'pos':
+        return null;
 
       case 'products':
-        return (
-          <ProductsTab
-            products={products}
-            setProducts={setProducts}
-            settings={settings}
-            currentUser={currentUser}
-            onOpenAddModal={handleOpenAddProduct}
-            onEditProduct={handleEditProduct}
-            onBackToDashboard={() => setActiveTab(getExitTabForUser(currentUser))}
-            onOpenPrintBarcode={(prod) => {
-              setProductForBarcodePrint(prod || null);
-              setIsBarcodePrintOpen(true);
-            }}
-            onOpenInventoryAudit={() => setActiveTab('inventoryAudit')}
-            onOpenDamagedItems={() => setActiveTab('damagedItems')}
-            onOpenInvoices={() => setActiveTab('invoices')}
-            onNavigateToReports={() => setActiveTopTab('reports')}
-            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
-          />
-        );
+        return null;
 
       case 'inventoryAudit':
         return (
@@ -1309,7 +1698,7 @@ export function App() {
           }
         }}
         onShowInventory={() => setShowPOSInventory(true)}
-        inventoryCount={products.filter(p => p.stock > 0).length}
+        inventoryCount={inventoryCount}
         onOpenCompletedReceipts={() => setIsCompletedReceiptsOpen(true)}
         onOpenSalesReturn={() => {
           setSalesReturnPreInvoiceNo(null);
@@ -1321,6 +1710,7 @@ export function App() {
         onOpenDesktopApp={() => setIsDesktopAppModalOpen(true)}
         onOpenCSharpCode={() => setIsCSharpModalOpen(true)}
         onOpenAccountsModal={() => setIsAccountsModalOpen(true)}
+        onOpenLocalDataNetwork={() => setIsLocalDataNetworkOpen(true)}
         onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
         isFirebaseSynced={isFirebaseSynced}
         onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
@@ -1379,13 +1769,36 @@ export function App() {
 
         {/* Content Area */}
         <main className={`flex-1 w-full min-h-0 ${
-          activeTab === 'pos' 
+          isPosActive 
             ? 'max-w-full overflow-hidden h-full p-1.5 sm:p-2.5 lg:p-3' 
-            : activeTab === 'products' || activeTab === 'purchases' || activeTab === 'invoices' || activeTab === 'accountsHub' || activeTab === 'cashierAccounts' || isReportsFullscreen 
+            : isProductsActive || activeTab === 'purchases' || activeTab === 'invoices' || activeTab === 'accountsHub' || activeTab === 'cashierAccounts' || isReportsFullscreen 
             ? 'max-w-full overflow-y-auto p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6' 
             : 'max-w-7xl mx-auto overflow-y-auto p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6'
         }`}>
-          {renderMainContent()}
+          {/* Keep-Alive POS Tab: 0ms switch without remounting or re-indexing */}
+          {hasVisitedPOS && (
+            <div className={isPosActive ? 'h-full w-full' : 'hidden'}>
+              <Suspense fallback={<TabLoadingSkeleton />}>
+                {renderPOSContent()}
+              </Suspense>
+            </div>
+          )}
+
+          {/* Keep-Alive Products / Warehouse Tab: 0ms switch without remounting */}
+          {hasVisitedProducts && (
+            <div className={isProductsActive ? 'w-full' : 'hidden'}>
+              <Suspense fallback={<TabLoadingSkeleton />}>
+                {renderProductsContent()}
+              </Suspense>
+            </div>
+          )}
+
+          {/* Other Views */}
+          {!isPosActive && !isProductsActive && (
+            <Suspense fallback={<TabLoadingSkeleton />}>
+              {renderMainContent()}
+            </Suspense>
+          )}
         </main>
 
       </div>
@@ -1494,144 +1907,252 @@ export function App() {
       )}
 
       {/* Modals */}
-      <ReceiptModal
-        sale={selectedReceipt}
-        onClose={() => setSelectedReceipt(null)}
-        settings={settings}
-      />
+      <Suspense fallback={null}>
+        {selectedReceipt && (
+          <ReceiptModal
+            sale={selectedReceipt}
+            onClose={() => setSelectedReceipt(null)}
+            settings={settings}
+          />
+        )}
 
-      <ProductModal
-        isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
-        productToEdit={productToEdit}
-        onSave={handleSaveProduct}
-        settings={settings}
-        suppliers={suppliers}
-        initialSupplierName={initialSupplierForNewProduct}
-        existingProducts={products}
-      />
+      {isProductModalOpen && (
+        <ProductModal
+          isOpen={isProductModalOpen}
+          onClose={() => setIsProductModalOpen(false)}
+          productToEdit={productToEdit}
+          onSave={handleSaveProduct}
+          settings={settings}
+          suppliers={suppliers}
+          initialSupplierName={initialSupplierForNewProduct}
+          existingProducts={products}
+        />
+      )}
 
-      <CompletedReceiptsModal
-        isOpen={isCompletedReceiptsOpen}
-        onClose={() => setIsCompletedReceiptsOpen(false)}
-        salesHistory={salesHistory}
-        setSalesHistory={setSalesHistory}
-        userAccounts={userAccounts}
-        onUpdateSaleCashier={(saleId, newCashierName) => {
-          setSalesHistory(prev => prev.map(s => s.id === saleId ? { ...s, cashierName: newCashierName } : s));
-        }}
-        settings={settings}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenReturnForSale={(sale) => {
-          setSalesReturnPreInvoiceNo(sale.invoiceNumber);
-          setIsSalesReturnOpen(true);
-        }}
-        onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-      />
+      {isCompletedReceiptsOpen && (
+        <CompletedReceiptsModal
+          isOpen={isCompletedReceiptsOpen}
+          onClose={() => setIsCompletedReceiptsOpen(false)}
+          salesHistory={salesHistory}
+          setSalesHistory={setSalesHistory}
+          userAccounts={userAccounts}
+          onUpdateSaleCashier={(saleId, newCashierName) => {
+            setSalesHistory(prev => prev.map(s => s.id === saleId ? { ...s, cashierName: newCashierName } : s));
+          }}
+          settings={settings}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenReturnForSale={(sale) => {
+            setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+            setIsSalesReturnOpen(true);
+          }}
+          onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+        />
+      )}
 
-      <SalesReturnModal
-        isOpen={isSalesReturnOpen}
-        onClose={() => setIsSalesReturnOpen(false)}
-        products={products}
-        setProducts={setProducts}
-        salesHistory={salesHistory}
-        setSalesHistory={setSalesHistory}
-        settings={settings}
-        preSelectedInvoiceNo={salesReturnPreInvoiceNo}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-        onOpenInventory={() => {
-          setIsSalesReturnOpen(false);
-          setActiveTab('products');
-        }}
-      />
+      {isSalesReturnOpen && (
+        <SalesReturnModal
+          isOpen={isSalesReturnOpen}
+          onClose={() => setIsSalesReturnOpen(false)}
+          products={products}
+          setProducts={setProducts}
+          salesHistory={salesHistory}
+          setSalesHistory={setSalesHistory}
+          settings={settings}
+          preSelectedInvoiceNo={salesReturnPreInvoiceNo}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+          onOpenInventory={() => {
+            setIsSalesReturnOpen(false);
+            setActiveTab('products');
+          }}
+        />
+      )}
 
-      <CashDrawerModal
-        isOpen={isCashDrawerOpen}
-        onClose={() => setIsCashDrawerOpen(false)}
-        salesHistory={salesHistory}
-        settings={settings}
-        onOpenShiftReport={() => setIsShiftReportOpen(true)}
-      />
+      {isCashDrawerOpen && (
+        <CashDrawerModal
+          isOpen={isCashDrawerOpen}
+          onClose={() => setIsCashDrawerOpen(false)}
+          salesHistory={salesHistory}
+          settings={settings}
+          onOpenShiftReport={() => setIsShiftReportOpen(true)}
+        />
+      )}
 
-      <ShiftReportModal
-        isOpen={isShiftReportOpen}
-        onClose={() => setIsShiftReportOpen(false)}
-        salesHistory={salesHistory}
-        settings={settings}
-        cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenSalesReturn={(invoiceNo) => {
-          setSalesReturnPreInvoiceNo(invoiceNo || null);
-          setIsSalesReturnOpen(true);
-        }}
-      />
+      {isShiftReportOpen && (
+        <ShiftReportModal
+          isOpen={isShiftReportOpen}
+          onClose={() => setIsShiftReportOpen(false)}
+          salesHistory={salesHistory}
+          settings={settings}
+          cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenSalesReturn={(invoiceNo) => {
+            setSalesReturnPreInvoiceNo(invoiceNo || null);
+            setIsSalesReturnOpen(true);
+          }}
+        />
+      )}
 
-      <MobileSyncModal
-        isOpen={isMobileSyncOpen}
-        onClose={() => setIsMobileSyncOpen(false)}
-        settings={settings}
-      />
+      {isMobileSyncOpen && (
+        <MobileSyncModal
+          isOpen={isMobileSyncOpen}
+          onClose={() => setIsMobileSyncOpen(false)}
+          settings={settings}
+          onTestBarcodeReceived={(barcode) => {
+            window.dispatchEvent(new CustomEvent('phsmart_external_barcode_scan', {
+              detail: { barcode }
+            }));
+          }}
+        />
+      )}
 
-      <BarcodePrintModal
-        isOpen={isBarcodePrintOpen}
-        onClose={() => setIsBarcodePrintOpen(false)}
-        initialProduct={productForBarcodePrint}
-        products={products}
-        settings={settings}
-      />
+      {isBarcodePrintOpen && (
+        <BarcodePrintModal
+          isOpen={isBarcodePrintOpen}
+          onClose={() => setIsBarcodePrintOpen(false)}
+          initialProduct={productForBarcodePrint}
+          products={products}
+          settings={settings}
+        />
+      )}
 
-      <DesktopAppModal
-        isOpen={isDesktopAppModalOpen}
-        onClose={() => setIsDesktopAppModalOpen(false)}
-        settings={settings}
-        deferredPrompt={deferredPrompt}
-        onTriggerInstall={handleTriggerInstall}
-      />
+      {isDesktopAppModalOpen && (
+        <DesktopAppModal
+          isOpen={isDesktopAppModalOpen}
+          onClose={() => setIsDesktopAppModalOpen(false)}
+          settings={settings}
+          deferredPrompt={deferredPrompt}
+          onTriggerInstall={handleTriggerInstall}
+        />
+      )}
 
-      <CSharpExporterModal
-        isOpen={isCSharpModalOpen}
-        onClose={() => setIsCSharpModalOpen(false)}
-        settings={settings}
-        products={products}
-        sales={salesHistory}
-      />
+      {isCSharpModalOpen && (
+        <CSharpExporterModal
+          isOpen={isCSharpModalOpen}
+          onClose={() => setIsCSharpModalOpen(false)}
+          settings={settings}
+          products={products}
+          sales={salesHistory}
+        />
+      )}
 
-      <CashierAccountsModal
-        isOpen={isAccountsModalOpen}
-        onClose={() => setIsAccountsModalOpen(false)}
-        userAccounts={userAccounts}
-        salesHistory={salesHistory}
-        settings={settings}
-        onViewReceipt={(sale) => setSelectedReceipt(sale)}
-        onOpenReturnForSale={(sale) => {
-          setSalesReturnPreInvoiceNo(sale.invoiceNumber);
-          setIsSalesReturnOpen(true);
-        }}
-        onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
-        onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
-      />
+      {isAccountsModalOpen && (
+        <CashierAccountsModal
+          isOpen={isAccountsModalOpen}
+          onClose={() => setIsAccountsModalOpen(false)}
+          userAccounts={userAccounts}
+          salesHistory={salesHistory}
+          settings={settings}
+          onViewReceipt={(sale) => setSelectedReceipt(sale)}
+          onOpenReturnForSale={(sale) => {
+            setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+            setIsSalesReturnOpen(true);
+          }}
+          onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
+          onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
+        />
+      )}
 
-      <InventoryAuditModal
-        isOpen={isInventoryAuditOpen}
-        onClose={() => setIsInventoryAuditOpen(false)}
-        products={products}
-        setProducts={setProducts}
-        settings={settings}
-      />
+      {isInventoryAuditOpen && (
+        <InventoryAuditModal
+          isOpen={isInventoryAuditOpen}
+          onClose={() => setIsInventoryAuditOpen(false)}
+          products={products}
+          setProducts={setProducts}
+          settings={settings}
+        />
+      )}
 
-      <AIInvoiceScannerModal
-        isOpen={isAIInvoiceScannerOpen}
-        onClose={() => setIsAIInvoiceScannerOpen(false)}
-        settings={settings}
-        existingProducts={products}
-        existingSuppliers={suppliers}
-        onConfirmImport={handleConfirmAIInvoiceImport}
-        onTransferToDraft={(draftData) => {
-          setAiDraftImportData(draftData);
-          setActiveTab('purchases');
-        }}
-      />
+      {isAIInvoiceScannerOpen && (
+        <AIInvoiceScannerModal
+          isOpen={isAIInvoiceScannerOpen}
+          onClose={() => setIsAIInvoiceScannerOpen(false)}
+          settings={settings}
+          existingProducts={products}
+          existingSuppliers={suppliers}
+          onConfirmImport={handleConfirmAIInvoiceImport}
+          onTransferToDraft={(draftData) => {
+            setAiDraftImportData(draftData);
+            setActiveTab('purchases');
+          }}
+          onNavigateToTab={(tab) => setActiveTab(tab as any)}
+          onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
+        />
+      )}
+
+      {isLegacyMigratorOpen && (
+        <AILegacySystemMigratorModal
+          isOpen={isLegacyMigratorOpen}
+          onClose={() => setIsLegacyMigratorOpen(false)}
+          settings={settings}
+          existingProducts={products}
+          currentUser={currentUser}
+          onConfirmMigration={handleConfirmLegacyMigration}
+          onUpdateSettings={setSettings}
+        />
+      )}
+
+      {isLocalDataNetworkOpen && (
+        <LocalDataNetworkModal
+          isOpen={isLocalDataNetworkOpen}
+          onClose={() => setIsLocalDataNetworkOpen(false)}
+          settings={settings}
+          onOpenMobileSync={() => setIsMobileSyncOpen(true)}
+          onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+          onOpenLegacyMigrator={() => setIsLegacyMigratorOpen(true)}
+        />
+      )}
+      </Suspense>
+
+      {/* Real-time Mobile Scanner Reception Toast on Laptop */}
+      {mobileScanToast && (
+        <div
+          role="status"
+          className="fixed top-16 left-6 z-50 max-w-sm p-4 rounded-2xl bg-[#090E1A]/95 border-2 border-cyan-400 text-white shadow-[0_0_35px_rgba(6,182,212,0.45)] backdrop-blur-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4"
+        >
+          <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shrink-0">
+            <Smartphone className="w-5 h-5 animate-pulse text-cyan-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
+              <span>📱 مسح من موبايل المحل المصرح به</span>
+            </p>
+            <p className="text-xs font-mono font-bold text-white mt-0.5">باركود: {mobileScanToast.barcode}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMobileScanToast(null)}
+            className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Auto Backup Notification Toast */}
+      {autoBackupToast.show && (
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 z-50 max-w-sm p-4 rounded-2xl bg-[#0B1120]/95 border border-cyan-500/50 text-white shadow-[0_0_25px_rgba(6,182,212,0.35)] backdrop-blur-xl flex items-start gap-3 animate-in fade-in slide-in-from-bottom-5"
+        >
+          <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-cyan-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black text-cyan-300">{autoBackupToast.message}</p>
+            {autoBackupToast.details && (
+              <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{autoBackupToast.details}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoBackupToast(prev => ({ ...prev, show: false }))}
+            className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
     </div>
   );

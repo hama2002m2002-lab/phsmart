@@ -49,7 +49,73 @@ export const generateUniqueBarcode200245 = (
 };
 
 /**
+ * Generates an SVG string representation of a 1D barcode
+ * Suitable for embedding directly into HTML strings (e.g., thermal printer iframes, receipts, print views).
+ */
+export const generateBarcodeSvgString = (
+  value: string,
+  height: number = 42,
+  showText: boolean = true
+): string => {
+  if (!value) return '';
+
+  const safeVal = String(value);
+  const bars: { width: number; isSpace: boolean }[] = [];
+
+  // Start guard bars
+  bars.push({ width: 2, isSpace: false });
+  bars.push({ width: 1, isSpace: true });
+  bars.push({ width: 2, isSpace: false });
+  bars.push({ width: 2, isSpace: true });
+
+  for (let i = 0; i < safeVal.length; i++) {
+    const code = safeVal.charCodeAt(i);
+    const b1 = (code % 3) + 1;
+    const s1 = ((code >> 1) % 2) + 1;
+    const b2 = ((code >> 2) % 3) + 1;
+    const s2 = ((code >> 3) % 2) + 1;
+
+    bars.push({ width: b1, isSpace: false });
+    bars.push({ width: s1, isSpace: true });
+    bars.push({ width: b2, isSpace: false });
+    bars.push({ width: s2, isSpace: true });
+  }
+
+  // Stop guard bars
+  bars.push({ width: 2, isSpace: false });
+  bars.push({ width: 1, isSpace: true });
+  bars.push({ width: 3, isSpace: false });
+  bars.push({ width: 2, isSpace: true });
+  bars.push({ width: 2, isSpace: false });
+
+  const totalWidth = bars.reduce((acc, b) => acc + b.width * 2, 0) + 20;
+  let currentX = 10;
+  let rectsHtml = '';
+
+  for (let idx = 0; idx < bars.length; idx++) {
+    const bar = bars[idx];
+    const w = bar.width * 2;
+    const x = currentX;
+    currentX += w;
+    if (!bar.isSpace) {
+      rectsHtml += `<rect x="${x}" y="2" width="${w}" height="${height - 4}" fill="#000000" />`;
+    }
+  }
+
+  return `
+    <div style="text-align: center; margin: 4px auto; max-width: 100%;">
+      <svg viewBox="0 0 ${totalWidth} ${height}" style="width: 100%; max-width: 260px; height: ${height}px; display: block; margin: 0 auto;" preserveAspectRatio="none">
+        <rect width="${totalWidth}" height="${height}" fill="#ffffff" />
+        ${rectsHtml}
+      </svg>
+      ${showText ? `<div style="font-family: monospace, Courier; font-size: 11px; font-weight: bold; letter-spacing: 2px; color: #000; margin-top: 2px;">${safeVal}</div>` : ''}
+    </div>
+  `;
+};
+
+/**
  * Checks if a given barcode is already used by another product.
+
  * Returns the matching product if found, or undefined if unique.
  */
 export const findDuplicateBarcodeProduct = (

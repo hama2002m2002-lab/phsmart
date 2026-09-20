@@ -5839,8 +5839,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                             <div>
                               <p>{item.productNameAr || item.productName}</p>
                               {item.saleType && (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                                  {item.saleType === 'carton' ? t('كرتون', 'کارتۆن', 'Carton') : item.saleType === 'blister' ? t('شريط', 'شریت', 'Blister') : t('مفرد', 'تاک', 'Unit')}
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                                  {item.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box')}
                                 </span>
                               )}
                             </div>
