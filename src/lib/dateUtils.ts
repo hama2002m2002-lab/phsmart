@@ -151,6 +151,19 @@ export function formatDisplayDateTime(timestamp: any, lang: string = 'ar'): stri
   return `${day}/${month}/${year} - ${timeStr}`;
 }
 
+/**
+ * Receipt timestamp formatted strictly as YYYY/MM/DD - hh:mm ص/م (e.g. 2026/09/21 - 02:23 ص)
+ */
+export function formatReceiptDateTime(timestamp: any, lang: string = 'ar'): string {
+  const d = parseDate(timestamp);
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const timeStr = formatDisplayTime(d, lang);
+  return `${year}/${month}/${day} - ${timeStr}`;
+}
+
 export function formatDateDDMMYYYY(timestamp: any): string {
   const d = parseDate(timestamp);
   if (isNaN(d.getTime())) return '';

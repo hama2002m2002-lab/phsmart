@@ -517,27 +517,83 @@ html.theme-light body {
   color: #0F172A !important;
 }
 
+/* Ultra-Fast Responsive Transitions & Instant UI Navigation */
+@keyframes fastFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes fastScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fastFadeIn 0.08s cubic-bezier(0, 0, 0.2, 1) forwards !important;
+}
+
+.animate-scaleUp {
+  animation: fastScaleIn 0.08s cubic-bezier(0, 0, 0.2, 1) forwards !important;
+}
+
+/* Fast modal backdrops without GPU lag */
+.backdrop-blur-md,
+.backdrop-blur-sm,
+.backdrop-blur-lg,
+.backdrop-blur-2xl {
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+}
+
 /* Print Styles for Receipts */
 @media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
   body * {
     visibility: hidden;
   }
   #printable-receipt, #printable-receipt * {
-    visibility: visible;
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   #printable-receipt {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
-    background: white !important;
-    color: black !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 10px !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 }
 
-/* Times New Roman for POS Interface */
+/* Times New Roman for Receipts and POS */
+.receipt-times-font,
+.receipt-times-font * {
+  font-family: 'Times New Roman', Times, serif !important;
+}
+
 .pos-tab-times-font,
 .pos-tab-times-font * {
   font-family: 'Times New Roman', Times, serif !important;
 }
+
 
