@@ -51,6 +51,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
   };
 
   const storeDisplayName = isKu && settings.storeNameKu ? settings.storeNameKu : (isAr ? settings.storeNameAr : settings.storeName);
+  const currency = settings.currencySymbol || (isKu ? 'د.ع' : isAr ? 'د.ع' : 'IQD');
   const safeItems = Array.isArray(sale.items) ? sale.items : (typeof sale.items === 'string' ? (JSON.parse(sale.items || '[]') || []) : []);
   const safeReturnedItems = Array.isArray(sale.returnedItems) ? sale.returnedItems : (typeof sale.returnedItems === 'string' ? (JSON.parse(sale.returnedItems || '[]') || []) : []);
   const returnedTotal = safeReturnedItems.reduce((acc, r) => acc + (r?.total || 0), 0);
@@ -162,12 +163,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                 ? '58mm auto'
                 : '80mm auto'
             };
-            margin: ${activeFormat.startsWith('thermal') ? '0' : '8mm'};
+            margin: ${activeFormat.startsWith('thermal') ? '0' : '6mm'};
+          }
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           body {
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: sans-serif !important;
+            font-family: 'Segoe UI', Tahoma, -apple-system, Arial, sans-serif !important;
           }
           body * {
             visibility: hidden !important;
@@ -181,47 +187,38 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
             top: 0 !important;
             width: ${
               activeFormat === 'thermal80mm'
-                ? '68mm'
+                ? '72mm'
                 : activeFormat === 'thermal58mm'
-                ? '48mm'
+                ? '50mm'
+                : '100%'
+            } !important;
+            max-width: ${
+              activeFormat === 'thermal80mm'
+                ? '72mm'
+                : activeFormat === 'thermal58mm'
+                ? '50mm'
                 : '100%'
             } !important;
             margin: 0 auto !important;
-            padding: ${activeFormat.startsWith('thermal') ? '2px 1px' : '12px'} !important;
-            background: #ffffff !important;
+            padding: ${activeFormat.startsWith('thermal') ? '3mm 2mm' : '10mm'} !important;
+            background: #FFFDF9 !important;
             color: #000000 !important;
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
           }
-          #printable-receipt text,
-          #printable-receipt div,
-          #printable-receipt span,
-          #printable-receipt p,
-          #printable-receipt td,
-          #printable-receipt th,
-          #printable-receipt h1,
-          #printable-receipt h2,
-          #printable-receipt h3,
-          #printable-receipt strong {
-            color: #000000 !important;
-            text-shadow: none !important;
+          #printable-receipt .print-preserve-bg {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #printable-receipt table {
+            border-collapse: collapse !important;
+            width: 100% !important;
           }
           #printable-receipt .print-red,
           #printable-receipt .print-red * {
             color: #dc2626 !important;
             border-color: #ef4444 !important;
-          }
-          #printable-receipt table {
-            border-color: #333333 !important;
-          }
-          #printable-receipt th {
-            background-color: #f2f2f2 !important;
-            color: #000000 !important;
-            border-bottom: 2px solid #000000 !important;
-          }
-          #printable-receipt td {
-            border-bottom: 1px solid #e0e0e0 !important;
           }
         }
       `}</style>
@@ -580,14 +577,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
           <div className="overflow-x-auto p-2 max-h-[52vh] overflow-y-auto rounded-2xl bg-[#040812] border border-slate-800/80">
             <div
               id="printable-receipt"
-              className={`mx-auto transition-all duration-300 text-slate-100 ${
+              className={`mx-auto transition-all duration-300 ${
                 activeFormat === 'a4'
-                  ? 'bg-[#080E1D] p-6 sm:p-8 rounded-2xl border border-slate-700 space-y-6 shadow-2xl w-full max-w-4xl'
+                  ? 'bg-[#080E1D] p-6 sm:p-8 rounded-2xl border border-slate-700 space-y-6 shadow-2xl w-full max-w-4xl text-slate-100 font-sans'
                   : activeFormat === 'a5'
-                  ? 'bg-[#080E1D] p-5 rounded-2xl border border-slate-700 space-y-4 shadow-xl w-full max-w-2xl'
+                  ? 'bg-[#080E1D] p-5 rounded-2xl border border-slate-700 space-y-4 shadow-xl w-full max-w-2xl text-slate-100 font-sans'
                   : activeFormat === 'thermal58mm'
-                  ? 'bg-[#070D1A] p-2 rounded-xl border border-slate-800 space-y-2 max-w-[240px] shadow-xl font-mono text-[9px]'
-                  : 'bg-[#070D1A] p-2.5 sm:p-3 rounded-2xl border border-slate-800 space-y-2 max-w-[265px] shadow-xl font-mono text-[9.5px]'
+                  ? 'bg-[#FFFDF9] text-slate-900 p-3 sm:p-4 rounded-2xl border border-amber-200/80 shadow-2xl w-full max-w-[320px] font-sans text-[10px] relative'
+                  : 'bg-[#FFFDF9] text-slate-900 p-4 sm:p-5 rounded-2xl border border-amber-200/80 shadow-2xl w-full max-w-[390px] font-sans text-[11px] relative'
               }`}
             >
               {/* LAYOUT CHOICE: A4 OR A5 FORMAL INVOICE */}
@@ -830,127 +827,189 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                 </div>
               ) : (
                 /* LAYOUT CHOICE: THERMAL 80mm OR 58mm RECEIPT TAPE */
-                <div className="space-y-2 text-slate-200 text-[9.5px]">
-                  {/* Thermal Header */}
-                  <div className="text-center space-y-1 pb-2 border-b border-dashed border-slate-700">
+                <div className="space-y-2 text-slate-900 font-sans text-xs relative select-none">
+                  {/* Left Watermark "7P" from design */}
+                  <div className="absolute left-1 top-4 bottom-4 flex flex-col justify-between items-center pointer-events-none opacity-[0.06] select-none text-slate-950">
+                    <div className="text-3xl font-black italic tracking-tighter transform -rotate-12">7P</div>
+                    <div className="text-3xl font-black italic tracking-tighter transform -rotate-12">7P</div>
+                    <div className="text-3xl font-black italic tracking-tighter transform -rotate-12">7P</div>
+                    <div className="text-3xl font-black italic tracking-tighter transform -rotate-12">7P</div>
+                  </div>
+
+                  {/* Header */}
+                  <div className="text-center space-y-1 pb-2 border-b border-slate-300">
                     {isRefundReceipt && (
-                      <div className="bg-rose-950/90 border-2 border-rose-500 text-rose-300 rounded-lg p-1.5 text-center print-red my-1 font-bold shadow-lg">
-                        <div className="text-[10px] font-black">
+                      <div className="bg-rose-100 border-2 border-rose-600 text-rose-800 rounded-lg p-1.5 text-center print-red mb-2 font-bold shadow-sm">
+                        <div className="text-xs font-black">
                           🔴 {t('وصل إرجاع مواد (فاتورة مرتجعة)', 'پسوولەی گەڕاندنەوەی کاڵا (مەرتەجەع)', 'REFUND RECEIPT')} 🔴
                         </div>
                       </div>
                     )}
-                    <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center">
-                      <ShoppingBag className="w-3.5 h-3.5" />
-                    </div>
-                    <h2 className="text-sm font-black text-white tracking-tight">{storeDisplayName}</h2>
-                    <p className="text-[9px] text-slate-400">{settings.address}</p>
-                    <p className="text-[9px] text-slate-400 font-mono">{settings.phone}</p>
+                    <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#9A6B2F]">
+                      {storeDisplayName || '7amo.pos'}
+                    </h1>
+                    <p className="text-xs text-slate-700 font-medium">
+                      {settings.address || (isAr ? 'العراق - بغداد - شارع فلسطين' : isKu ? 'عێراق - بەغداد - شەقامی فەلەستین' : 'Iraq - Baghdad - Palestine St')}
+                    </p>
+                    <p className="text-xs text-slate-700 font-medium font-mono" dir="ltr">
+                      {settings.phone ? `${t('هاتف:', 'تەلەفۆن:', 'Tel:')} ${settings.phone}` : 'هاتف: 0000 000 770 964+'}
+                    </p>
                   </div>
 
-                  {/* Thermal Meta Info */}
-                  <div className="space-y-1 text-[9.5px] bg-[#0F172A] print:bg-transparent p-2 rounded-xl border border-slate-800 print:border-black/40">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 print:text-black font-bold">{t('رقم الوصل:', 'ژمارەی پسوولە:', 'Invoice No:')}</span>
-                      <strong className="text-cyan-400 print:text-black font-mono text-[10.5px]" dir="ltr">#{sale.invoiceNumber}</strong>
-                    </div>
-                    <div className="flex justify-between items-center text-[9px]">
-                      <div>
-                        <span className="text-slate-400 print:text-black font-bold">{t('التاريخ:', 'بەروار:', 'Date:')} </span>
-                        <span className="text-slate-200 print:text-black font-mono" dir="ltr">{formatDisplayDate(sale.timestamp, lang)}</span>
+                  {/* Metadata 2-Column Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-xs py-2 border-b border-slate-300 font-sans">
+                    {/* Right column in RTL: Labels */}
+                    <div className="space-y-1 text-right rtl:text-right">
+                      <div className="font-bold text-slate-800">{t('رقم الوصل:', 'ژمارەی پسوولە:', 'Invoice No:')}</div>
+                      <div className="text-slate-700">
+                        <span className="font-semibold">{t('التاريخ: Date:', 'بەروار: Date:', 'Date:')}</span>{' '}
+                        <span className="font-mono text-slate-900" dir="ltr">{formatDisplayDate(sale.timestamp, lang)}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 print:text-black font-bold">{t('الوقت:', 'کات:', 'Time:')} </span>
-                        <span className="text-slate-200 print:text-black font-mono" dir="ltr">{formatDisplayTime(sale.timestamp, lang)}</span>
+                      <div className="text-slate-700 font-semibold">Cashier:</div>
+                      <div className="text-slate-700 font-semibold">{t('طريقة الدفع:', 'شێوازی پارەدان:', 'Payment:')}</div>
+                    </div>
+
+                    {/* Left column in RTL: Values */}
+                    <div className="space-y-1 text-left rtl:text-left">
+                      <div className="font-black text-base sm:text-lg text-slate-950 font-mono" dir="ltr">#{sale.invoiceNumber}</div>
+                      <div className="text-slate-800 font-mono" dir="ltr">
+                        <span className="font-semibold">{t('الوقت:', 'کات:', 'Time:')}</span> {formatDisplayTime(sale.timestamp, lang)}
+                      </div>
+                      <div className="text-slate-900 font-bold truncate">
+                        {sale.cashierName || t('المدير العام (Admin)', 'بەڕێوەبەری گشتی', 'Store Admin')}
+                      </div>
+                      <div className="text-slate-900 font-bold">
+                        {sale.paymentMethod === 'cash'
+                          ? t('نقداً (كاش)', 'نەقد (کاش)', 'Cash')
+                          : sale.paymentMethod === 'card'
+                          ? t('بطاقة (كارت)', 'کارت / ڤیزا', 'Card')
+                          : sale.paymentMethod === 'debt'
+                          ? t('آجل (دين)', 'قەرز', 'Credit')
+                          : (sale.paymentMethod || t('نقداً (كاش)', 'نەقد (کاش)', 'Cash'))}
                       </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 print:text-black">{t('الكاشير:', 'کاشێر:', 'Cashier:')}</span>
-                      <span className="text-slate-200 print:text-black font-semibold">{sale.cashierName || '-'}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 print:text-black">{t('طريقة الدفع:', 'شێوازی پارەدان:', 'Payment:')}</span>
-                      <span className="text-emerald-400 print:text-black font-mono font-bold">{sale.paymentMethod === 'cash' ? t('نقداً (كاش)', 'نەقد (کاش)', 'Cash') : sale.paymentMethod === 'card' ? t('بطاقة مصرفية', 'کارت / فیزا', 'Card') : sale.paymentMethod === 'debt' ? t('آجل (دين)', 'قەرز', 'Credit') : (sale.paymentMethod || t('نقداً', 'نەقد', 'Cash'))}</span>
-                    </div>
                   </div>
 
-                  {/* Thermal Items List */}
-                  <div className="space-y-1 pt-0.5">
-                    <div className="flex justify-between text-[9px] font-bold text-cyan-400 print:text-black border-b border-slate-700 print:border-black pb-1 uppercase font-sans">
-                      <span>{t('الصنف', 'کاڵا', 'Item')}</span>
-                      <span>{t('الإجمالي', 'کۆی گشتی', 'Total')}</span>
-                    </div>
+                  {/* Items Table with Sky Blue Header & Sale Type before Quantity */}
+                  <div className="rounded-xl border border-slate-300 overflow-hidden my-2.5 bg-white shadow-sm">
+                    <table className="w-full text-xs text-right rtl:text-right border-collapse">
+                      <thead>
+                        <tr className="bg-[#E0F2FE] text-slate-900 font-black border-b border-slate-300 text-[11px] print-preserve-bg">
+                          <th className="py-2 px-2 text-right rtl:text-right">{t('المادة', 'کاڵا', 'Item')}</th>
+                          <th className="py-2 px-1 text-center">{t('العدد', 'بڕ', 'Qty')}</th>
+                          <th className="py-2 px-1 text-center">{t('السعر', 'نرخ', 'Price')}</th>
+                          <th className="py-2 px-2 text-left rtl:text-left">{t('الإجمالي', 'کۆی گشتی', 'Total')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {safeItems.map((item, idx) => {
+                          const itemName = (isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName);
+                          const saleTypeLabel = item.saleType === 'blister'
+                            ? t('شيت', 'شیت', 'Sheet')
+                            : t('باكت', 'باکەت', 'Box');
 
-                    <div className="space-y-1.5 py-1">
-                      {safeItems.map((item, idx) => (
-                        <div key={idx} className="space-y-0.5 border-b border-slate-800/60 pb-1 print:border-black/30">
-                          <div className="flex justify-between items-start text-white print:text-black font-bold text-[9.5px] font-sans">
-                            <div className="min-w-0 flex-1 pe-1">
-                              <div className="font-bold text-slate-100 print:text-black text-[9.5px] leading-snug">
-                                {idx + 1}. {(isKu && item.productNameKu) ? item.productNameKu : (item.productNameAr || item.productName)}
-                              </div>
-                            </div>
-                            <span className="font-mono text-emerald-400 print:text-black shrink-0 font-bold" dir="ltr">{settings.currencySymbol}{formatNumber(item.total)}</span>
-                          </div>
-                          {item.dosageInstruction && (
-                            <div className="text-[8.5px] text-cyan-300 print:text-black font-medium italic">
-                              💊 {item.dosageInstruction}
-                            </div>
-                          )}
-                          <div className="flex justify-between items-center text-[8.5px] text-slate-400 print:text-black font-mono">
-                            <span dir="ltr">{item.quantity} x {settings.currencySymbol}{formatNumber(item.price)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50 text-[11px]">
+                              <td className="py-1.5 px-2 text-right rtl:text-right align-middle">
+                                <div className="font-bold text-slate-900 leading-snug">
+                                  {idx + 1}. {itemName}
+                                </div>
+                                {item.dosageInstruction && (
+                                  <div className="text-[9px] text-cyan-800 font-medium italic mt-0.5">
+                                    💊 {item.dosageInstruction}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-1 text-center align-middle whitespace-nowrap">
+                                <span className="font-bold text-slate-900">{saleTypeLabel}</span>{' '}
+                                <span className="font-mono font-bold text-slate-900">{item.quantity}</span>
+                              </td>
+                              <td className="py-1.5 px-1 text-center align-middle font-mono text-slate-800 whitespace-nowrap" dir="ltr">
+                                {formatNumber(item.price)}
+                              </td>
+                              <td className="py-1.5 px-2 text-left rtl:text-left align-middle font-mono font-bold text-slate-950 whitespace-nowrap" dir="ltr">
+                                {formatNumber(item.total)} {currency}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
 
-                  {/* Returned Items if any (only on partial returns, not duplicate if full refund) */}
+                  {/* Returned Items if any */}
                   {!isFullyRefunded && safeReturnedItems.length > 0 && returnedTotal > 0 && (
-                    <div className="p-1.5 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-1 text-[9px] print:border-black/50">
-                      <div className="flex justify-between text-rose-300 print:text-black font-bold border-b border-rose-500/30 print:border-black pb-0.5 font-sans">
+                    <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 space-y-1 text-xs">
+                      <div className="flex justify-between text-rose-700 font-bold border-b border-rose-200 pb-1">
                         <span>{t('خصم المرجوعات:', 'گەڕاوەکان:', 'Returns:')}</span>
-                        <span className="font-mono" dir="ltr">-{settings.currencySymbol}{formatNumber(returnedTotal)}</span>
+                        <span className="font-mono" dir="ltr">-{formatNumber(returnedTotal)} {currency}</span>
                       </div>
-                      {safeReturnedItems.map((ret, rIdx) => (
-                        <div key={rIdx} className="flex justify-between text-[8.5px] text-rose-300 print:text-black font-sans">
-                          <span>{(isKu && ret.productNameKu) ? ret.productNameKu : (ret.productNameAr || ret.productName)} ({ret.quantity})</span>
-                          <span className="font-mono" dir="ltr">-{settings.currencySymbol}{formatNumber(ret.total)}</span>
-                        </div>
-                      ))}
+                      {safeReturnedItems.map((ret, rIdx) => {
+                        const retType = ret.saleType === 'blister' ? t('شيت', 'شیت', 'Sheet') : t('باكت', 'باکەت', 'Box');
+                        const retName = (isKu && ret.productNameKu) ? ret.productNameKu : (ret.productNameAr || ret.productName);
+                        return (
+                          <div key={rIdx} className="flex justify-between text-[11px] text-rose-800">
+                            <span>{retName} ({retType} {ret.quantity})</span>
+                            <span className="font-mono" dir="ltr">-{formatNumber(ret.total)} {currency}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
-                  {/* Thermal Totals */}
-                  <div className="border-t border-dashed border-slate-700 print:border-black pt-1.5 space-y-1 text-[9.5px] font-mono">
-                    <div className="flex justify-between text-slate-400 print:text-black">
-                      <span className="font-sans">{t('المجموع:', 'کۆی گشتی:', 'Subtotal:')}</span>
-                      <span dir="ltr">{settings.currencySymbol}{formatNumber(sale.subtotal)}</span>
+                  {/* Warm Cream Rounded Totals Box */}
+                  <div className="bg-[#FEF9EE] border border-[#FDE68A] rounded-xl p-3 my-2 text-slate-900 space-y-1.5 print-preserve-bg">
+                    {/* Subtotal */}
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700">{t('المجموع الفرعي:', 'کۆی سەرەتایی:', 'Subtotal:')}</span>
+                      <span className="bg-[#E2E8F0] border border-[#CBD5E1] px-2.5 py-0.5 rounded-lg font-mono font-bold text-slate-900 text-xs print-preserve-bg" dir="ltr">
+                        {formatNumber(sale.subtotal)} {currency}
+                      </span>
                     </div>
 
+                    {/* Discount */}
                     {sale.discount > 0 && (
-                      <div className="flex justify-between text-amber-400 print:text-black">
-                        <span className="font-sans">{t('الخصم:', 'داشکاندن:', 'Discount:')}</span>
-                        <span dir="ltr">-{settings.currencySymbol}{formatNumber(sale.discount)}</span>
+                      <div className="flex justify-between items-center text-xs text-amber-800">
+                        <span className="font-semibold">{t('الخصم:', 'داشکاندن:', 'Discount:')}</span>
+                        <span className="font-mono font-bold" dir="ltr">-{formatNumber(sale.discount)} {currency}</span>
                       </div>
                     )}
 
-                    <div className="flex justify-between text-xs font-black text-white print:text-black pt-1 border-t border-slate-700 print:border-black">
-                      <span className="font-sans">{t('الإجمالي الصافي:', 'کۆی گشتی و کۆتایی:', 'Net Total:')}</span>
-                      <span className="text-emerald-400 print:text-black" dir="ltr">{sale.total < 0 ? '-' : ''}{settings.currencySymbol}{formatNumber(Math.abs(sale.total))}</span>
+                    {/* Grand Net Total */}
+                    <div className="flex justify-between items-center pt-1.5 border-t border-[#FDE68A] text-sm">
+                      <span className="font-black text-slate-950 text-sm sm:text-base">{t('المجموع الصافي النهائي:', 'کۆی گشتی و کۆتایی:', 'Grand Total:')}</span>
+                      <span className="font-black text-slate-950 text-base sm:text-lg font-mono" dir="ltr">
+                        {sale.total < 0 ? '-' : ''}{formatNumber(Math.abs(sale.total))} {currency}
+                      </span>
                     </div>
 
-                    {sale.amountTendered ? (
-                      <div className="flex justify-between text-[9px] text-slate-400 print:text-black pt-0.5 font-sans">
-                        <span dir="ltr">{t('المستلم:', 'وەرگیراو:', 'Tender:')} {settings.currencySymbol}{formatNumber(sale.amountTendered)}</span>
-                        <span dir="ltr">{t('المتبقي:', 'ماوە / بەجێماو:', 'Change:')} {settings.currencySymbol}{formatNumber(sale.changeDue || 0)}</span>
+                    {/* Tendered */}
+                    <div className="flex justify-between items-center text-xs text-slate-700 pt-0.5">
+                      <span className="font-semibold">{t('المسلم من الزبون:', 'وەرگیراو لە کڕیار:', 'Tendered:')}</span>
+                      <span className="font-mono font-bold text-slate-900" dir="ltr">
+                        {formatNumber(sale.amountTendered || sale.total)} {currency}
+                      </span>
+                    </div>
+
+                    {/* Change Due if any */}
+                    {(sale.changeDue && sale.changeDue > 0) ? (
+                      <div className="flex justify-between items-center text-xs text-slate-700">
+                        <span className="font-semibold">{t('المتبقي للزبون:', 'ماوە / بەجێماو:', 'Change:')}</span>
+                        <span className="font-mono font-bold text-emerald-700" dir="ltr">
+                          {formatNumber(sale.changeDue)} {currency}
+                        </span>
                       </div>
                     ) : null}
                   </div>
 
-                  {/* Footer message */}
-                  <div className="text-center pt-1.5 border-t border-slate-800 text-[8.5px] text-slate-400 font-sans">
-                    <p>{settings.receiptFooterMsg}</p>
+                  {/* Return Policy and Tagline Footer */}
+                  <div className="text-center pt-2 space-y-1 text-slate-600">
+                    <p className="text-[11px] font-medium leading-relaxed">
+                      {settings.receiptFooterMsg || t('البضاعة المباعة ترجع وتستبدل خلال 14 يوما بشرط القانونية', 'کاڵای فرۆشراو دەگەڕێندرێتەوە بە مەرجی هێنانی پسوولە', 'Goods sold can be returned or exchanged within 14 days')}
+                    </p>
+                    <p className="text-[10px] font-bold text-slate-400 tracking-wider">
+                      7AMO.POS • Pharmacy POS System
+                    </p>
                   </div>
                 </div>
               )}

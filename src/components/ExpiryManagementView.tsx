@@ -19,7 +19,6 @@ import {
   Sparkles,
   Info
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { Product, StoreSettings, UserAccount, ProductBatch } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { parseDate } from '../lib/dateUtils';
@@ -258,7 +257,8 @@ export const ExpiryManagementView: React.FC<ExpiryManagementViewProps> = ({
   }, [processedItems, activeFilter, selectedCategory, deferredSearch, sortBy]);
 
   // Export Expiry Report to Excel
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await import('xlsx');
     const dataToExport = filteredItems.map((item, idx) => {
       let statusText = 'صالح';
       if (item.status === 'EXPIRED') statusText = `منتهي الصلاحية (${Math.abs(item.daysUntil)} يوم مضت)`;

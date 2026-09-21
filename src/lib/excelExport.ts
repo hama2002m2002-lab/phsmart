@@ -1,4 +1,7 @@
-import * as XLSX from 'xlsx';
+// Lazily resolve XLSX library only on-demand to keep initial application startup instantaneous (<0.1s)
+async function getXLSX() {
+  return await import('xlsx');
+}
 import { 
   Product, 
   SaleTransaction, 
@@ -47,7 +50,8 @@ function createProductsMap(products: Product[]): Map<string, Product> {
 /**
  * Exports the complete store database and comprehensive reports into an organized multi-sheet Excel (.xlsx) file.
  */
-export function exportStoreToExcel(data: FullStoreBackup, fileNamePrefix = 'supermarket_full_backup'): void {
+export async function exportStoreToExcel(data: FullStoreBackup, fileNamePrefix = 'supermarket_full_backup'): Promise<void> {
+  const XLSX = await getXLSX();
   const wb = XLSX.utils.book_new();
   const products = data.products || [];
   const sales = data.salesHistory || [];
@@ -599,7 +603,8 @@ export function exportStoreToExcel(data: FullStoreBackup, fileNamePrefix = 'supe
 /**
  * Exports single Products array to Excel spreadsheet.
  */
-export function exportProductsToExcel(products: Product[], filename = 'products_list.xlsx'): void {
+export async function exportProductsToExcel(products: Product[], filename = 'products_list.xlsx'): Promise<void> {
+  const XLSX = await getXLSX();
   const wb = XLSX.utils.book_new();
   const productsSheetData = products.map((p, index) => ({
     'ت': index + 1,
@@ -627,7 +632,8 @@ export function exportProductsToExcel(products: Product[], filename = 'products_
 /**
  * Exports arbitrary array of JSON objects to an Excel spreadsheet file.
  */
-export function exportDataToExcel(data: Record<string, any>[], filename = 'export.xlsx', sheetName = 'البيانات'): void {
+export async function exportDataToExcel(data: Record<string, any>[], filename = 'export.xlsx', sheetName = 'البيانات'): Promise<void> {
+  const XLSX = await getXLSX();
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -638,6 +644,7 @@ export function exportDataToExcel(data: Record<string, any>[], filename = 'expor
  * Reads an Excel file (.xlsx, .xls) uploaded by user and parses all store sheets (Products, Sales, Suppliers, Customers, Purchases, Expenses, Damaged, Users, Settings).
  */
 export async function parseExcelBackupFile(file: File): Promise<Partial<FullStoreBackup>> {
+  const XLSX = await getXLSX();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {

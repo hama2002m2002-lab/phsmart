@@ -236,9 +236,10 @@ export function buildEscPosBuffer(sale: SaleTransaction, settings: StoreSettings
   // 6. Items List
   const items = Array.isArray(sale.items) ? sale.items : (typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : []);
   items.forEach((item: any) => {
+    const saleTypeLabel = item.saleType === 'blister' ? (isKu ? 'شیت' : isAr ? 'شيت' : 'Sheet') : (isKu ? 'باکەت' : isAr ? 'باكت' : 'Box');
     const itemName = isKu ? (item.productNameKu || item.productNameAr || item.productName) : (item.productNameAr || item.productName);
-    const nameShort = itemName.substring(0, 24).padEnd(25, ' ');
-    const qtyStr = `${item.quantity}`.padStart(5, ' ');
+    const nameShort = itemName.substring(0, 18).padEnd(19, ' ');
+    const qtyStr = `${saleTypeLabel} ${item.quantity}`.padStart(11, ' ');
     const priceStr = `${formatNumber(item.price)}`.padStart(8, ' ');
     const totalStr = `${formatNumber(item.total)}`.padStart(9, ' ');
 
@@ -514,8 +515,8 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
 
   const is58mm = settings.printerType === 'thermal58mm';
   const pageSize = is58mm ? '58mm auto' : '80mm auto';
-  const containerWidth = is58mm ? '44mm' : '56mm';
-  const baseFontSize = is58mm ? '8.5px' : '9px';
+  const containerWidth = is58mm ? '48mm' : '72mm';
+  const baseFontSize = is58mm ? '9px' : '10px';
 
   doc.open();
   doc.write(`
@@ -546,181 +547,218 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
             direction: ${isAr || isKu ? 'rtl' : 'ltr'};
           }
           .receipt-box {
+            position: relative;
             width: ${containerWidth};
             max-width: ${containerWidth};
             margin: 0 auto;
-            padding: 1mm 0.2mm;
+            padding: 2mm 1mm;
+            background: #FFFDF9;
+          }
+          .watermark-col {
+            position: absolute;
+            left: 2px;
+            top: 15px;
+            bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            opacity: 0.06;
+            pointer-events: none;
+            user-select: none;
+            color: #000;
+          }
+          .watermark-item {
+            font-size: 24px;
+            font-weight: 900;
+            font-style: italic;
+            transform: rotate(-12deg);
           }
           .header {
             text-align: center;
-            border-bottom: 1px dashed #000;
-            padding-bottom: 3px;
-            margin-bottom: 4px;
+            border-bottom: 1px solid #CBD5E1;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
           }
           .store-name {
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 900;
-            margin: 1px 0;
+            color: #9A6B2F;
+            margin: 0 0 2px 0;
             line-height: 1.15;
           }
           .store-sub {
-            font-size: 8.5px;
-            font-weight: 600;
+            font-size: 9px;
+            font-weight: 500;
             margin-top: 1px;
-            color: #111;
+            color: #334155;
           }
           .refund-badge {
-            border: 1px solid #000;
-            padding: 2px 3px;
+            background: #FEE2E2;
+            border: 1px solid #EF4444;
+            color: #991B1B;
+            padding: 2px 4px;
             font-weight: 900;
             font-size: 9.5px;
-            margin-bottom: 3px;
+            margin-bottom: 4px;
+            border-radius: 6px;
             text-align: center;
-            background: #ffffff;
-            color: #000000;
           }
-          .meta-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 3px;
-            font-size: 9px;
+          .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            padding: 4px 0;
+            border-bottom: 1px solid #CBD5E1;
+            font-size: 9.5px;
           }
-          .meta-table td {
-            padding: 1px 0;
-            vertical-align: top;
+          .meta-right {
+            text-align: ${isAr || isKu ? 'right' : 'left'};
+          }
+          .meta-left {
+            text-align: ${isAr || isKu ? 'left' : 'right'};
+          }
+          .meta-row {
+            margin-bottom: 2px;
           }
           .meta-label {
-            width: 38%;
-            text-align: ${isAr || isKu ? 'right' : 'left'};
             font-weight: bold;
-            color: #222;
+            color: #334155;
           }
-          .meta-val {
-            width: 62%;
-            text-align: ${isAr || isKu ? 'left' : 'right'};
-            font-weight: 700;
+          .meta-invoice-no {
+            font-weight: 900;
+            font-size: 14px;
+            color: #020617;
+            font-family: monospace, sans-serif;
           }
-          .divider-solid {
-            border-bottom: 1px solid #000;
-            margin: 3px 0;
-          }
-          .divider-dashed {
-            border-bottom: 1px dashed #000;
-            margin: 3px 0;
+          .table-container {
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 6px 0;
+            background: #ffffff;
           }
           .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 3px;
             table-layout: fixed;
           }
           .items-table th {
-            border-bottom: 1px solid #000;
-            padding: 2px 1px;
-            font-size: 8.5px;
+            background-color: #E0F2FE;
+            color: #0F172A;
+            border-bottom: 1px solid #CBD5E1;
+            padding: 3px 2px;
+            font-size: 9px;
             font-weight: 900;
-            color: #000;
           }
           .items-table td {
-            padding: 2px 1px;
-            border-bottom: 1px dashed #aaa;
-            vertical-align: top;
-            font-size: 9px;
+            padding: 3px 2px;
+            border-bottom: 1px solid #E2E8F0;
+            vertical-align: middle;
+            font-size: 9.5px;
           }
           .col-name {
-            width: 46%;
+            width: 44%;
             text-align: ${isAr || isKu ? 'right' : 'left'};
             word-break: break-word;
           }
           .col-qty {
-            width: 13%;
+            width: 20%;
             text-align: center;
             font-weight: bold;
-            font-family: monospace, sans-serif;
+            white-space: nowrap;
           }
           .col-price {
-            width: 19%;
+            width: 17%;
             text-align: center;
             font-family: monospace, sans-serif;
-            font-size: 8.5px;
+            color: #334155;
           }
           .col-total {
-            width: 22%;
+            width: 19%;
             text-align: ${isAr || isKu ? 'left' : 'right'};
-            font-weight: bold;
+            font-weight: 900;
             font-family: monospace, sans-serif;
+            color: #020617;
           }
           .item-title {
             font-weight: 800;
             font-size: 9.5px;
             line-height: 1.2;
-            color: #000;
+            color: #0F172A;
           }
           .item-sub {
             font-size: 8px;
             margin-top: 1px;
-            color: #222;
+            color: #0369A1;
           }
           .ret-header-cell {
             text-align: center;
             font-weight: 900;
             font-size: 8.5px;
             padding: 2px 0 !important;
-            border-bottom: 1px solid #000 !important;
-            background: #f0f0f0;
+            border-bottom: 1px solid #EF4444 !important;
+            background: #FEE2E2;
+            color: #991B1B;
           }
-          .totals-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 2px;
-            font-size: 9px;
+          .totals-card {
+            background-color: #FEF9EE;
+            border: 1px solid #FDE68A;
+            border-radius: 8px;
+            padding: 5px 6px;
+            margin: 6px 0;
+            font-size: 9.5px;
           }
-          .totals-table td {
-            padding: 1.5px 0;
-            vertical-align: middle;
+          .totals-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3px;
           }
-          .tot-label {
-            text-align: ${isAr || isKu ? 'right' : 'left'};
-            font-weight: 600;
-            color: #111;
-          }
-          .tot-val {
-            text-align: ${isAr || isKu ? 'left' : 'right'};
+          .subtotal-pill {
+            background: #E2E8F0;
+            border: 1px solid #CBD5E1;
+            padding: 1px 5px;
+            border-radius: 5px;
             font-family: monospace, sans-serif;
-            font-weight: 700;
+            font-weight: bold;
           }
-          .grand-row td {
-            border-top: 1px solid #000;
-            border-bottom: 1px solid #000;
-            padding: 3px 0;
+          .grand-total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #FDE68A;
+            padding-top: 4px;
+            margin-top: 3px;
           }
           .grand-label {
             font-size: 11px;
             font-weight: 900;
-            color: #000;
+            color: #020617;
           }
           .grand-val {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 900;
-            color: #000;
+            font-family: monospace, sans-serif;
+            color: #020617;
           }
           .footer {
             text-align: center;
-            border-top: 1px dashed #000;
-            padding-top: 3px;
+            padding-top: 4px;
             margin-top: 4px;
           }
           .footer-msg {
-            font-size: 8.5px;
-            font-weight: 600;
+            font-size: 9px;
+            font-weight: 500;
             line-height: 1.3;
-            color: #111;
+            color: #475569;
           }
           .footer-brand {
-            font-size: 7.5px;
-            color: #555;
+            font-size: 8px;
+            color: #94A3B8;
             margin-top: 2px;
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.5px;
           }
           .num-ltr {
             display: inline-block;
@@ -731,6 +769,14 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
       </head>
       <body>
         <div class="receipt-box">
+          <!-- Stylized 7P Watermark -->
+          <div class="watermark-col">
+            <div class="watermark-item">7P</div>
+            <div class="watermark-item">7P</div>
+            <div class="watermark-item">7P</div>
+            <div class="watermark-item">7P</div>
+          </div>
+
           <!-- Header -->
           <div class="header">
             ${(isRefunded || returnedItems.length > 0) ? `
@@ -738,119 +784,115 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
                 *** ${isKu ? 'پسوولەی گەڕاندنەوەی کاڵا (مەرتەجەع)' : isAr ? 'وصل إرجاع بضاعة (مرتجع)' : 'REFUND RECEIPT'} ***
               </div>
             ` : ''}
-            <div class="store-name">${storeName}</div>
-            ${settings.address ? `<div class="store-sub">${settings.address}</div>` : ''}
-            ${settings.phone ? `<div class="store-sub">${isKu ? 'تەلەفۆن' : isAr ? 'هاتف' : 'Tel'}: <span class="num-ltr">${settings.phone}</span></div>` : ''}
+            <div class="store-name">${storeName || '7amo.pos'}</div>
+            <div class="store-sub">${settings.address || (isAr ? 'العراق - بغداد - شارع فلسطين' : isKu ? 'عێراق - بەغداد - شەقامی فەلەستین' : 'Iraq - Baghdad - Palestine St')}</div>
+            <div class="store-sub" dir="ltr"><span class="num-ltr">${settings.phone ? `${isKu ? 'تەلەفۆن' : isAr ? 'هاتف' : 'Tel'}: ${settings.phone}` : 'هاتف: 0000 000 770 964+'}</span></div>
           </div>
 
-          <!-- Metadata -->
-          <table class="meta-table">
-            <tr>
-              <td class="meta-label">${isKu ? 'ژمارەی پسوولە:' : isAr ? 'رقم الوصل:' : 'Invoice No:'}</td>
-              <td class="meta-val"><span class="num-ltr" style="font-weight: 900; font-size: 10.5px;">#${sale.invoiceNumber}</span></td>
-            </tr>
-            <tr>
-              <td style="width: 50%; text-align: ${isAr || isKu ? 'right' : 'left'}; font-weight: bold;">
-                ${isKu ? 'بەروار:' : isAr ? 'التاريخ:' : 'Date:'} <span class="num-ltr" style="font-weight: normal;">${formatDisplayDate(sale.timestamp, lang)}</span>
-              </td>
-              <td style="width: 50%; text-align: ${isAr || isKu ? 'left' : 'right'}; font-weight: bold;">
-                ${isKu ? 'کات:' : isAr ? 'الوقت:' : 'Time:'} <span class="num-ltr" style="font-weight: normal;">${formatDisplayTime(sale.timestamp, lang)}</span>
-              </td>
-            </tr>
-            <tr>
-              <td class="meta-label">${isKu ? 'کاشێر:' : isAr ? 'الكاشير:' : 'Cashier:'}</td>
-              <td class="meta-val"><span dir="auto">${sale.cashierName || '-'}</span></td>
-            </tr>
-            <tr>
-              <td class="meta-label">${isKu ? 'شێوازی پارەدان:' : isAr ? 'طريقة الدفع:' : 'Payment:'}</td>
-              <td class="meta-val">${cleanPaymentLabel}</td>
-            </tr>
-          </table>
+          <!-- Metadata 2-Column Grid -->
+          <div class="meta-grid">
+            <div class="meta-right">
+              <div class="meta-row"><span class="meta-label">${isKu ? 'ژمارەی پسوولە:' : isAr ? 'رقم الوصل:' : 'Invoice No:'}</span></div>
+              <div class="meta-row"><span class="meta-label">${isKu ? 'بەروار: Date:' : isAr ? 'التاريخ: Date:' : 'Date:'}</span> <span class="num-ltr">${formatDisplayDate(sale.timestamp, lang)}</span></div>
+              <div class="meta-row"><span class="meta-label">Cashier:</span></div>
+              <div class="meta-row"><span class="meta-label">${isKu ? 'شێوازی پارەدان:' : isAr ? 'طريقة الدفع:' : 'Payment:'}</span></div>
+            </div>
+            <div class="meta-left">
+              <div class="meta-row"><span class="meta-invoice-no num-ltr">#${sale.invoiceNumber}</span></div>
+              <div class="meta-row"><span class="meta-label">${isKu ? 'کات:' : isAr ? 'الوقت:' : 'Time:'}</span> <span class="num-ltr">${formatDisplayTime(sale.timestamp, lang)}</span></div>
+              <div class="meta-row" style="font-weight: bold; color: #0F172A;">${sale.cashierName || (isAr ? 'المدير العام (Admin)' : 'Admin')}</div>
+              <div class="meta-row" style="font-weight: bold; color: #0F172A;">${cleanPaymentLabel}</div>
+            </div>
+          </div>
 
-          <div class="divider-solid"></div>
-
-          <!-- Items Table -->
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th class="col-name">${isKu ? (isRefunded ? 'کاڵای گەڕاوە' : 'کاڵا') : isAr ? (isRefunded ? 'المادة المرتجعة' : 'المادة') : 'Item'}</th>
-                <th class="col-qty">${isKu ? 'بڕ' : isAr ? 'العدد' : 'Qty'}</th>
-                <th class="col-price">${isKu ? 'نرخ' : isAr ? 'السعر' : 'Price'}</th>
-                <th class="col-total">${isKu ? 'کۆی گشتی' : isAr ? 'الإجمالي' : 'Total'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${activeItems.map((item: any, idx: number) => {
-                const itemName = isKu ? (item.productNameKu || item.productNameAr || item.productName) : (item.productNameAr || item.productName);
-                return `
-                  <tr>
-                    <td class="col-name">
-                      <div class="item-title">${idx + 1}. ${itemName}</div>
-                      ${item.dosageInstruction ? `<div class="item-sub" style="font-style: italic;">• ${item.dosageInstruction}</div>` : ''}
-                    </td>
-                    <td class="col-qty">${item.quantity}</td>
-                    <td class="col-price"><span class="num-ltr">${formatNumber(item.price)}</span></td>
-                    <td class="col-total"><span class="num-ltr">${isRefunded ? '-' : ''}${formatNumber(Math.abs(item.total))} ${currency}</span></td>
-                  </tr>
-                `;
-              }).join('')}
-
-              ${(!isRefunded && returnedItems.length > 0 && returnedTotal > 0) ? `
+          <!-- Items Table with Sky Blue Header & Sale Type before Quantity -->
+          <div class="table-container">
+            <table class="items-table">
+              <thead>
                 <tr>
-                  <td colspan="4" class="ret-header-cell">*** ${isKu ? 'داشکاندنی کاڵا گەڕاوەکان' : isAr ? 'المواد المرتجعة المستردة' : 'Returned Items'} ***</td>
+                  <th class="col-name">${isKu ? (isRefunded ? 'کاڵای گەڕاوە' : 'کاڵا') : isAr ? (isRefunded ? 'المادة المرتجعة' : 'المادة') : 'Item'}</th>
+                  <th class="col-qty">${isKu ? 'بڕ' : isAr ? 'العدد' : 'Qty'}</th>
+                  <th class="col-price">${isKu ? 'نرخ' : isAr ? 'السعر' : 'Price'}</th>
+                  <th class="col-total">${isKu ? 'کۆی گشتی' : isAr ? 'الإجمالي' : 'Total'}</th>
                 </tr>
-                ${returnedItems.map((ret: any) => {
-                  const retName = isKu ? (ret.productNameKu || ret.productNameAr || ret.productName) : (ret.productNameAr || ret.productName);
+              </thead>
+              <tbody>
+                ${activeItems.map((item: any, idx: number) => {
+                  const itemName = isKu ? (item.productNameKu || item.productNameAr || item.productName) : (item.productNameAr || item.productName);
+                  const saleTypeLabel = item.saleType === 'blister' 
+                    ? (isKu ? 'شیت' : isAr ? 'شيت' : 'Sheet') 
+                    : (isKu ? 'باکەت' : isAr ? 'باكت' : 'Box');
                   return `
                     <tr>
                       <td class="col-name">
-                        <div class="item-title">[${isKu ? 'گەڕاوە' : isAr ? 'مرتجع' : 'Returned'}] ${retName}</div>
+                        <div class="item-title">${idx + 1}. ${itemName}</div>
+                        ${item.dosageInstruction ? `<div class="item-sub" style="font-style: italic;">💊 ${item.dosageInstruction}</div>` : ''}
                       </td>
-                      <td class="col-qty">${ret.quantity}</td>
-                      <td class="col-price"><span class="num-ltr">${formatNumber(ret.price || (ret.total / ret.quantity))}</span></td>
-                      <td class="col-total"><span class="num-ltr">-${formatNumber(ret.total)} ${currency}</span></td>
+                      <td class="col-qty"><span style="font-weight: 800;">${saleTypeLabel}</span> <span class="num-ltr" style="font-weight: 800;">${item.quantity}</span></td>
+                      <td class="col-price"><span class="num-ltr">${formatNumber(item.price)}</span></td>
+                      <td class="col-total"><span class="num-ltr">${isRefunded ? '-' : ''}${formatNumber(Math.abs(item.total))} ${currency}</span></td>
                     </tr>
                   `;
                 }).join('')}
-              ` : ''}
-            </tbody>
-          </table>
 
-          <div class="divider-dashed"></div>
+                ${(!isRefunded && returnedItems.length > 0 && returnedTotal > 0) ? `
+                  <tr>
+                    <td colspan="4" class="ret-header-cell">*** ${isKu ? 'داشکاندنی کاڵا گەڕاوەکان' : isAr ? 'المواد المرتجعة المستردة' : 'Returned Items'} ***</td>
+                  </tr>
+                  ${returnedItems.map((ret: any) => {
+                    const retName = isKu ? (ret.productNameKu || ret.productNameAr || ret.productName) : (ret.productNameAr || ret.productName);
+                    const retSaleType = ret.saleType === 'blister' 
+                      ? (isKu ? 'شیت' : isAr ? 'شيت' : 'Sheet') 
+                      : (isKu ? 'باکەت' : isAr ? 'باكت' : 'Box');
+                    return `
+                      <tr>
+                        <td class="col-name">
+                          <div class="item-title">[${isKu ? 'گەڕاوە' : isAr ? 'مرتجع' : 'Returned'}] ${retName}</div>
+                        </td>
+                        <td class="col-qty"><span style="font-weight: 800;">${retSaleType}</span> <span class="num-ltr">${ret.quantity}</span></td>
+                        <td class="col-price"><span class="num-ltr">${formatNumber(ret.price || (ret.total / ret.quantity))}</span></td>
+                        <td class="col-total"><span class="num-ltr">-${formatNumber(ret.total)} ${currency}</span></td>
+                      </tr>
+                    `;
+                  }).join('')}
+                ` : ''}
+              </tbody>
+            </table>
+          </div>
 
-          <!-- Totals -->
-          <table class="totals-table">
-            <tr>
-              <td class="tot-label">${isKu ? 'کۆی سەرەتایی:' : isAr ? 'المجموع الفرعي:' : 'Subtotal:'}</td>
-              <td class="tot-val"><span class="num-ltr">${formatNumber(Math.abs(sale.subtotal))} ${currency}</span></td>
-            </tr>
+          <!-- Warm Cream Rounded Totals Card -->
+          <div class="totals-card">
+            <div class="totals-row">
+              <span style="font-weight: bold; color: #334155;">${isKu ? 'کۆی سەرەتایی:' : isAr ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
+              <span class="subtotal-pill num-ltr">${formatNumber(Math.abs(sale.subtotal))} ${currency}</span>
+            </div>
             ${(!isRefunded && returnedTotal > 0) ? `
-            <tr>
-              <td class="tot-label">${isKu ? 'داشکاندنی گەڕاوە:' : isAr ? 'خصم المرجوع:' : 'Refunds:'}</td>
-              <td class="tot-val"><span class="num-ltr">-${formatNumber(returnedTotal)} ${currency}</span></td>
-            </tr>` : ''}
+            <div class="totals-row">
+              <span style="font-weight: bold; color: #991B1B;">${isKu ? 'داشکاندنی گەڕاوە:' : isAr ? 'خصم المرجوع:' : 'Refunds:'}</span>
+              <span class="num-ltr" style="font-weight: bold; color: #991B1B;">-${formatNumber(returnedTotal)} ${currency}</span>
+            </div>` : ''}
             ${sale.discount > 0 ? `
-            <tr>
-              <td class="tot-label">${isKu ? 'داشکاندنی گشتی:' : isAr ? 'الخصم الممنوح:' : 'Discount:'}</td>
-              <td class="tot-val"><span class="num-ltr">-${formatNumber(sale.discount)} ${currency}</span></td>
-            </tr>` : ''}
+            <div class="totals-row">
+              <span style="font-weight: bold; color: #92400E;">${isKu ? 'داشکاندنی گشتی:' : isAr ? 'الخصم:' : 'Discount:'}</span>
+              <span class="num-ltr" style="font-weight: bold; color: #92400E;">-${formatNumber(sale.discount)} ${currency}</span>
+            </div>` : ''}
             
-            <tr class="grand-row">
-              <td class="grand-label">${isKu ? 'کۆی گشتی و کۆتایی:' : isAr ? 'المجموع الصافي النهائي:' : 'GRAND TOTAL:'}</td>
-              <td class="grand-val"><span class="num-ltr">${sale.total < 0 ? '-' : ''}${formatNumber(Math.abs(sale.total))} ${currency}</span></td>
-            </tr>
+            <div class="grand-total-row">
+              <span class="grand-label">${isKu ? 'کۆی گشتی و کۆتایی:' : isAr ? 'المجموع الصافي النهائي:' : 'GRAND TOTAL:'}</span>
+              <span class="grand-val num-ltr">${sale.total < 0 ? '-' : ''}${formatNumber(Math.abs(sale.total))} ${currency}</span>
+            </div>
 
             ${sale.amountTendered > 0 ? `
-            <tr>
-              <td class="tot-label">${isKu ? 'پارەی وەرگیراو:' : isAr ? 'المسلم من الزبون:' : 'Tendered:'}</td>
-              <td class="tot-val"><span class="num-ltr">${formatNumber(sale.amountTendered)} ${currency}</span></td>
-            </tr>` : ''}
+            <div class="totals-row" style="margin-top: 3px;">
+              <span style="color: #475569;">${isKu ? 'پارەی وەرگیراو:' : isAr ? 'المسلم من الزبون:' : 'Tendered:'}</span>
+              <span class="num-ltr" style="font-weight: bold; color: #0F172A;">${formatNumber(sale.amountTendered)} ${currency}</span>
+            </div>` : ''}
             ${sale.changeDue > 0 ? `
-            <tr>
-              <td class="tot-label">${isKu ? 'ماوە / گەڕاوە:' : isAr ? 'الباقي للمشتري:' : 'Change Due:'}</td>
-              <td class="tot-val"><span class="num-ltr">${formatNumber(sale.changeDue)} ${currency}</span></td>
-            </tr>` : ''}
-          </table>
+            <div class="totals-row">
+              <span style="color: #475569;">${isKu ? 'ماوە / گەڕاوە:' : isAr ? 'المتبقي للزبون:' : 'Change:'}</span>
+              <span class="num-ltr" style="font-weight: bold; color: #047857;">${formatNumber(sale.changeDue)} ${currency}</span>
+            </div>` : ''}
+          </div>
 
           <!-- Footer -->
           <div class="footer">

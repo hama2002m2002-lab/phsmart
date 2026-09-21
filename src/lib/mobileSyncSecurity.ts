@@ -343,8 +343,19 @@ export function subscribeToIncomingScans(
 
   // Periodic server poll for scans from other devices on the LAN or web
   const pollInterval = setInterval(async () => {
+    // If completely offline, skip server fetch entirely to save CPU and battery
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/mobile-sync/poll?laptopId=${encodeURIComponent(expectedLaptopId)}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 600);
+      const res = await fetch(`/api/mobile-sync/poll?laptopId=${encodeURIComponent(expectedLaptopId)}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.scans) && data.scans.length > 0) {

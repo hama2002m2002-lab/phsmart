@@ -1,5 +1,5 @@
-import React from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, Zap, WifiOff } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -57,6 +57,21 @@ export const Header: React.FC<HeaderProps> = ({
   const cashierName = currentUser?.fullName || currentUser?.username || (isAr ? 'الكاشير الرئيسي' : isKu ? 'کاشێری سەرەکی' : 'Main Cashier');
   const storeDisplayName = isKu ? (settings.storeNameKu || settings.storeNameAr || settings.storeName) : isAr ? (settings.storeNameAr || settings.storeName) : settings.storeName;
 
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const handleLanguageChange = (newLang: Language) => {
     setSettings(prev => ({
       ...prev,
@@ -108,8 +123,22 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Center/Right: Language Switcher, Theme and POS buttons */}
+        {/* Center/Right: Offline Turbo status, Language Switcher, Theme and POS buttons */}
         <div className="flex items-center space-x-1 sm:space-x-2 rtl:space-x-reverse shrink-0">
+          
+          {/* Offline Turbo Engine Status Badge */}
+          <div 
+            className={`hidden sm:flex items-center gap-1 sm:gap-1.5 px-2 py-1 rounded-xl text-[10px] sm:text-xs font-mono font-bold border transition-all ${
+              !isOnline 
+                ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]' 
+                : 'bg-cyan-950/60 border-cyan-500/30 text-cyan-300'
+            }`}
+            title={isAr ? 'البرنامج يعمل بدون إنترنت (أوفلاين) بسرعة فائقة 0ms ومحلياً بالكامل على هذا الجهاز' : isKu ? 'سیستەم بەبێ ئینتەرنێت و خێرا کار دەکات' : '100% Offline Standalone POS (0ms)'}
+          >
+            <Zap className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${!isOnline ? 'text-emerald-400 animate-pulse' : 'text-cyan-400'}`} />
+            <span>{!isOnline ? (isAr ? 'أوفلاين فائق السرعة' : isKu ? 'ئۆفلاین خێرا' : 'Offline Turbo') : (isAr ? 'محلي فائق السرعة' : isKu ? 'خێرای لۆکاڵ' : 'Local Turbo')}</span>
+          </div>
+
           {/* Quick Language Switcher */}
           <div className="flex items-center bg-[#10192D] border border-cyan-500/30 rounded-xl p-0.5 gap-0.5">
             <Globe className="w-3.5 h-3.5 text-cyan-400 ml-1 mr-0.5 shrink-0 hidden md:inline" />

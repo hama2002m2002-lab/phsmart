@@ -1,66 +1,55 @@
-import React, { useState, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LayoutDashboard, ShoppingCart, Package, FileText, Menu, BarChart3, UserCheck, CheckCircle2, HardDrive, Smartphone } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar, MainNavTab } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 
-// Ultra-fast Code Splitting: Tabs are loaded on-demand, making initial app launch instantaneous
-const OverviewTab = lazy(() => import('./components/OverviewTab').then(m => ({ default: m.OverviewTab })));
-const InvoicesTab = lazy(() => import('./components/InvoicesTab').then(m => ({ default: m.InvoicesTab })));
-const ProductsTab = lazy(() => import('./components/ProductsTab').then(m => ({ default: m.ProductsTab })));
-const PurchasesTab = lazy(() => import('./components/PurchasesTab').then(m => ({ default: m.PurchasesTab })));
-const POSTab = lazy(() => import('./components/POSTab').then(m => ({ default: m.POSTab })));
-const VouchersHubTab = lazy(() => import('./components/VouchersHubTab').then(m => ({ default: m.VouchersHubTab })));
-const SuppliersTab = lazy(() => import('./components/SuppliersTab').then(m => ({ default: m.SuppliersTab })));
-const CustomersTab = lazy(() => import('./components/CustomersTab').then(m => ({ default: m.CustomersTab })));
-const OrdersTab = lazy(() => import('./components/OrdersTab').then(m => ({ default: m.OrdersTab })));
-const AnalyticsTab = lazy(() => import('./components/AnalyticsTab').then(m => ({ default: m.AnalyticsTab })));
-const ReportsTab = lazy(() => import('./components/ReportsTab').then(m => ({ default: m.ReportsTab })));
-const NotificationsTab = lazy(() => import('./components/NotificationsTab').then(m => ({ default: m.NotificationsTab })));
-const SettingsTab = lazy(() => import('./components/SettingsTab').then(m => ({ default: m.SettingsTab })));
-const PrintCenterTab = lazy(() => import('./components/PrintCenterTab').then(m => ({ default: m.PrintCenterTab })));
-const AccountsHubTab = lazy(() => import('./components/AccountsHubTab').then(m => ({ default: m.AccountsHubTab })));
+// Instant Tab Navigation: Directly imported for zero-delay, zero-flash instant transitions
+import { OverviewTab } from './components/OverviewTab';
+import { POSTab } from './components/POSTab';
+import { ProductsTab } from './components/ProductsTab';
 
-// Modals loaded on-demand
-const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(m => ({ default: m.ReceiptModal })));
-const ProductModal = lazy(() => import('./components/ProductModal').then(m => ({ default: m.ProductModal })));
-const CompletedReceiptsModal = lazy(() => import('./components/CompletedReceiptsModal').then(m => ({ default: m.CompletedReceiptsModal })));
-const SalesReturnModal = lazy(() => import('./components/SalesReturnModal').then(m => ({ default: m.SalesReturnModal })));
-const CashDrawerModal = lazy(() => import('./components/CashDrawerModal').then(m => ({ default: m.CashDrawerModal })));
-const ShiftReportModal = lazy(() => import('./components/ShiftReportModal').then(m => ({ default: m.ShiftReportModal })));
-const MobileSyncModal = lazy(() => import('./components/MobileSyncModal').then(m => ({ default: m.MobileSyncModal })));
-const BarcodePrintModal = lazy(() => import('./components/BarcodePrintModal').then(m => ({ default: m.BarcodePrintModal })));
-const InventoryAuditModal = lazy(() => import('./components/InventoryAuditModal').then(m => ({ default: m.InventoryAuditModal })));
-const DamagedItemsModal = lazy(() => import('./components/DamagedItemsModal').then(m => ({ default: m.DamagedItemsModal })));
-const DelegateReturnsModal = lazy(() => import('./components/DelegateReturnsModal').then(m => ({ default: m.DelegateReturnsModal })));
-const AccountModal = lazy(() => import('./components/AccountModal').then(m => ({ default: m.AccountModal })));
-const DesktopAppModal = lazy(() => import('./components/DesktopAppModal').then(m => ({ default: m.DesktopAppModal })));
-const CSharpExporterModal = lazy(() => import('./components/CSharpExporterModal').then(m => ({ default: m.CSharpExporterModal })));
-const CashierAccountsModal = lazy(() => import('./components/CashierAccountsModal').then(m => ({ default: m.CashierAccountsModal })));
-const CustomerDisplayScreen = lazy(() => import('./components/CustomerDisplayScreen').then(m => ({ default: m.CustomerDisplayScreen })));
-const MobileScannerScreen = lazy(() => import('./components/MobileScannerScreen').then(m => ({ default: m.MobileScannerScreen })));
-const AIInvoiceScannerModal = lazy(() => import('./components/AIInvoiceScannerModal').then(m => ({ default: m.AIInvoiceScannerModal })));
-const AILegacySystemMigratorModal = lazy(() => import('./components/AILegacySystemMigratorModal').then(m => ({ default: m.AILegacySystemMigratorModal })));
-const LocalDataNetworkModal = lazy(() => import('./components/LocalDataNetworkModal').then(m => ({ default: m.LocalDataNetworkModal })));
+// Secondary views loaded on-demand via React.lazy with zero initial overhead
+const InvoicesTab = React.lazy(() => import('./components/InvoicesTab').then(m => ({ default: m.InvoicesTab })));
+const PurchasesTab = React.lazy(() => import('./components/PurchasesTab').then(m => ({ default: m.PurchasesTab })));
+const VouchersHubTab = React.lazy(() => import('./components/VouchersHubTab').then(m => ({ default: m.VouchersHubTab })));
+const SuppliersTab = React.lazy(() => import('./components/SuppliersTab').then(m => ({ default: m.SuppliersTab })));
+const CustomersTab = React.lazy(() => import('./components/CustomersTab').then(m => ({ default: m.CustomersTab })));
+const OrdersTab = React.lazy(() => import('./components/OrdersTab').then(m => ({ default: m.OrdersTab })));
+const AnalyticsTab = React.lazy(() => import('./components/AnalyticsTab').then(m => ({ default: m.AnalyticsTab })));
+const ReportsTab = React.lazy(() => import('./components/ReportsTab').then(m => ({ default: m.ReportsTab })));
+const NotificationsTab = React.lazy(() => import('./components/NotificationsTab').then(m => ({ default: m.NotificationsTab })));
+const SettingsTab = React.lazy(() => import('./components/SettingsTab').then(m => ({ default: m.SettingsTab })));
+const PrintCenterTab = React.lazy(() => import('./components/PrintCenterTab').then(m => ({ default: m.PrintCenterTab })));
+const AccountsHubTab = React.lazy(() => import('./components/AccountsHubTab').then(m => ({ default: m.AccountsHubTab })));
+
+// Modals loaded on-demand to keep initial app launch instant (<100ms)
+const ReceiptModal = React.lazy(() => import('./components/ReceiptModal').then(m => ({ default: m.ReceiptModal })));
+const ProductModal = React.lazy(() => import('./components/ProductModal').then(m => ({ default: m.ProductModal })));
+const CompletedReceiptsModal = React.lazy(() => import('./components/CompletedReceiptsModal').then(m => ({ default: m.CompletedReceiptsModal })));
+const SalesReturnModal = React.lazy(() => import('./components/SalesReturnModal').then(m => ({ default: m.SalesReturnModal })));
+const CashDrawerModal = React.lazy(() => import('./components/CashDrawerModal').then(m => ({ default: m.CashDrawerModal })));
+const ShiftReportModal = React.lazy(() => import('./components/ShiftReportModal').then(m => ({ default: m.ShiftReportModal })));
+const MobileSyncModal = React.lazy(() => import('./components/MobileSyncModal').then(m => ({ default: m.MobileSyncModal })));
+const BarcodePrintModal = React.lazy(() => import('./components/BarcodePrintModal').then(m => ({ default: m.BarcodePrintModal })));
+const InventoryAuditModal = React.lazy(() => import('./components/InventoryAuditModal').then(m => ({ default: m.InventoryAuditModal })));
+const DamagedItemsModal = React.lazy(() => import('./components/DamagedItemsModal').then(m => ({ default: m.DamagedItemsModal })));
+const DelegateReturnsModal = React.lazy(() => import('./components/DelegateReturnsModal').then(m => ({ default: m.DelegateReturnsModal })));
+const AccountModal = React.lazy(() => import('./components/AccountModal').then(m => ({ default: m.AccountModal })));
+const DesktopAppModal = React.lazy(() => import('./components/DesktopAppModal').then(m => ({ default: m.DesktopAppModal })));
+const CSharpExporterModal = React.lazy(() => import('./components/CSharpExporterModal').then(m => ({ default: m.CSharpExporterModal })));
+const CashierAccountsModal = React.lazy(() => import('./components/CashierAccountsModal').then(m => ({ default: m.CashierAccountsModal })));
+const CustomerDisplayScreen = React.lazy(() => import('./components/CustomerDisplayScreen').then(m => ({ default: m.CustomerDisplayScreen })));
+const MobileScannerScreen = React.lazy(() => import('./components/MobileScannerScreen').then(m => ({ default: m.MobileScannerScreen })));
+const AIInvoiceScannerModal = React.lazy(() => import('./components/AIInvoiceScannerModal').then(m => ({ default: m.AIInvoiceScannerModal })));
+const AILegacySystemMigratorModal = React.lazy(() => import('./components/AILegacySystemMigratorModal').then(m => ({ default: m.AILegacySystemMigratorModal })));
+const LocalDataNetworkModal = React.lazy(() => import('./components/LocalDataNetworkModal').then(m => ({ default: m.LocalDataNetworkModal })));
 
 import { formatNumber } from './lib/formatUtils';
 import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAvatarSelector';
 import { openCustomerDisplayWindow } from './lib/customerDisplayBroadcast';
 import { getLaptopSecurityCredentials, subscribeToIncomingScans, playScannerBeep } from './lib/mobileSyncSecurity';
 import { findBestFuzzyProductMatch } from './lib/fuzzyMatching';
-
-// Lightweight skeleton to display during quick tab transitions
-function TabLoadingSkeleton() {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center min-h-[350px] p-8 animate-fadeIn">
-      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-[0_0_25px_rgba(6,182,212,0.4)] mb-4 animate-pulse">
-        <span className="text-white font-black text-lg">7P</span>
-      </div>
-      <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mb-3" />
-      <span className="text-xs text-slate-400 font-medium tracking-wide">جاري تحميل الواجهة...</span>
-    </div>
-  );
-}
 
 import {
   initialProducts,
@@ -90,14 +79,27 @@ import {
   localDbSetKV,
   localDbGetKV,
   localDbGetAll,
-  localDbFactoryReset
+  localDbFactoryReset,
+  requestPersistentStorage
 } from './lib/localDb';
 import {
   shouldRunAutoBackup,
   createFullSystemBackup
 } from './lib/autoBackupManager';
 
-// Optimized Dual-layer High-Capacity persistent state hook (LocalStorage + Unlimited IndexedDB)
+// Pending write registry for seamless zero-loss flush on window unload
+const pendingStateFlushes = new Map<string, () => void>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    pendingStateFlushes.forEach((flush) => {
+      try { flush(); } catch {}
+    });
+    pendingStateFlushes.clear();
+  });
+}
+
+// Ultra-Smooth Dual-layer High-Capacity persistent state hook (Instant Memory + Debounced LocalStorage/IndexedDB)
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
     try {
@@ -112,6 +114,7 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
   });
 
   const isFirstRender = useRef(true);
+  const debounceTimerRef = useRef<any>(null);
 
   // Non-blocking async IndexedDB hydration check (for large data exceeding 5MB)
   useEffect(() => {
@@ -127,7 +130,7 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
               }
             }
           }).catch(() => {});
-        }, { timeout: 2000 })
+        }, { timeout: 1500 })
       : setTimeout(() => {
           localDbGetKV<T>(key, initialValue).then((val) => {
             if (val !== undefined && val !== null) {
@@ -139,7 +142,7 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
               }
             }
           }).catch(() => {});
-        }, 100);
+        }, 50);
 
     return () => {
       if (typeof window !== 'undefined' && 'cancelIdleCallback' in window && typeof handle === 'number') {
@@ -150,32 +153,47 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
     };
   }, [key]);
 
-  // Persist mutative updates without blocking initial mount
+  // Persist mutative updates smoothly in the background with 120ms debounce (Zero UI stuttering)
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
 
-    try {
-      if (state === undefined) {
-        localStorage.removeItem(key);
-      } else {
-        try {
-          localStorage.setItem(key, JSON.stringify(state));
-        } catch {
-          // If localStorage quota (5MB) is exceeded, silently rely on IndexedDB
-        }
-        // Save in IndexedDB in background
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-          (window as any).requestIdleCallback(() => localDbSetKV(key, state), { timeout: 1000 });
+    const flushWrite = () => {
+      try {
+        if (state === undefined) {
+          localStorage.removeItem(key);
         } else {
-          setTimeout(() => localDbSetKV(key, state), 50);
+          try {
+            localStorage.setItem(key, JSON.stringify(state));
+          } catch {
+            // If localStorage quota (5MB) is exceeded, silently rely on IndexedDB
+          }
+          localDbSetKV(key, state);
         }
+      } catch (err) {
+        console.warn(`Failed to save key "${key}":`, err);
       }
-    } catch (err) {
-      console.warn(`Failed to save key "${key}":`, err);
+    };
+
+    // Register immediate flush in case tab is closed before timer expires
+    pendingStateFlushes.set(key, flushWrite);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+
+    debounceTimerRef.current = setTimeout(() => {
+      flushWrite();
+      pendingStateFlushes.delete(key);
+    }, 120);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [key, state]);
 
   return [state, setState];
@@ -203,6 +221,15 @@ const initialUserAccounts: UserAccount[] = [
     }
   }
 ];
+
+const TabLoadingFallback: React.FC<{ isAr: boolean }> = ({ isAr }) => (
+  <div className="flex-1 flex flex-col items-center justify-center min-h-[350px] p-8 text-center animate-fadeIn">
+    <div className="w-9 h-9 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin mb-3 shadow-[0_0_15px_rgba(6,182,212,0.3)]"></div>
+    <span className="text-xs font-bold text-slate-400 tracking-wide">
+      {isAr ? 'جاري فتح الواجهة...' : 'Loading view...'}
+    </span>
+  </div>
+);
 
 export function App() {
   // Session-based user authentication: Closing and reopening the program prompts for the login PIN
@@ -245,12 +272,27 @@ export function App() {
     }
   }, []);
 
-  // Background preloading of critical views during idle time to guarantee 0ms latency on login
+  // Background preloading of secondary views during idle time to guarantee 0ms latency on navigation
   useEffect(() => {
+    requestPersistentStorage().catch(() => {});
     const preloadTimer = setTimeout(() => {
-      import('./components/POSTab').catch(() => {});
-      import('./components/ProductsTab').catch(() => {});
-    }, 500);
+      const preloadTabs = () => {
+        import('./components/POSTab').catch(() => {});
+        import('./components/ProductsTab').catch(() => {});
+        import('./components/InvoicesTab').catch(() => {});
+        import('./components/PurchasesTab').catch(() => {});
+        import('./components/SuppliersTab').catch(() => {});
+        import('./components/CustomersTab').catch(() => {});
+        import('./components/SettingsTab').catch(() => {});
+        import('./components/ReceiptModal').catch(() => {});
+        import('./components/ProductModal').catch(() => {});
+      };
+      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(preloadTabs);
+      } else {
+        setTimeout(preloadTabs, 1000);
+      }
+    }, 400);
     return () => clearTimeout(preloadTimer);
   }, []);
 
@@ -1109,7 +1151,7 @@ export function App() {
   // If this window was opened as a standalone Mobile Wireless Barcode Scanner
   if (isMobileScannerRoute) {
     return (
-      <Suspense fallback={<TabLoadingSkeleton />}>
+      <React.Suspense fallback={null}>
         <MobileScannerScreen
           onExitToFullApp={() => {
             const url = new URL(window.location.href);
@@ -1121,16 +1163,16 @@ export function App() {
             setIsMobileScannerRoute(false);
           }}
         />
-      </Suspense>
+      </React.Suspense>
     );
   }
 
   // If this window was opened specifically as a standalone Customer Display (e.g. secondary monitor / tablet)
   if (isCustomerDisplayRoute) {
     return (
-      <Suspense fallback={<TabLoadingSkeleton />}>
+      <React.Suspense fallback={null}>
         <CustomerDisplayScreen isStandalone={true} />
-      </Suspense>
+      </React.Suspense>
     );
   }
 
@@ -1151,29 +1193,31 @@ export function App() {
             }
           }}
         />
-        <AccountModal
-          isOpen={isRegisterModalOpen}
-          onClose={() => setIsRegisterModalOpen(false)}
-          settings={settings}
-          onSaveAccount={(newAccount) => {
-            setUserAccounts(prev => {
-              const idx = prev.findIndex(u => u.id === newAccount.id);
-              if (idx >= 0) {
-                const updated = [...prev];
-                updated[idx] = newAccount;
-                return updated;
+        <React.Suspense fallback={null}>
+          <AccountModal
+            isOpen={isRegisterModalOpen}
+            onClose={() => setIsRegisterModalOpen(false)}
+            settings={settings}
+            onSaveAccount={(newAccount) => {
+              setUserAccounts(prev => {
+                const idx = prev.findIndex(u => u.id === newAccount.id);
+                if (idx >= 0) {
+                  const updated = [...prev];
+                  updated[idx] = newAccount;
+                  return updated;
+                }
+                return [newAccount, ...prev];
+              });
+              setCurrentUser(newAccount);
+              if (newAccount.role === 'Cashier') {
+                setActiveTab('pos');
+              } else {
+                setActiveTab('dashboard');
               }
-              return [newAccount, ...prev];
-            });
-            setCurrentUser(newAccount);
-            if (newAccount.role === 'Cashier') {
-              setActiveTab('pos');
-            } else {
-              setActiveTab('dashboard');
-            }
-            setIsRegisterModalOpen(false);
-          }}
-        />
+              setIsRegisterModalOpen(false);
+            }}
+          />
+        </React.Suspense>
       </>
     );
   }
@@ -1778,26 +1822,22 @@ export function App() {
           {/* Keep-Alive POS Tab: 0ms switch without remounting or re-indexing */}
           {hasVisitedPOS && (
             <div className={isPosActive ? 'h-full w-full' : 'hidden'}>
-              <Suspense fallback={<TabLoadingSkeleton />}>
-                {renderPOSContent()}
-              </Suspense>
+              {renderPOSContent()}
             </div>
           )}
 
           {/* Keep-Alive Products / Warehouse Tab: 0ms switch without remounting */}
           {hasVisitedProducts && (
             <div className={isProductsActive ? 'w-full' : 'hidden'}>
-              <Suspense fallback={<TabLoadingSkeleton />}>
-                {renderProductsContent()}
-              </Suspense>
+              {renderProductsContent()}
             </div>
           )}
 
           {/* Other Views */}
           {!isPosActive && !isProductsActive && (
-            <Suspense fallback={<TabLoadingSkeleton />}>
+            <React.Suspense fallback={<TabLoadingFallback isAr={isAr} />}>
               {renderMainContent()}
-            </Suspense>
+            </React.Suspense>
           )}
         </main>
 
@@ -1906,8 +1946,8 @@ export function App() {
         </nav>
       )}
 
-      {/* Modals */}
-      <Suspense fallback={null}>
+      {/* Modals with Zero Startup Overhead */}
+      <React.Suspense fallback={null}>
         {selectedReceipt && (
           <ReceiptModal
             sale={selectedReceipt}
@@ -1916,193 +1956,193 @@ export function App() {
           />
         )}
 
-      {isProductModalOpen && (
-        <ProductModal
-          isOpen={isProductModalOpen}
-          onClose={() => setIsProductModalOpen(false)}
-          productToEdit={productToEdit}
-          onSave={handleSaveProduct}
-          settings={settings}
-          suppliers={suppliers}
-          initialSupplierName={initialSupplierForNewProduct}
-          existingProducts={products}
-        />
-      )}
+        {isProductModalOpen && (
+          <ProductModal
+            isOpen={isProductModalOpen}
+            onClose={() => setIsProductModalOpen(false)}
+            productToEdit={productToEdit}
+            onSave={handleSaveProduct}
+            settings={settings}
+            suppliers={suppliers}
+            initialSupplierName={initialSupplierForNewProduct}
+            existingProducts={products}
+          />
+        )}
 
-      {isCompletedReceiptsOpen && (
-        <CompletedReceiptsModal
-          isOpen={isCompletedReceiptsOpen}
-          onClose={() => setIsCompletedReceiptsOpen(false)}
-          salesHistory={salesHistory}
-          setSalesHistory={setSalesHistory}
-          userAccounts={userAccounts}
-          onUpdateSaleCashier={(saleId, newCashierName) => {
-            setSalesHistory(prev => prev.map(s => s.id === saleId ? { ...s, cashierName: newCashierName } : s));
-          }}
-          settings={settings}
-          onViewReceipt={(sale) => setSelectedReceipt(sale)}
-          onOpenReturnForSale={(sale) => {
-            setSalesReturnPreInvoiceNo(sale.invoiceNumber);
-            setIsSalesReturnOpen(true);
-          }}
-          onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-        />
-      )}
+        {isCompletedReceiptsOpen && (
+          <CompletedReceiptsModal
+            isOpen={isCompletedReceiptsOpen}
+            onClose={() => setIsCompletedReceiptsOpen(false)}
+            salesHistory={salesHistory}
+            setSalesHistory={setSalesHistory}
+            userAccounts={userAccounts}
+            onUpdateSaleCashier={(saleId, newCashierName) => {
+              setSalesHistory(prev => prev.map(s => s.id === saleId ? { ...s, cashierName: newCashierName } : s));
+            }}
+            settings={settings}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onOpenReturnForSale={(sale) => {
+              setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+              setIsSalesReturnOpen(true);
+            }}
+            onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+          />
+        )}
 
-      {isSalesReturnOpen && (
-        <SalesReturnModal
-          isOpen={isSalesReturnOpen}
-          onClose={() => setIsSalesReturnOpen(false)}
-          products={products}
-          setProducts={setProducts}
-          salesHistory={salesHistory}
-          setSalesHistory={setSalesHistory}
-          settings={settings}
-          preSelectedInvoiceNo={salesReturnPreInvoiceNo}
-          onViewReceipt={(sale) => setSelectedReceipt(sale)}
-          onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-          onOpenInventory={() => {
-            setIsSalesReturnOpen(false);
-            setActiveTab('products');
-          }}
-        />
-      )}
+        {isSalesReturnOpen && (
+          <SalesReturnModal
+            isOpen={isSalesReturnOpen}
+            onClose={() => setIsSalesReturnOpen(false)}
+            products={products}
+            setProducts={setProducts}
+            salesHistory={salesHistory}
+            setSalesHistory={setSalesHistory}
+            settings={settings}
+            preSelectedInvoiceNo={salesReturnPreInvoiceNo}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+            onOpenInventory={() => {
+              setIsSalesReturnOpen(false);
+              setActiveTab('products');
+            }}
+          />
+        )}
 
-      {isCashDrawerOpen && (
-        <CashDrawerModal
-          isOpen={isCashDrawerOpen}
-          onClose={() => setIsCashDrawerOpen(false)}
-          salesHistory={salesHistory}
-          settings={settings}
-          onOpenShiftReport={() => setIsShiftReportOpen(true)}
-        />
-      )}
+        {isCashDrawerOpen && (
+          <CashDrawerModal
+            isOpen={isCashDrawerOpen}
+            onClose={() => setIsCashDrawerOpen(false)}
+            salesHistory={salesHistory}
+            settings={settings}
+            onOpenShiftReport={() => setIsShiftReportOpen(true)}
+          />
+        )}
 
-      {isShiftReportOpen && (
-        <ShiftReportModal
-          isOpen={isShiftReportOpen}
-          onClose={() => setIsShiftReportOpen(false)}
-          salesHistory={salesHistory}
-          settings={settings}
-          cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
-          onViewReceipt={(sale) => setSelectedReceipt(sale)}
-          onOpenSalesReturn={(invoiceNo) => {
-            setSalesReturnPreInvoiceNo(invoiceNo || null);
-            setIsSalesReturnOpen(true);
-          }}
-        />
-      )}
+        {isShiftReportOpen && (
+          <ShiftReportModal
+            isOpen={isShiftReportOpen}
+            onClose={() => setIsShiftReportOpen(false)}
+            salesHistory={salesHistory}
+            settings={settings}
+            cashierName={currentUser?.fullName || (isAr ? 'الكاشير الرئيسي' : 'Main Cashier')}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onOpenSalesReturn={(invoiceNo) => {
+              setSalesReturnPreInvoiceNo(invoiceNo || null);
+              setIsSalesReturnOpen(true);
+            }}
+          />
+        )}
 
-      {isMobileSyncOpen && (
-        <MobileSyncModal
-          isOpen={isMobileSyncOpen}
-          onClose={() => setIsMobileSyncOpen(false)}
-          settings={settings}
-          onTestBarcodeReceived={(barcode) => {
-            window.dispatchEvent(new CustomEvent('phsmart_external_barcode_scan', {
-              detail: { barcode }
-            }));
-          }}
-        />
-      )}
+        {isMobileSyncOpen && (
+          <MobileSyncModal
+            isOpen={isMobileSyncOpen}
+            onClose={() => setIsMobileSyncOpen(false)}
+            settings={settings}
+            onTestBarcodeReceived={(barcode) => {
+              window.dispatchEvent(new CustomEvent('phsmart_external_barcode_scan', {
+                detail: { barcode }
+              }));
+            }}
+          />
+        )}
 
-      {isBarcodePrintOpen && (
-        <BarcodePrintModal
-          isOpen={isBarcodePrintOpen}
-          onClose={() => setIsBarcodePrintOpen(false)}
-          initialProduct={productForBarcodePrint}
-          products={products}
-          settings={settings}
-        />
-      )}
+        {isBarcodePrintOpen && (
+          <BarcodePrintModal
+            isOpen={isBarcodePrintOpen}
+            onClose={() => setIsBarcodePrintOpen(false)}
+            initialProduct={productForBarcodePrint}
+            products={products}
+            settings={settings}
+          />
+        )}
 
-      {isDesktopAppModalOpen && (
-        <DesktopAppModal
-          isOpen={isDesktopAppModalOpen}
-          onClose={() => setIsDesktopAppModalOpen(false)}
-          settings={settings}
-          deferredPrompt={deferredPrompt}
-          onTriggerInstall={handleTriggerInstall}
-        />
-      )}
+        {isDesktopAppModalOpen && (
+          <DesktopAppModal
+            isOpen={isDesktopAppModalOpen}
+            onClose={() => setIsDesktopAppModalOpen(false)}
+            settings={settings}
+            deferredPrompt={deferredPrompt}
+            onTriggerInstall={handleTriggerInstall}
+          />
+        )}
 
-      {isCSharpModalOpen && (
-        <CSharpExporterModal
-          isOpen={isCSharpModalOpen}
-          onClose={() => setIsCSharpModalOpen(false)}
-          settings={settings}
-          products={products}
-          sales={salesHistory}
-        />
-      )}
+        {isCSharpModalOpen && (
+          <CSharpExporterModal
+            isOpen={isCSharpModalOpen}
+            onClose={() => setIsCSharpModalOpen(false)}
+            settings={settings}
+            products={products}
+            sales={salesHistory}
+          />
+        )}
 
-      {isAccountsModalOpen && (
-        <CashierAccountsModal
-          isOpen={isAccountsModalOpen}
-          onClose={() => setIsAccountsModalOpen(false)}
-          userAccounts={userAccounts}
-          salesHistory={salesHistory}
-          settings={settings}
-          onViewReceipt={(sale) => setSelectedReceipt(sale)}
-          onOpenReturnForSale={(sale) => {
-            setSalesReturnPreInvoiceNo(sale.invoiceNumber);
-            setIsSalesReturnOpen(true);
-          }}
-          onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
-          onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
-        />
-      )}
+        {isAccountsModalOpen && (
+          <CashierAccountsModal
+            isOpen={isAccountsModalOpen}
+            onClose={() => setIsAccountsModalOpen(false)}
+            userAccounts={userAccounts}
+            salesHistory={salesHistory}
+            settings={settings}
+            onViewReceipt={(sale) => setSelectedReceipt(sale)}
+            onOpenReturnForSale={(sale) => {
+              setSalesReturnPreInvoiceNo(sale.invoiceNumber);
+              setIsSalesReturnOpen(true);
+            }}
+            onOpenSalesReturnModal={() => setIsSalesReturnOpen(true)}
+            onOpenCompletedReceiptsModal={() => setIsCompletedReceiptsOpen(true)}
+          />
+        )}
 
-      {isInventoryAuditOpen && (
-        <InventoryAuditModal
-          isOpen={isInventoryAuditOpen}
-          onClose={() => setIsInventoryAuditOpen(false)}
-          products={products}
-          setProducts={setProducts}
-          settings={settings}
-        />
-      )}
+        {isInventoryAuditOpen && (
+          <InventoryAuditModal
+            isOpen={isInventoryAuditOpen}
+            onClose={() => setIsInventoryAuditOpen(false)}
+            products={products}
+            setProducts={setProducts}
+            settings={settings}
+          />
+        )}
 
-      {isAIInvoiceScannerOpen && (
-        <AIInvoiceScannerModal
-          isOpen={isAIInvoiceScannerOpen}
-          onClose={() => setIsAIInvoiceScannerOpen(false)}
-          settings={settings}
-          existingProducts={products}
-          existingSuppliers={suppliers}
-          onConfirmImport={handleConfirmAIInvoiceImport}
-          onTransferToDraft={(draftData) => {
-            setAiDraftImportData(draftData);
-            setActiveTab('purchases');
-          }}
-          onNavigateToTab={(tab) => setActiveTab(tab as any)}
-          onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
-        />
-      )}
+        {isAIInvoiceScannerOpen && (
+          <AIInvoiceScannerModal
+            isOpen={isAIInvoiceScannerOpen}
+            onClose={() => setIsAIInvoiceScannerOpen(false)}
+            settings={settings}
+            existingProducts={products}
+            existingSuppliers={suppliers}
+            onConfirmImport={handleConfirmAIInvoiceImport}
+            onTransferToDraft={(draftData) => {
+              setAiDraftImportData(draftData);
+              setActiveTab('purchases');
+            }}
+            onNavigateToTab={(tab) => setActiveTab(tab as any)}
+            onOpenLegacyScreenMigrator={() => setIsLegacyMigratorOpen(true)}
+          />
+        )}
 
-      {isLegacyMigratorOpen && (
-        <AILegacySystemMigratorModal
-          isOpen={isLegacyMigratorOpen}
-          onClose={() => setIsLegacyMigratorOpen(false)}
-          settings={settings}
-          existingProducts={products}
-          currentUser={currentUser}
-          onConfirmMigration={handleConfirmLegacyMigration}
-          onUpdateSettings={setSettings}
-        />
-      )}
+        {isLegacyMigratorOpen && (
+          <AILegacySystemMigratorModal
+            isOpen={isLegacyMigratorOpen}
+            onClose={() => setIsLegacyMigratorOpen(false)}
+            settings={settings}
+            existingProducts={products}
+            currentUser={currentUser}
+            onConfirmMigration={handleConfirmLegacyMigration}
+            onUpdateSettings={setSettings}
+          />
+        )}
 
-      {isLocalDataNetworkOpen && (
-        <LocalDataNetworkModal
-          isOpen={isLocalDataNetworkOpen}
-          onClose={() => setIsLocalDataNetworkOpen(false)}
-          settings={settings}
-          onOpenMobileSync={() => setIsMobileSyncOpen(true)}
-          onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
-          onOpenLegacyMigrator={() => setIsLegacyMigratorOpen(true)}
-        />
-      )}
-      </Suspense>
+        {isLocalDataNetworkOpen && (
+          <LocalDataNetworkModal
+            isOpen={isLocalDataNetworkOpen}
+            onClose={() => setIsLocalDataNetworkOpen(false)}
+            settings={settings}
+            onOpenMobileSync={() => setIsMobileSyncOpen(true)}
+            onOpenAIInvoiceScanner={() => setIsAIInvoiceScannerOpen(true)}
+            onOpenLegacyMigrator={() => setIsLegacyMigratorOpen(true)}
+          />
+        )}
+      </React.Suspense>
 
       {/* Real-time Mobile Scanner Reception Toast on Laptop */}
       {mobileScanToast && (

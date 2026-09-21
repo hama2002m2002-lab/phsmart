@@ -239,10 +239,36 @@ export async function localDbClear(storeName: StoreName): Promise<void> {
   }
 }
 
+// In-memory instant cache for zero-latency lookups (0ms response)
+const memKVCache = new Map<string, any>();
+
 /**
- * Save value to Key-Value Store
+ * Request durable browser storage (prevents eviction under disk pressure)
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+    try {
+      const isPersisted = await navigator.storage.persisted();
+      if (!isPersisted) {
+        const granted = await navigator.storage.persist();
+        console.log('[LocalDB] Persistent storage granted:', granted);
+        return granted;
+      }
+      return isPersisted;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Save value to Key-Value Store with instant in-memory reflection and non-blocking background write
  */
 export async function localDbSetKV<T>(key: string, value: T): Promise<void> {
+  // 1. Instant in-memory cache update (0ms latency for subsequent synchronous reads)
+  memKVCache.set(key, value);
+
   try {
     const db = await openLocalDatabase();
     return new Promise((resolve, reject) => {
@@ -258,9 +284,14 @@ export async function localDbSetKV<T>(key: string, value: T): Promise<void> {
 }
 
 /**
- * Get value from Key-Value Store
+ * Get value from Key-Value Store with instant memory cache fallback
  */
 export async function localDbGetKV<T>(key: string, defaultValue: T): Promise<T> {
+  // If present in memory cache, return immediately (0ms)
+  if (memKVCache.has(key)) {
+    return memKVCache.get(key) as T;
+  }
+
   try {
     const db = await openLocalDatabase();
     return new Promise((resolve) => {
@@ -270,7 +301,9 @@ export async function localDbGetKV<T>(key: string, defaultValue: T): Promise<T> 
 
       request.onsuccess = () => {
         if (request.result && request.result.value !== undefined) {
-          resolve(request.result.value as T);
+          const val = request.result.value as T;
+          memKVCache.set(key, val);
+          resolve(val);
         } else {
           resolve(defaultValue);
         }
