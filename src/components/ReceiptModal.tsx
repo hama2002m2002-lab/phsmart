@@ -212,12 +212,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
           #printable-receipt table {
             border-collapse: collapse !important;
             width: 100% !important;
+            table-layout: fixed !important;
             border: 1.5px solid #000000 !important;
             font-family: 'Times New Roman', Times, serif !important;
           }
           #printable-receipt th, #printable-receipt td {
             border: 1px solid #000000 !important;
             color: #000000 !important;
+            box-sizing: border-box !important;
+            vertical-align: middle !important;
           }
         }
       `}</style>
@@ -838,7 +841,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                       {storeDisplayName || '7AMO.POS'}
                     </h1>
                     <p className="text-[9.5px] text-black font-bold mt-0.5 leading-snug">
-                      {settings.address || (isAr ? 'العراق - بغداد - شارع فلسطين' : isKu ? 'عێراق - بەغداد - شەقامی فەلەستین' : 'Palestine St - Baghdad')} | <span dir="ltr" className="font-bold">{settings.phone || '0000 000 770 964+'}</span>
+                      {settings.address || (isAr ? 'العراق - بغداد - شارع فلسطين' : isKu ? 'عێراق - بەغداد - شەقامی فەلەستین' : 'Palestine St - Baghdad')}
+                      {settings.phone ? ` • ${settings.phone}` : ' • +964 770 000 0000'}
                     </p>
                   </div>
 
@@ -848,17 +852,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                   {/* Metadata Row 1: [#5001] + Payment Method (Right) / Date & Time (Left) */}
                   <div className="flex justify-between items-center text-[9.5px] font-bold text-black mb-0.5">
                     <div className="flex items-center gap-1.5">
+                      <span className="border-[1.5px] border-black px-1.5 py-[0.5px] font-black" dir="ltr">
+                        #{sale.invoiceNumber}
+                      </span>
+                      <span>•</span>
                       <span>
                         {sale.paymentMethod === 'cash'
-                          ? t('نقد (كاش)', 'نەقد (کاش)', 'Cash')
+                          ? t('نقداً (كاش)', 'نەقد (کاش)', 'Cash')
                           : sale.paymentMethod === 'card'
                           ? t('بطاقة (كارت)', 'کارت / ڤیزا', 'Card')
                           : sale.paymentMethod === 'debt'
                           ? t('آجل (دين)', 'قەرز', 'Credit')
-                          : (sale.paymentMethod || t('نقد (كاش)', 'نەقد (کاش)', 'Cash'))}
-                      </span>
-                      <span className="border-[1.5px] border-black px-1.5 py-[0.5px] font-black" dir="ltr">
-                        #{sale.invoiceNumber}
+                          : (sale.paymentMethod || t('نقداً (كاش)', 'نەقد (کاش)', 'Cash'))}
                       </span>
                     </div>
                     <div dir="ltr" className="font-bold text-[9.5px]">
@@ -867,7 +872,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                   </div>
 
                   {/* Metadata Row 2: Cashier (Right) / Status (Left) */}
-                  <div className="flex justify-between items-center text-[9.5px] font-bold text-black mb-1">
+                  <div className="flex justify-between items-center text-[9.5px] font-bold text-black mb-0.5">
                     <div>
                       {t('الكاشير:', 'کاشێر:', 'Cashier:')} {sale.cashierName || t('Admin', 'Admin', 'Admin')}
                     </div>
@@ -875,23 +880,37 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                       {isRefundReceipt
                         ? t('مرتجع بالكامل', 'گەڕاوەتەوە بەتەواوی', 'Fully Refunded')
                         : sale.paymentMethod === 'debt'
-                        ? t('آجل / غير مسدد', 'قەرز', 'Unpaid Debt')
+                        ? t('آجل / غير مسدد', 'قەرز (نەدراوە)', 'Unpaid Debt')
                         : t('مدفوع بالكامل', 'دراوە بە تەواوی', 'Fully Paid')}
                     </div>
                   </div>
+
+                  {/* Metadata Row 3: Customer if any */}
+                  {sale.customerName && (
+                    <div className="flex justify-between items-center text-[9.5px] font-bold text-black mb-0.5">
+                      <div>{t('الزبون:', 'موشتەری:', 'Customer:')} {sale.customerName}</div>
+                    </div>
+                  )}
 
                   {/* Dashed Horizontal Line */}
                   <div className="border-b-[1.5px] border-dashed border-black my-1" />
 
                   {/* Items Table with Crisp Black Grid Borders */}
-                  <table className="w-full border-collapse border-[1.5px] border-black text-[9.5px] my-1 text-black">
+                  <table className="w-full border-collapse border-[1.5px] border-black text-[9.5px] my-1 text-black" style={{ tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: '38%' }} />
+                      <col style={{ width: '15%' }} />
+                      <col style={{ width: '12%' }} />
+                      <col style={{ width: '17%' }} />
+                      <col style={{ width: '18%' }} />
+                    </colgroup>
                     <thead>
                       <tr className="border-b-[1.5px] border-black bg-white font-black">
-                        <th className="border border-black py-1 px-1.5 text-right rtl:text-right w-[40%]">{t('المادة', 'کاڵا', 'Item')}</th>
-                        <th className="border border-black py-1 px-1 text-center w-[15%]">{t('النوع', 'جۆر', 'Type')}</th>
-                        <th className="border border-black py-1 px-1 text-center w-[12%]">{t('العدد', 'بڕ', 'Qty')}</th>
-                        <th className="border border-black py-1 px-1 text-center w-[16%]">{t('السعر', 'نرخ', 'Price')}</th>
-                        <th className="border border-black py-1 px-1.5 text-left rtl:text-left w-[17%]">{t('الإجمالي', 'کۆی گشتی', 'Total')}</th>
+                        <th className="border border-black py-1 px-1.5 text-right rtl:text-right">{t('المادة', 'کاڵا', 'Item')}</th>
+                        <th className="border border-black py-1 px-1 text-center">{t('النوع', 'جۆر', 'Type')}</th>
+                        <th className="border border-black py-1 px-1 text-center">{t('العدد', 'بڕ', 'Qty')}</th>
+                        <th className="border border-black py-1 px-1 text-center">{t('السعر', 'نرخ', 'Price')}</th>
+                        <th className="border border-black py-1 px-1.5 text-left rtl:text-left">{t('الإجمالي', 'کۆی گشتی', 'Total')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -903,7 +922,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
 
                         return (
                           <tr key={idx} className="border-b border-black">
-                            <td className="border border-black py-1 px-1.5 text-right rtl:text-right align-middle font-bold leading-tight">
+                            <td className="border border-black py-1 px-1.5 text-right rtl:text-right align-middle font-bold leading-tight break-words">
                               <div>{itemName}</div>
                               {item.dosageInstruction && (
                                 <div className="text-[8px] italic font-normal">
@@ -916,14 +935,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                                 {saleTypeLabel}
                               </span>
                             </td>
-                            <td className="border border-black py-1 px-1 text-center align-middle font-bold text-[10px]" dir="ltr">
-                              {item.quantity}
+                            <td className="border border-black py-1 px-1 text-center align-middle font-bold text-[10px]">
+                              <span dir="ltr" className="inline-block">{item.quantity}</span>
                             </td>
-                            <td className="border border-black py-1 px-1 text-center align-middle font-bold whitespace-nowrap text-[9px]" dir="ltr">
-                              {formatNumber(item.price)}
+                            <td className="border border-black py-1 px-1 text-center align-middle font-bold whitespace-nowrap text-[9px]">
+                              <span dir="ltr" className="inline-block">{formatNumber(item.price)}</span>
                             </td>
-                            <td className="border border-black py-1 px-1.5 text-left rtl:text-left align-middle font-bold whitespace-nowrap text-[9px]" dir="ltr">
-                              {formatNumber(item.total)}
+                            <td className="border border-black py-1 px-1.5 text-left rtl:text-left align-middle font-bold whitespace-nowrap text-[9px]">
+                              <span dir="ltr" className="inline-block">{formatNumber(item.total)}</span>
                             </td>
                           </tr>
                         );
@@ -961,22 +980,33 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                       </span>
                     </div>
 
-                    {/* Tax or Discount */}
-                    {sale.tax > 0 ? (
+                    {/* Returned total if any */}
+                    {!isFullyRefunded && returnedTotal > 0 && (
                       <div className="flex justify-between items-center mb-0.5">
-                        <span>{t('الضريبة / الخدمة:', 'باج / خزمەتگوزاری:', 'Tax / Fee:')}</span>
+                        <span>{t('خصم المرجوع:', 'داشکاندنی گەڕاوە:', 'Refunds:')}</span>
                         <span dir="ltr" className="font-bold">
-                          {formatNumber(sale.tax)} {currency}
+                          -{formatNumber(returnedTotal)} {currency}
                         </span>
                       </div>
-                    ) : sale.discount > 0 ? (
+                    )}
+
+                    {/* Tax or Discount */}
+                    {sale.discount > 0 && (
                       <div className="flex justify-between items-center mb-0.5">
                         <span>{t('الخصم الممنوح:', 'داشکاندن:', 'Discount:')}</span>
                         <span dir="ltr" className="font-bold">
                           -{formatNumber(sale.discount)} {currency}
                         </span>
                       </div>
-                    ) : null}
+                    )}
+                    {sale.tax > 0 && (
+                      <div className="flex justify-between items-center mb-0.5">
+                        <span>{t('الضريبة / الخدمة:', 'باج / خزمەتگوزاری:', 'Tax / Fee:')}</span>
+                        <span dir="ltr" className="font-bold">
+                          {formatNumber(sale.tax)} {currency}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Dashed divider */}
                     <div className="border-t-[1.5px] border-dashed border-black my-1" />
@@ -988,6 +1018,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose, setti
                         {sale.total < 0 ? '-' : ''}{formatNumber(Math.abs(sale.total))} {currency}
                       </span>
                     </div>
+
+                    {/* Dashed divider */}
+                    <div className="border-t-[1.5px] border-dashed border-black my-1" />
 
                     {/* Tendered & Change */}
                     <div className="flex justify-between items-center text-[9px] pt-0.5">

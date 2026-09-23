@@ -610,30 +610,35 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
           .items-table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
             border: 1.5px solid #000000;
             font-family: 'Times New Roman', Times, serif;
             font-size: 9.5px;
             margin: 3px 0;
+            box-sizing: border-box;
           }
           .items-table th {
-            border: 1px solid #000000;
-            padding: 2px 2px;
+            border: 1px solid #000000 !important;
+            padding: 3px 2px !important;
             font-weight: 900;
             background: #ffffff;
             color: #000000;
             text-align: center;
+            box-sizing: border-box;
           }
           .items-table td {
-            border: 1px solid #000000;
-            padding: 2px 2px;
+            border: 1px solid #000000 !important;
+            padding: 3px 2px !important;
             vertical-align: middle;
             color: #000000;
+            box-sizing: border-box;
           }
           .col-name {
-            width: 40%;
+            width: 38%;
             text-align: ${isAr || isKu ? 'right' : 'left'};
             font-weight: bold;
             line-height: 1.15;
+            word-break: break-word;
           }
           .col-type {
             width: 15%;
@@ -645,14 +650,16 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
             font-weight: bold;
           }
           .col-price {
-            width: 16%;
+            width: 17%;
             text-align: center;
             font-weight: bold;
+            white-space: nowrap;
           }
           .col-total {
-            width: 17%;
+            width: 18%;
             text-align: ${isAr || isKu ? 'left' : 'right'};
             font-weight: bold;
+            white-space: nowrap;
           }
           .type-pill {
             border: 1px solid #000000;
@@ -719,7 +726,8 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
             ` : ''}
             <div class="store-name">${storeName || '7AMO.POS'}</div>
             <div class="store-sub">
-              ${settings.address || (isAr ? 'العراق - بغداد - شارع فلسطين' : isKu ? 'عێراق - بەغداد - شەقامی فەلەستین' : 'Palestine St - Baghdad')} | <span class="num-ltr" style="font-weight: bold;">${settings.phone || '0000 000 770 964+'}</span>
+              ${settings.address || (isAr ? 'العراق - بغداد - شارع فلسطين' : isKu ? 'عێراق - بەغداد - شەقامی فەلەستین' : 'Palestine St - Baghdad')}
+              ${settings.phone ? ` • <span class="num-ltr" style="font-weight: bold;">${settings.phone}</span>` : ' • <span class="num-ltr" style="font-weight: bold;">+964 770 000 0000</span>'}
             </div>
           </div>
 
@@ -729,8 +737,9 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
           <!-- Meta Row 1 -->
           <div class="meta-row">
             <div>
-              <span>${cleanPaymentLabel}</span>
               <span class="inv-badge num-ltr">#${sale.invoiceNumber}</span>
+              <span style="margin: 0 4px;">•</span>
+              <span>${cleanPaymentLabel}</span>
             </div>
             <div class="num-ltr" style="font-weight: bold;">
               ${formatReceiptDateTime(sale.timestamp, lang)}
@@ -744,16 +753,27 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
               ${isRefunded 
                 ? (isKu ? 'گەڕاوەتەوە بەتەواوی' : isAr ? 'مرتجع بالكامل' : 'Refunded')
                 : sale.paymentMethod === 'debt'
-                ? (isKu ? 'قەرز' : isAr ? 'آجل / غير مسدد' : 'Credit')
+                ? (isKu ? 'قەرز (نەدراوە)' : isAr ? 'آجل / غير مسدد' : 'Credit')
                 : (isKu ? 'دراوە بە تەواوی' : isAr ? 'مدفوع بالكامل' : 'Paid')}
             </div>
           </div>
+          ${sale.customerName ? `
+          <div class="meta-row">
+            <div>${isKu ? 'موشتەری:' : isAr ? 'الزبون:' : 'Customer:'} ${sale.customerName}</div>
+          </div>` : ''}
 
           <!-- Dashed Line -->
           <div class="dashed-line"></div>
 
           <!-- Items Table with Crisp Black Grid Borders -->
           <table class="items-table">
+            <colgroup>
+              <col style="width: 38%;">
+              <col style="width: 15%;">
+              <col style="width: 12%;">
+              <col style="width: 17%;">
+              <col style="width: 18%;">
+            </colgroup>
             <thead>
               <tr>
                 <th class="col-name">${isKu ? 'کاڵا' : isAr ? 'المادة' : 'Item'}</th>
@@ -776,9 +796,9 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
                       ${item.dosageInstruction ? `<div style="font-size: 8px; font-weight: normal; font-style: italic;">💊 ${item.dosageInstruction}</div>` : ''}
                     </td>
                     <td class="col-type"><span class="type-pill">${saleTypeLabel}</span></td>
-                    <td class="col-qty num-ltr">${item.quantity}</td>
-                    <td class="col-price num-ltr">${formatNumber(item.price)}</td>
-                    <td class="col-total num-ltr">${isRefunded ? '-' : ''}${formatNumber(Math.abs(item.total))}</td>
+                    <td class="col-qty"><span class="num-ltr">${item.quantity}</span></td>
+                    <td class="col-price"><span class="num-ltr">${formatNumber(item.price)}</span></td>
+                    <td class="col-total"><span class="num-ltr">${isRefunded ? '-' : ''}${formatNumber(Math.abs(item.total))}</span></td>
                   </tr>
                 `;
               }).join('')}
@@ -798,9 +818,9 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
                     <tr>
                       <td class="col-name">[${isKu ? 'گەڕاوە' : isAr ? 'مرتجع' : 'Ret'}] ${retName}</td>
                       <td class="col-type"><span class="type-pill">${retSaleType}</span></td>
-                      <td class="col-qty num-ltr">${ret.quantity}</td>
-                      <td class="col-price num-ltr">${formatNumber(ret.price || (ret.total / ret.quantity))}</td>
-                      <td class="col-total num-ltr">-${formatNumber(ret.total)}</td>
+                      <td class="col-qty"><span class="num-ltr">${ret.quantity}</span></td>
+                      <td class="col-price"><span class="num-ltr">${formatNumber(ret.price || (ret.total / ret.quantity))}</span></td>
+                      <td class="col-total"><span class="num-ltr">-${formatNumber(ret.total)}</span></td>
                     </tr>
                   `;
                 }).join('')}
@@ -812,39 +832,41 @@ function renderSilentIframeReceipt(sale: SaleTransaction, settings: StoreSetting
           <div class="totals-card">
             <div class="totals-row">
               <span>${isKu ? 'کۆی سەرەتایی:' : isAr ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-              <span class="num-ltr">${formatNumber(Math.abs(sale.subtotal))} ${currency}</span>
+              <span class="num-ltr font-bold">${formatNumber(Math.abs(sale.subtotal))} ${currency}</span>
             </div>
             ${(!isRefunded && returnedTotal > 0) ? `
             <div class="totals-row">
               <span>${isKu ? 'داشکاندنی گەڕاوە:' : isAr ? 'خصم المرجوع:' : 'Refunds:'}</span>
-              <span class="num-ltr">-${formatNumber(returnedTotal)} ${currency}</span>
+              <span class="num-ltr font-bold">-${formatNumber(returnedTotal)} ${currency}</span>
             </div>` : ''}
             ${sale.discount > 0 ? `
             <div class="totals-row">
               <span>${isKu ? 'داشکاندن:' : isAr ? 'الخصم الممنوح:' : 'Discount:'}</span>
-              <span class="num-ltr">-${formatNumber(sale.discount)} ${currency}</span>
+              <span class="num-ltr font-bold">-${formatNumber(sale.discount)} ${currency}</span>
             </div>` : ''}
             ${sale.tax > 0 ? `
             <div class="totals-row">
               <span>${isKu ? 'باج / خزمەتگوزاری:' : isAr ? 'الضريبة / الخدمة:' : 'Tax:'}</span>
-              <span class="num-ltr">${formatNumber(sale.tax)} ${currency}</span>
+              <span class="num-ltr font-bold">${formatNumber(sale.tax)} ${currency}</span>
             </div>` : ''}
             
             <div class="dashed-line"></div>
 
             <div class="grand-total-row">
               <span>${isKu ? 'کۆی گشتی و کۆتایی:' : isAr ? 'الصافي النهائي:' : 'GRAND TOTAL:'}</span>
-              <span class="num-ltr" style="font-size: 13px;">${sale.total < 0 ? '-' : ''}${formatNumber(Math.abs(sale.total))} ${currency}</span>
+              <span class="num-ltr" style="font-size: 13px; font-weight: 900;">${sale.total < 0 ? '-' : ''}${formatNumber(Math.abs(sale.total))} ${currency}</span>
             </div>
 
-            <div class="totals-row" style="font-size: 9px; margin-top: 2px;">
+            <div class="dashed-line"></div>
+
+            <div class="totals-row" style="font-size: 9px; margin-top: 1px;">
               <span>
                 ${isKu ? 'وەرگیراو:' : isAr ? 'المستلم:' : 'Tendered:'} 
-                <span class="num-ltr">${formatNumber(sale.amountTendered || sale.total)} ${currency}</span>
+                <span class="num-ltr" style="font-weight: bold;">${formatNumber(sale.amountTendered || sale.total)} ${currency}</span>
               </span>
               <span>
                 ${isKu ? 'ماوە:' : isAr ? 'الباقي:' : 'Change:'} 
-                <span class="num-ltr">${formatNumber(sale.changeDue || 0)} ${currency}</span>
+                <span class="num-ltr" style="font-weight: bold;">${formatNumber(sale.changeDue || 0)} ${currency}</span>
               </span>
             </div>
           </div>
