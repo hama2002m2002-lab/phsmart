@@ -9,41 +9,41 @@ import { OverviewTab } from './components/OverviewTab';
 import { POSTab } from './components/POSTab';
 import { ProductsTab } from './components/ProductsTab';
 
-// Secondary views loaded on-demand via React.lazy with zero initial overhead
-const InvoicesTab = React.lazy(() => import('./components/InvoicesTab').then(m => ({ default: m.InvoicesTab })));
-const PurchasesTab = React.lazy(() => import('./components/PurchasesTab').then(m => ({ default: m.PurchasesTab })));
-const VouchersHubTab = React.lazy(() => import('./components/VouchersHubTab').then(m => ({ default: m.VouchersHubTab })));
-const SuppliersTab = React.lazy(() => import('./components/SuppliersTab').then(m => ({ default: m.SuppliersTab })));
-const CustomersTab = React.lazy(() => import('./components/CustomersTab').then(m => ({ default: m.CustomersTab })));
-const OrdersTab = React.lazy(() => import('./components/OrdersTab').then(m => ({ default: m.OrdersTab })));
-const AnalyticsTab = React.lazy(() => import('./components/AnalyticsTab').then(m => ({ default: m.AnalyticsTab })));
-const ReportsTab = React.lazy(() => import('./components/ReportsTab').then(m => ({ default: m.ReportsTab })));
-const NotificationsTab = React.lazy(() => import('./components/NotificationsTab').then(m => ({ default: m.NotificationsTab })));
-const SettingsTab = React.lazy(() => import('./components/SettingsTab').then(m => ({ default: m.SettingsTab })));
-const PrintCenterTab = React.lazy(() => import('./components/PrintCenterTab').then(m => ({ default: m.PrintCenterTab })));
-const AccountsHubTab = React.lazy(() => import('./components/AccountsHubTab').then(m => ({ default: m.AccountsHubTab })));
+// All primary views and tabs directly imported for 100% offline instant 0ms switching without network calls
+import { InvoicesTab } from './components/InvoicesTab';
+import { PurchasesTab } from './components/PurchasesTab';
+import { VouchersHubTab } from './components/VouchersHubTab';
+import { SuppliersTab } from './components/SuppliersTab';
+import { CustomersTab } from './components/CustomersTab';
+import { OrdersTab } from './components/OrdersTab';
+import { AnalyticsTab } from './components/AnalyticsTab';
+import { ReportsTab } from './components/ReportsTab';
+import { NotificationsTab } from './components/NotificationsTab';
+import { SettingsTab } from './components/SettingsTab';
+import { PrintCenterTab } from './components/PrintCenterTab';
+import { AccountsHubTab } from './components/AccountsHubTab';
 
-// Modals loaded on-demand to keep initial app launch instant (<100ms)
-const ReceiptModal = React.lazy(() => import('./components/ReceiptModal').then(m => ({ default: m.ReceiptModal })));
-const ProductModal = React.lazy(() => import('./components/ProductModal').then(m => ({ default: m.ProductModal })));
-const CompletedReceiptsModal = React.lazy(() => import('./components/CompletedReceiptsModal').then(m => ({ default: m.CompletedReceiptsModal })));
-const SalesReturnModal = React.lazy(() => import('./components/SalesReturnModal').then(m => ({ default: m.SalesReturnModal })));
-const CashDrawerModal = React.lazy(() => import('./components/CashDrawerModal').then(m => ({ default: m.CashDrawerModal })));
-const ShiftReportModal = React.lazy(() => import('./components/ShiftReportModal').then(m => ({ default: m.ShiftReportModal })));
-const MobileSyncModal = React.lazy(() => import('./components/MobileSyncModal').then(m => ({ default: m.MobileSyncModal })));
-const BarcodePrintModal = React.lazy(() => import('./components/BarcodePrintModal').then(m => ({ default: m.BarcodePrintModal })));
-const InventoryAuditModal = React.lazy(() => import('./components/InventoryAuditModal').then(m => ({ default: m.InventoryAuditModal })));
-const DamagedItemsModal = React.lazy(() => import('./components/DamagedItemsModal').then(m => ({ default: m.DamagedItemsModal })));
-const DelegateReturnsModal = React.lazy(() => import('./components/DelegateReturnsModal').then(m => ({ default: m.DelegateReturnsModal })));
-const AccountModal = React.lazy(() => import('./components/AccountModal').then(m => ({ default: m.AccountModal })));
-const DesktopAppModal = React.lazy(() => import('./components/DesktopAppModal').then(m => ({ default: m.DesktopAppModal })));
-const CSharpExporterModal = React.lazy(() => import('./components/CSharpExporterModal').then(m => ({ default: m.CSharpExporterModal })));
-const CashierAccountsModal = React.lazy(() => import('./components/CashierAccountsModal').then(m => ({ default: m.CashierAccountsModal })));
-const CustomerDisplayScreen = React.lazy(() => import('./components/CustomerDisplayScreen').then(m => ({ default: m.CustomerDisplayScreen })));
-const MobileScannerScreen = React.lazy(() => import('./components/MobileScannerScreen').then(m => ({ default: m.MobileScannerScreen })));
-const AIInvoiceScannerModal = React.lazy(() => import('./components/AIInvoiceScannerModal').then(m => ({ default: m.AIInvoiceScannerModal })));
-const AILegacySystemMigratorModal = React.lazy(() => import('./components/AILegacySystemMigratorModal').then(m => ({ default: m.AILegacySystemMigratorModal })));
-const LocalDataNetworkModal = React.lazy(() => import('./components/LocalDataNetworkModal').then(m => ({ default: m.LocalDataNetworkModal })));
+// Modals imported directly to ensure all dialogs open instantaneously (0ms) offline
+import { ReceiptModal } from './components/ReceiptModal';
+import { ProductModal } from './components/ProductModal';
+import { CompletedReceiptsModal } from './components/CompletedReceiptsModal';
+import { SalesReturnModal } from './components/SalesReturnModal';
+import { CashDrawerModal } from './components/CashDrawerModal';
+import { ShiftReportModal } from './components/ShiftReportModal';
+import { MobileSyncModal } from './components/MobileSyncModal';
+import { BarcodePrintModal } from './components/BarcodePrintModal';
+import { InventoryAuditModal } from './components/InventoryAuditModal';
+import { DamagedItemsModal } from './components/DamagedItemsModal';
+import { DelegateReturnsModal } from './components/DelegateReturnsModal';
+import { AccountModal } from './components/AccountModal';
+import { DesktopAppModal } from './components/DesktopAppModal';
+import { CSharpExporterModal } from './components/CSharpExporterModal';
+import { CashierAccountsModal } from './components/CashierAccountsModal';
+import { CustomerDisplayScreen } from './components/CustomerDisplayScreen';
+import { MobileScannerScreen } from './components/MobileScannerScreen';
+import { AIInvoiceScannerModal } from './components/AIInvoiceScannerModal';
+import { AILegacySystemMigratorModal } from './components/AILegacySystemMigratorModal';
+import { LocalDataNetworkModal } from './components/LocalDataNetworkModal';
 
 import { formatNumber } from './lib/formatUtils';
 import { bitmojiToDataUri, defaultBitmojiPresets } from './components/BitmojiAvatarSelector';
@@ -222,14 +222,7 @@ const initialUserAccounts: UserAccount[] = [
   }
 ];
 
-const TabLoadingFallback: React.FC<{ isAr: boolean }> = ({ isAr }) => (
-  <div className="flex-1 flex flex-col items-center justify-center min-h-[350px] p-8 text-center animate-fadeIn">
-    <div className="w-9 h-9 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin mb-3 shadow-[0_0_15px_rgba(6,182,212,0.3)]"></div>
-    <span className="text-xs font-bold text-slate-400 tracking-wide">
-      {isAr ? 'جاري فتح الواجهة...' : 'Loading view...'}
-    </span>
-  </div>
-);
+const TabLoadingFallback: React.FC<{ isAr: boolean }> = () => null;
 
 export function App() {
   // Session-based user authentication: Closing and reopening the program prompts for the login PIN
@@ -272,28 +265,9 @@ export function App() {
     }
   }, []);
 
-  // Background preloading of secondary views during idle time to guarantee 0ms latency on navigation
+  // Persistent offline storage initialization
   useEffect(() => {
     requestPersistentStorage().catch(() => {});
-    const preloadTimer = setTimeout(() => {
-      const preloadTabs = () => {
-        import('./components/POSTab').catch(() => {});
-        import('./components/ProductsTab').catch(() => {});
-        import('./components/InvoicesTab').catch(() => {});
-        import('./components/PurchasesTab').catch(() => {});
-        import('./components/SuppliersTab').catch(() => {});
-        import('./components/CustomersTab').catch(() => {});
-        import('./components/SettingsTab').catch(() => {});
-        import('./components/ReceiptModal').catch(() => {});
-        import('./components/ProductModal').catch(() => {});
-      };
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        (window as any).requestIdleCallback(preloadTabs);
-      } else {
-        setTimeout(preloadTabs, 1000);
-      }
-    }, 400);
-    return () => clearTimeout(preloadTimer);
   }, []);
 
   const [products, setProducts] = usePersistentState<Product[]>('supermarket_products_v1', initialProducts);
@@ -1766,7 +1740,7 @@ export function App() {
         
         {/* Desktop Sidebar (Fixed side navigation on lg+ screens) */}
         {isSidebarOpen && activeTab !== 'pos' && activeTab !== 'products' && activeTab !== 'purchases' && activeTab !== 'invoices' && activeTab !== 'accountsHub' && activeTab !== 'cashierAccounts' && !isReportsFullscreen && (
-          <div className="hidden lg:block w-64 shrink-0 h-full">
+          <div className="hidden lg:block w-fit min-w-[150px] max-w-[190px] shrink-0 h-full">
             <Sidebar
               activeTab={activeTab}
               setActiveTab={(tab) => {
@@ -1790,7 +1764,7 @@ export function App() {
               onClick={() => setIsSidebarOpen(false)}
             />
             {/* Drawer Container */}
-            <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10">
+            <div className="relative w-56 max-w-[85vw] h-full shadow-2xl z-10">
               <Sidebar
                 activeTab={activeTab}
                 setActiveTab={(tab) => {

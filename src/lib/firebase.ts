@@ -21,34 +21,51 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID || localConfig.appId,
 };
 
-// Initialize Firebase App
-export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Auth FIRST before Firestore so Auth provider is registered with Firebase app container
-let authInstance: Auth;
+// Resilient Firebase initialization that never blocks offline startup or module evaluation
+let appInstance: any = null;
 try {
-  authInstance = getAuth(app);
-} catch (authErr) {
-  console.warn('[Firebase Auth Engine] Initialization fallback notice:', authErr);
-  authInstance = null as any;
+  appInstance = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+} catch (e) {
+  console.warn('[Firebase] Initialization skipped in offline mode:', e);
 }
-export const auth = authInstance;
+export const app = appInstance;
 
-// Initialize Firestore DB with persistent IndexedDB multi-tab local cache for instant offline startup
-const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || (localConfig as any).firestoreDatabaseId || '').trim();
-
-let firestoreInstance;
-try {
-  firestoreInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
-    })
-  }, firestoreDbId || undefined);
-} catch {
-  firestoreInstance = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
+// Lazy Auth getter
+let authInstance: Auth | null = null;
+export function getFirebaseAuth(): Auth | null {
+  if (!authInstance && app) {
+    try {
+      authInstance = getAuth(app);
+    } catch (err) {
+      console.warn('[Firebase Auth] Failed to get auth instance:', err);
+    }
+  }
+  return authInstance;
 }
+export const auth = getFirebaseAuth();
 
-export const db = firestoreInstance;
+// Resilient Firestore DB reference
+let firestoreInstance: any = null;
+export function getFirebaseDb() {
+  if (!firestoreInstance && app) {
+    const firestoreDbId = (env.VITE_FIRESTORE_DATABASE_ID || (localConfig as any).firestoreDatabaseId || '').trim();
+    try {
+      firestoreInstance = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      }, firestoreDbId || undefined);
+    } catch {
+      try {
+        firestoreInstance = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
+      } catch (err) {
+        console.warn('[Firestore] Not available offline:', err);
+      }
+    }
+  }
+  return firestoreInstance;
+}
+export const db = getFirebaseDb();
 
 export enum OperationType {
   CREATE = 'create',

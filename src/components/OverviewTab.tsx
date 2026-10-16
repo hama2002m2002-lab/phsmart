@@ -18,7 +18,9 @@ import {
   Flame,
   Layers,
   Percent,
-  Wallet
+  Wallet,
+  Clock,
+  CalendarDays
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -35,7 +37,6 @@ import {
   CartesianGrid 
 } from 'recharts';
 import { Product, SaleTransaction, StoreSettings, UserAccount } from '../types';
-import { BiometricTelemetryHUD } from './BiometricTelemetryHUD';
 import { formatNumber } from '../lib/formatUtils';
 
 interface OverviewTabProps {
@@ -86,24 +87,48 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     return list.filter(s => s && s.status !== 'refunded');
   }, [salesHistory]);
 
-  // Today's Sales Calculation
-  const todayISO = new Date().toISOString().split('T')[0];
-  const todaySales = activeSales.filter(s => {
-    if (!s.timestamp) return false;
-    return s.timestamp.startsWith(todayISO) || new Date(s.timestamp).toDateString() === new Date().toDateString();
-  });
+  // 1. Today's 24-Hour Cycle Sales (مبيعات اليوم دورة 24 ساعة من 12:00 منتصف الليل إلى 12:00 ليلاً)
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const currentDay = now.getDate();
+
+  const startOfToday = React.useMemo(() => new Date(currentYear, currentMonth, currentDay, 0, 0, 0, 0), [currentYear, currentMonth, currentDay]);
+  const endOfToday = React.useMemo(() => new Date(currentYear, currentMonth, currentDay, 23, 59, 59, 999), [currentYear, currentMonth, currentDay]);
+
+  // 2. Month-to-Date Sales (مبيعات من أول الشهر 1 حتى اليوم الحالي)
+  const startOfMonth = React.useMemo(() => new Date(currentYear, currentMonth, 1, 0, 0, 0, 0), [currentYear, currentMonth]);
+
+  const todaySales = React.useMemo(() => {
+    return activeSales.filter(s => {
+      if (!s.timestamp) return false;
+      const t = new Date(s.timestamp);
+      return !isNaN(t.getTime()) && t >= startOfToday && t <= endOfToday;
+    });
+  }, [activeSales, startOfToday, endOfToday]);
+
+  const monthToDateSales = React.useMemo(() => {
+    return activeSales.filter(s => {
+      if (!s.timestamp) return false;
+      const t = new Date(s.timestamp);
+      return !isNaN(t.getTime()) && t >= startOfMonth && t <= endOfToday;
+    });
+  }, [activeSales, startOfMonth, endOfToday]);
 
   const todayTotalRevenue = todaySales.reduce((sum, s) => sum + (s.total || 0), 0);
   const todayInvoicesCount = todaySales.length;
+
+  const monthTotalRevenue = monthToDateSales.reduce((sum, s) => sum + (s.total || 0), 0);
+  const monthInvoicesCount = monthToDateSales.length;
 
   const overallTotalRevenue = activeSales.reduce((sum, s) => sum + (s.total || 0), 0);
   const overallInvoicesCount = activeSales.length;
 
   // Financial Analytics & Profit Estimates (دمج التحليلات المالية وهوامش الأرباح)
-  const totalRevenue = overallTotalRevenue > 0 ? overallTotalRevenue : 1118058;
-  const totalCostEstimate = overallTotalRevenue > 0 ? overallTotalRevenue * 0.65 : 726737;
-  const netProfitEstimate = overallTotalRevenue > 0 ? overallTotalRevenue - totalCostEstimate : 391320;
-  const netMarginPercent = totalRevenue > 0 ? Math.round((netProfitEstimate / totalRevenue) * 100) : 35;
+  const totalRevenue = overallTotalRevenue;
+  const totalCostEstimate = overallTotalRevenue > 0 ? Math.round(overallTotalRevenue * 0.65) : 0;
+  const netProfitEstimate = overallTotalRevenue > 0 ? overallTotalRevenue - totalCostEstimate : 0;
+  const netMarginPercent = totalRevenue > 0 ? Math.round((netProfitEstimate / totalRevenue) * 100) : 0;
 
   // 1. Category Breakdown Data (توزيع المبيعات حسب قسم المنتجات)
   const categorySalesData = React.useMemo(() => {
@@ -129,15 +154,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       }));
     }
 
-    // Default Category Distribution
-    return [
-      { name: isKu ? 'شیرەمەنی' : isAr ? 'Dairy' : 'Dairy', value: 3800, color: '#06B6D4' },
-      { name: isKu ? 'خواردنەوەکان' : isAr ? 'Beverages' : 'Beverages', value: 2900, color: '#3B82F6' },
-      { name: isKu ? 'قوتوو و خواردەمەنی' : isAr ? 'Canned Goods' : 'Canned Goods', value: 2400, color: '#10B981' },
-      { name: isKu ? 'میوە و سەوزە' : isAr ? 'Produce' : 'Produce', value: 1800, color: '#F59E0B' },
-      { name: isKu ? 'شیرینی و نانەوا' : isAr ? 'Bakery' : 'Bakery', value: 1200, color: '#EC4899' },
-      { name: isKu ? 'توشە و چیپس' : isAr ? 'Snacks' : 'Snacks', value: 1500, color: '#A855F7' },
-    ];
+    return [];
   }, [activeSales, products, isAr, isKu]);
 
   // 2. Last 7 Days Sales Trend Chart Data
@@ -167,18 +184,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       });
     }
 
-    // Fallback demo values if store has zero sales yet
-    const hasRealSales = result.some(r => r.sales > 0);
-    if (!hasRealSales) {
-      const demoValues = [350000, 480000, 620000, 510000, 790000, 950000, 840000];
-      const demoCounts = [12, 18, 22, 19, 28, 35, 30];
-      return result.map((r, idx) => ({
-        ...r,
-        sales: demoValues[idx],
-        count: demoCounts[idx]
-      }));
-    }
-
     return result;
   }, [activeSales, isAr, isKu]);
 
@@ -200,11 +205,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     const total = cashTotal + cardTotal + debtTotal + nfcTotal;
 
     if (total === 0) {
-      return [
-        { name: isKu ? 'کاش' : isAr ? 'نقدي' : 'Cash', value: 650000, color: '#10B981' },
-        { name: isKu ? 'کارت' : isAr ? 'بطاقة' : 'Card', value: 200000, color: '#3B82F6' },
-        { name: isKu ? 'قەرز' : isAr ? 'آجل' : 'Debt', value: 150000, color: '#F59E0B' }
-      ];
+      return [];
     }
 
     const items = [];
@@ -244,133 +245,129 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       else if (hour >= 22 || hour < 8) { buckets[7].sales += amt; buckets[7].count++; }
     });
 
-    const hasData = buckets.some(b => b.sales > 0);
-    if (!hasData) {
-      const demoSales = [420, 890, 1650, 1200, 2100, 3200, 2800, 1100];
-      return buckets.map((b, i) => ({
-        ...b,
-        sales: demoSales[i]
-      }));
-    }
-
     return buckets;
   }, [activeSales]);
 
   return (
     <div className={`space-y-4 sm:space-y-6 animate-fadeIn ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
       
-      {/* KPI Cards Grid (المؤشرات السريعة للمخزن والمبيعات) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+      {/* KPI Cards Grid (مبيعات اليوم 24 ساعة، مبيعات الشهر حتى اليوم، إجمالي الفواتير، وحالة المخزون) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
-        {/* Today's Sales Revenue Card */}
-        <div className={`p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-emerald-400 transition-all shadow-xl flex flex-col justify-between ${
+        {/* 1. Today's 24H Cycle Sales (مبيعات اليوم دورة 24 ساعة من 12 إلى 12) */}
+        <div className={`p-4 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-emerald-400 transition-all shadow-xl flex flex-col justify-between ${
           isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B132B] border-emerald-500/30 text-white'
         }`}>
           <div className="flex items-center justify-between">
-            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-              <DollarSign className="w-4 h-4 sm:w-6 sm:h-6" />
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
-              {todayInvoicesCount} {isKu ? 'ئەمڕۆ' : isAr ? 'اليوم' : 'today'}
+            <span className="text-[10px] sm:text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              {isKu ? '12:00 بۆ 12:00 (24k)' : isAr ? '12:00ص - 12:00م (24س)' : '24h (12AM-12AM)'}
             </span>
           </div>
 
-          <div className="mt-3 sm:mt-4 space-y-0.5">
-            <span className={`text-[10px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              {isKu ? 'سەرجەمی فرۆشتنی ئەمڕۆ' : isAr ? 'مبيعات اليوم' : "Today's Sales"}
+          <div className="mt-3 sm:mt-4 space-y-1">
+            <span className={`text-[11px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              {isKu ? 'فرۆشتنی ئەمڕۆ (24 کاتژمێر)' : isAr ? 'مبيعات اليوم (24 ساعة)' : "Today's Sales (24 Hours)"}
             </span>
-            <div className="text-base sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono truncate">
-              {formatNumber(todayTotalRevenue)} <span className="text-xs">{settings.currencySymbol}</span>
+            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight truncate">
+              {formatNumber(todayTotalRevenue)} <span className="text-xs font-bold">{settings.currencySymbol}</span>
             </div>
           </div>
 
-          <div className={`mt-2 sm:mt-3 pt-2 border-t text-[10px] sm:text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
-            <span className="truncate">{isKu ? 'کۆی گشتی:' : isAr ? 'الكلي:' : 'Total:'}</span>
-            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate">{formatNumber(overallTotalRevenue)}</span>
+          <div className={`mt-3 pt-2.5 border-t text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
+            <span className="truncate">{isKu ? 'پسوولەکانی ئەمڕۆ:' : isAr ? 'فواتير اليوم:' : 'Today Invoices:'}</span>
+            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+              {todayInvoicesCount}
+            </span>
           </div>
         </div>
 
-        {/* Total Sales Invoices Card */}
-        <div className={`p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-cyan-400 transition-all shadow-xl flex flex-col justify-between ${
+        {/* 2. Month-to-Date Sales (مبيعات من أول الشهر حتى اليوم الذي نحن فيه) */}
+        <div className={`p-4 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-cyan-400 transition-all shadow-xl flex flex-col justify-between ${
           isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B132B] border-cyan-500/30 text-white'
         }`}>
           <div className="flex items-center justify-between">
-            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
-              <Receipt className="w-4 h-4 sm:w-6 sm:h-6" />
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-cyan-500/15 text-cyan-500 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
+              <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
-              {isKu ? 'چالاک' : isAr ? 'نشط' : 'Active'}
+            <span className="text-[10px] sm:text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
+              {isKu ? `1 تا ${currentDay}ـی مانگ` : isAr ? `من 1 إلى ${currentDay} بالشهر` : `Day 1 to ${currentDay}`}
             </span>
           </div>
 
-          <div className="mt-3 sm:mt-4 space-y-0.5">
-            <span className={`text-[10px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              {isKu ? 'ژمارەی پسوولەکان' : isAr ? 'عدد الفواتير' : 'Total Invoices'}
+          <div className="mt-3 sm:mt-4 space-y-1">
+            <span className={`text-[11px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              {isKu ? 'فرۆشتنی ئەم مانگە تا ئەمڕۆ' : isAr ? 'مبيعات الشهر حتى اليوم' : 'Month-to-Date Sales'}
             </span>
-            <div className="text-base sm:text-2xl font-black text-cyan-600 dark:text-cyan-400 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-cyan-600 dark:text-cyan-400 font-mono tracking-tight truncate">
+              {formatNumber(monthTotalRevenue)} <span className="text-xs font-bold">{settings.currencySymbol}</span>
+            </div>
+          </div>
+
+          <div className={`mt-3 pt-2.5 border-t text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
+            <span className="truncate">{isKu ? 'پسوولەکانی ئەم مانگە:' : isAr ? 'فواتير هذا الشهر:' : 'Month Invoices:'}</span>
+            <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-lg border border-cyan-500/20">
+              {monthInvoicesCount}
+            </span>
+          </div>
+        </div>
+
+        {/* 3. Total Overall Invoices Card */}
+        <div className={`p-4 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-blue-400 transition-all shadow-xl flex flex-col justify-between ${
+          isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B132B] border-blue-500/30 text-white'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-blue-500/15 text-blue-500 border border-blue-500/30">
+              <Receipt className="w-4 h-4 sm:w-6 sm:h-6" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-300 border border-blue-500/30">
+              {isKu ? 'گشتی' : isAr ? 'الكلي' : 'Total'}
+            </span>
+          </div>
+
+          <div className="mt-3 sm:mt-4 space-y-1">
+            <span className={`text-[11px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              {isKu ? 'ژمارەی گشتی پسوولەکان' : isAr ? 'عدد الفواتير الكلي' : 'Total Invoices'}
+            </span>
+            <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
               {overallInvoicesCount.toLocaleString()}
             </div>
           </div>
 
-          <div className={`mt-2 sm:mt-3 pt-2 border-t text-[10px] sm:text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
-            <span>{isKu ? 'ئەمڕۆ:' : isAr ? 'اليوم:' : 'Today:'}</span>
-            <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">{todayInvoicesCount}</span>
+          <div className={`mt-3 pt-2.5 border-t text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
+            <span className="truncate">{isKu ? 'کۆی گشتی فرۆش:' : isAr ? 'إجمالي المبيعات:' : 'Total Sales:'}</span>
+            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 truncate">{formatNumber(overallTotalRevenue)}</span>
           </div>
         </div>
 
-        {/* Low Stock Items Card */}
-        <div className={`p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-amber-400 transition-all shadow-xl flex flex-col justify-between ${
+        {/* 4. Critical Stock Alerts Card */}
+        <div className={`p-4 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-amber-400 transition-all shadow-xl flex flex-col justify-between ${
           isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B132B] border-amber-500/30 text-white'
         }`}>
           <div className="flex items-center justify-between">
-            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-amber-500/15 text-amber-500 border border-amber-500/30">
               <AlertTriangle className="w-4 h-4 sm:w-6 sm:h-6 animate-pulse" />
             </div>
-            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/30">
-              {lowStockItems.length} {isKu ? 'ئاگاداری' : isAr ? 'تنبيه' : 'Alerts'}
+            <span className="text-[10px] sm:text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+              {lowStockItems.length + outOfStockItems.length} {isKu ? 'ئاگاداری' : isAr ? 'تنبيه' : 'Alerts'}
             </span>
           </div>
 
-          <div className="mt-3 sm:mt-4 space-y-0.5">
-            <span className={`text-[10px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              {isKu ? 'کاڵای نزیک لە تەواوبوون' : isAr ? 'مواد قريبة من النفاد' : 'Low Stock Items'}
+          <div className="mt-3 sm:mt-4 space-y-1">
+            <span className={`text-[11px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              {isKu ? 'کۆگای کەمبوو و تەواوبوو' : isAr ? 'المخزون المنخفض والنافذ' : 'Low & Out of Stock'}
             </span>
-            <div className="text-base sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
-              {lowStockItems.length}
+            <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
+              {lowStockItems.length + outOfStockItems.length}
             </div>
           </div>
 
-          <div className={`mt-2 sm:mt-3 pt-2 border-t text-[10px] sm:text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
-            <span className="truncate">{isKu ? 'داواکردنەوە:' : isAr ? 'إعادة طلب:' : 'Reorder:'}</span>
-            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{lowStockItems.length}</span>
-          </div>
-        </div>
-
-        {/* Out of Stock Card */}
-        <div className={`p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border relative overflow-hidden group hover:border-rose-400 transition-all shadow-xl flex flex-col justify-between ${
-          isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0B132B] border-rose-500/30 text-white'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
-              <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6" />
-            </div>
-            <span className="text-[9px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-500/30">
-              {outOfStockItems.length} {isKu ? 'تەواوبوو' : isAr ? 'نفذت' : 'Depleted'}
-            </span>
-          </div>
-
-          <div className="mt-3 sm:mt-4 space-y-0.5">
-            <span className={`text-[10px] sm:text-xs font-bold block truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              {isKu ? 'کاڵای تەواوبوو' : isAr ? 'مواد نفذت بالكامل' : 'Out of Stock'}
-            </span>
-            <div className="text-base sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
-              {outOfStockItems.length}
-            </div>
-          </div>
-
-          <div className={`mt-2 sm:mt-3 pt-2 border-t text-[10px] sm:text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
-            <span>{isKu ? 'باڵانس:' : isAr ? 'الرصيد:' : 'Stock:'}</span>
-            <span className="font-mono font-bold text-rose-600 dark:text-rose-400">0</span>
+          <div className={`mt-3 pt-2.5 border-t text-[11px] flex justify-between items-center ${isLight ? 'border-slate-100 text-slate-500' : 'border-slate-800 text-slate-400'}`}>
+            <span className="truncate">{outOfStockItems.length} {isKu ? 'تەواوبوو' : isAr ? 'نافذ' : 'out'}</span>
+            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{lowStockItems.length} {isKu ? 'کەم' : isAr ? 'منخفض' : 'low'}</span>
           </div>
         </div>
 
@@ -395,7 +392,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             {settings.currencySymbol}{formatNumber(totalRevenue)}
           </p>
           <div className="flex items-center gap-1 mt-1 text-[10px] text-cyan-600 dark:text-cyan-400 font-semibold">
-            <span>+14.2%</span>
+            <span>{totalRevenue > 0 ? '+14.2%' : '0%'}</span>
             <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>
               {isKu ? 'بەراورد بە هەفتەی ڕابردوو' : isAr ? 'مقارنة بالأسبوع الماضي' : 'vs last week'}
             </span>
@@ -418,7 +415,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             {settings.currencySymbol}{formatNumber(totalCostEstimate)}
           </p>
           <div className="flex items-center gap-1 mt-1 text-[10px] font-semibold">
-            <span className="text-amber-500 font-mono">65%</span>
+            <span className="text-amber-500 font-mono">{totalRevenue > 0 ? '65%' : '0%'}</span>
             <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>
               {isKu ? 'لە کۆی فرۆشراوەکان' : isAr ? 'من إجمالي المبيعات' : 'of gross volume'}
             </span>
@@ -928,9 +925,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         )}
       </div>
-
-      {/* Biometric Telemetry & Hardware HUD */}
-      <BiometricTelemetryHUD settings={settings} />
 
     </div>
   );

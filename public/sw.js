@@ -1,8 +1,8 @@
-// 7amo.pos Ultra-Fast Offline Service Worker (v8)
-// Enables 100% offline standalone POS operations with instantaneous (<100ms) startup and zero network latency stalls
+// 7amo.pos Ultra-Fast Offline Service Worker (v10)
+// Enables 100% offline standalone POS operations with instantaneous (<50ms) startup and zero network latency stalls
 
-const CACHE_NAME = '7amo-pos-cache-v8';
-const DATA_CACHE_NAME = '7amo-pos-data-v8';
+const CACHE_NAME = '7amo-pos-cache-v10';
+const DATA_CACHE_NAME = '7amo-pos-data-v10';
 
 // Core assets to pre-cache immediately on install
 const PRECACHE_ASSETS = [
@@ -49,33 +49,43 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Bypass ServiceWorker completely for Vite development assets to eliminate all startup latency
+  // Only bypass Vite internal HMR websocket pings so they don't pollute cache
   if (
-    url.pathname.startsWith('/src/') ||
-    url.pathname.startsWith('/@') ||
-    url.pathname.includes('node_modules') ||
-    url.pathname.endsWith('.ts') ||
-    url.pathname.endsWith('.tsx') ||
-    url.searchParams.has('t') ||
-    url.searchParams.has('v')
+    url.pathname.startsWith('/@vite/client') ||
+    url.pathname.includes('hot-update')
   ) {
     return;
   }
 
   // 1. Navigation requests (HTML page loads, reloads, and desktop app launches)
+  // Strategy: Cache-First with Background Revalidation (Instant 0ms launch, zero network stalling)
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        // If offline, serve cached shell instantly (0ms)
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
-          const cachedShell = (await caches.match('/index.html')) || (await caches.match('/'));
-          if (cachedShell) return cachedShell;
+        // Instant Cache Match: Return cached shell in 0ms immediately whether offline or online
+        const cachedShell = (await caches.match('/index.html')) || (await caches.match('/'));
+        if (cachedShell) {
+          // If network is available, refresh cache silently in the background without blocking the UI
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+            const bgController = new AbortController();
+            const bgTimeout = setTimeout(() => bgController.abort(), 2000);
+            fetch(request, { signal: bgController.signal })
+              .then(async (netRes) => {
+                clearTimeout(bgTimeout);
+                if (netRes && netRes.status === 200) {
+                  const cache = await caches.open(CACHE_NAME);
+                  cache.put('/index.html', netRes.clone());
+                }
+              })
+              .catch(() => clearTimeout(bgTimeout));
+          }
+          return cachedShell;
         }
 
-        // When online or on first launch, attempt network with quick fallback
+        // Cold-first launch if not yet cached: fast 600ms attempt with instant offline fallback
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1200);
+          const timeoutId = setTimeout(() => controller.abort(), 600);
           const networkResponse = await fetch(request, { signal: controller.signal });
           clearTimeout(timeoutId);
 
@@ -85,7 +95,7 @@ self.addEventListener('fetch', (event) => {
             cache.put('/index.html', clone);
           }
           return networkResponse;
-        } catch (err) {
+        } catch {
           const fallback = (await caches.match('/index.html')) || (await caches.match('/'));
           if (fallback) return fallback;
           return new Response('7amo.pos Offline Ready', {
@@ -120,9 +130,9 @@ self.addEventListener('fetch', (event) => {
           );
         }
 
-        // If online, use an ultra-fast 500ms abort controller so network stalls never cause UI freeze
+        // If online, use an ultra-fast 400ms abort controller so network stalls never cause UI freeze
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 500);
+        const timeoutId = setTimeout(() => controller.abort(), 400);
 
         try {
           const response = await fetch(request, { signal: controller.signal });
@@ -150,36 +160,47 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 3. Static assets (JS chunks, CSS, fonts, SVG, wasm, images)
-  // Cache-First with background revalidation: returns cached chunk in <1ms
+  // Cache-First with quick timeout protection: returns cached chunk in <1ms, never hangs on dead network
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
+    caches.match(request).then(async (cachedResponse) => {
       if (cachedResponse) {
         // Background cache update for freshest assets when online
         if (typeof navigator !== 'undefined' && navigator.onLine) {
-          fetch(request)
-            .then((networkResponse) => {
+          const bgController = new AbortController();
+          const bgTimeout = setTimeout(() => bgController.abort(), 2000);
+          fetch(request, { signal: bgController.signal })
+            .then(async (networkResponse) => {
+              clearTimeout(bgTimeout);
               if (networkResponse && networkResponse.status === 200) {
                 const clone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                const cache = await caches.open(CACHE_NAME);
+                cache.put(request, clone);
               }
             })
-            .catch(() => {});
+            .catch(() => clearTimeout(bgTimeout));
         }
         return cachedResponse;
       }
 
-      // If not in cache, fetch and store
-      return fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          return new Response('', { status: 408, statusText: 'Offline Asset' });
-        });
+      // If not in cache, fetch with a strict 700ms abort timeout so network stalls never cause the splash screen to freeze
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 700);
+
+      try {
+        const networkResponse = await fetch(request, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return networkResponse;
+      } catch {
+        clearTimeout(timeoutId);
+        // If fetch failed or timed out, try to match by pathname or return fallback
+        const fallback = await caches.match(url.pathname);
+        if (fallback) return fallback;
+        return new Response('', { status: 408, statusText: 'Offline Asset Unavailable' });
+      }
     })
   );
 });

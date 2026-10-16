@@ -114,16 +114,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       labelKey: 'cashierAccounts',
       icon: UserCheck,
       color: 'from-cyan-500 via-blue-600 to-indigo-600',
-      badge: isKu ? 'کاشێر' : isAr ? 'كاشير' : 'Cashier',
-      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.25)]',
     },
     {
       id: 'vouchers' as MainNavTab,
       labelKey: 'vouchers',
       icon: Receipt,
       color: 'from-emerald-500 via-teal-500 to-cyan-600',
-      badge: isKu ? 'وصلات' : isAr ? 'وصلات' : 'Vouchers',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.25)]',
     },
     {
       id: 'products' as MainNavTab,
@@ -138,16 +134,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       labelKey: 'accountsHub',
       icon: Users,
       color: 'from-purple-500 via-indigo-500 to-pink-500',
-      badge: isKu ? 'هەژمارەکان' : isAr ? 'الحسابات' : 'Accounts',
-      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30 shadow-[0_0_8px_rgba(168,85,247,0.25)]',
     },
     {
       id: 'print' as MainNavTab,
       labelKey: 'print',
       icon: Printer,
       color: 'from-amber-500 via-orange-500 to-cyan-500',
-      badge: isKu ? 'چاپ' : isAr ? 'طباعة' : 'Print',
-      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.25)]',
     },
     {
       id: 'settings' as MainNavTab,
@@ -176,16 +168,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-full h-full bg-[#0B1120] border-r border-blue-500/20 rtl:border-r-0 rtl:border-l p-4 flex flex-col justify-between overflow-y-auto custom-scrollbar">
+    <aside className="w-full h-full bg-[#0B1120] border-r border-blue-500/20 rtl:border-r-0 rtl:border-l px-2.5 py-3 flex flex-col justify-between overflow-y-auto custom-scrollbar select-none">
       
       {/* Upper Navigation List */}
-      <div className="space-y-4 sm:space-y-6">
+      <div className="space-y-3 sm:space-y-4">
         
         {/* Mobile Header with Close Button */}
         {onClose && (
-          <div className="lg:hidden flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="lg:hidden flex items-center justify-between pb-2.5 border-b border-slate-800">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white font-black text-xs">
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white font-black text-xs">
                 {settings.storeName.charAt(0)}
               </div>
               <span className="text-xs font-bold text-slate-200">
@@ -194,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white cursor-pointer active:scale-95"
+              className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white cursor-pointer active:scale-95"
               aria-label="Close menu"
             >
               <X className="w-4 h-4" />
@@ -204,11 +196,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Category Label */}
         <div>
-          <p className="text-[11px] font-semibold text-slate-500 tracking-wider uppercase mb-2 sm:mb-3 px-2">
+          <p className="text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-1.5 sm:mb-2 px-1.5 whitespace-nowrap">
             {getTranslation(lang, 'mainMenu')}
           </p>
 
-          <nav className="space-y-1 sm:space-y-1.5">
+          <nav className="space-y-1">
             {navItems
               .filter((item) => {
                 // For non-Admin users (like Cashiers), display only the permitted menu lists
@@ -230,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleTabClick(item.id, getTranslation(lang, item.labelKey))}
-                    className={`w-full flex items-center justify-between px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                       isActive
                         ? 'bg-gradient-to-r from-blue-600/25 to-cyan-600/20 border border-cyan-500/50 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)] scale-[1.01]'
                         : !isAllowed
@@ -238,9 +230,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         : 'text-slate-400 hover:text-slate-200 hover:bg-[#10192D]'
                     }`}
                   >
-                    <div className="flex items-center space-x-3 rtl:space-x-reverse min-w-0">
+                    <div className="flex items-center space-x-2.5 rtl:space-x-reverse min-w-0">
                       <div
-                        className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 ${
+                        className={`p-1.5 rounded-lg transition-transform group-hover:scale-110 shrink-0 ${
                           isActive
                             ? `bg-gradient-to-br ${item.color} text-white shadow-md`
                             : !isAllowed
@@ -250,17 +242,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       >
                         <Icon className="w-4 h-4" />
                       </div>
-                      <span className="text-right rtl:text-right font-medium truncate">
+                      <span className="text-right rtl:text-right font-bold whitespace-nowrap">
                         {getTranslation(lang, item.labelKey)}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       {!isAllowed ? (
                         <Lock className="w-3.5 h-3.5 text-rose-500/70 shrink-0" />
                       ) : item.badge ? (
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.badgeColor}`}
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${item.badgeColor}`}
                         >
                           {item.badge}
                         </span>
@@ -274,28 +266,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Quick System Status Card */}
         {lowStockCount > 0 && (
-          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
-            <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-xs font-bold">
-                {isKu ? 'ئاگاداری کەمی کۆگا' : isAr ? 'تنبيه النقص' : 'Low Stock Warning'}
+          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            <div className="flex items-center space-x-1.5 rtl:space-x-reverse mb-1">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <p className="text-[11px] font-bold whitespace-nowrap">
+                {isKu ? 'ئاگاداری کەمی کۆگا' : isAr ? 'تنبيه النقص' : 'Low Stock'}
               </p>
             </div>
-            <p className="text-[11px] text-amber-200/80 leading-relaxed">
+            <p className="text-[10px] text-amber-200/80 leading-tight">
               {isKu
-                ? `${lowStockCount} کاڵا نزیکن لە تەواوبوون، تکایە ڕێژەکەی زیاد بکە.`
+                ? `${lowStockCount} کاڵا نزیکن لە تەواوبوون.`
                 : isAr
-                ? `يوجد ${lowStockCount} أصناف قاربت على النفاد، يرجى التزويد.`
-                : `${lowStockCount} items are near low threshold.`}
+                ? `${lowStockCount} أصناف قاربت النفاد.`
+                : `${lowStockCount} items low.`}
             </p>
             <button
               onClick={() => {
                 setActiveTab('products');
                 if (onClose) onClose();
               }}
-              className="mt-2 text-[11px] text-amber-400 underline font-semibold hover:text-amber-300 cursor-pointer"
+              className="mt-1.5 text-[10px] text-amber-400 underline font-semibold hover:text-amber-300 cursor-pointer block"
             >
-              {isKu ? 'پشکنینی کاڵاکان ←' : isAr ? 'مراجعة الأصناف ←' : 'Review Items →'}
+              {isKu ? 'پشکنین ←' : isAr ? 'مراجعة الأصناف ←' : 'Review →'}
             </button>
           </div>
         )}
@@ -304,14 +296,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Logged in User Profile Card & Logout Button */}
       {currentUser && (
-        <div className="mt-4 p-3 rounded-2xl bg-[#0F172A] border border-slate-700/80 space-y-2">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold shrink-0">
-              <User className="w-4 h-4" />
+        <div className="mt-3 p-2 rounded-xl bg-[#0F172A] border border-slate-700/80 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold shrink-0">
+              <User className="w-3.5 h-3.5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-white truncate">{currentUser.fullName}</p>
-              <p className="text-[10px] text-cyan-400 font-mono font-semibold">{currentUser.role} (@{currentUser.username})</p>
+              <p className="text-[11px] font-bold text-white truncate">{currentUser.fullName}</p>
+              <p className="text-[9px] text-cyan-400 font-mono font-semibold truncate">{currentUser.role} (@{currentUser.username})</p>
             </div>
           </div>
 
@@ -321,36 +313,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onLogout();
                 if (onClose) onClose();
               }}
-              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:brightness-110 text-white text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer border border-rose-400/30"
+              className="w-full py-1.5 px-2 rounded-lg bg-gradient-to-r from-rose-600 to-red-700 hover:brightness-110 text-white text-[11px] font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer border border-rose-400/30 whitespace-nowrap"
             >
-              <LogOut className="w-3.5 h-3.5 text-rose-100" />
+              <LogOut className="w-3 h-3 text-rose-100" />
               <span>{getTranslation(lang, 'logout')}</span>
             </button>
           )}
         </div>
       )}
-
-      {/* Bottom Cyber Trophy / Store Branding Banner */}
-      <div className="mt-6 p-3 sm:p-4 rounded-2xl bg-gradient-to-b from-[#131F37] to-[#0A101D] border border-blue-500/20 text-center relative overflow-hidden group">
-        <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all" />
-        <div className="relative z-10 space-y-1.5 sm:space-y-2">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-0.5 shadow-lg shadow-cyan-500/20">
-            <div className="w-full h-full bg-[#0B1120] rounded-[10px] flex items-center justify-center">
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 animate-spin" style={{ animationDuration: '8s' }} />
-            </div>
-          </div>
-          <p className="text-xs font-bold text-slate-200">
-            {isKu ? 'سیستەمی زیرەکی مارکێت ٢.٥' : isAr ? 'محرك الماركيت الذكي 2.5' : 'SuperMarket Engine 2.5'}
-          </p>
-          <p className="text-[10px] text-slate-400">
-            {isKu ? 'پاسپاردار و هاوئاهەنگکراو' : isAr ? 'حماية مشفرة ومزامنة فورية' : 'Encrypted & Realtime Synced'}
-          </p>
-          <div className="pt-1 flex items-center justify-center space-x-2 rtl:space-x-reverse text-[10px] text-emerald-400 font-semibold">
-            <TrendingUp className="w-3 h-3" />
-            <span>{isKu ? 'ئاستی کارکردن ١٠٠٪' : isAr ? 'الأداء ممتاز 100%' : '100% Performance'}</span>
-          </div>
-        </div>
-      </div>
 
     </aside>
   );

@@ -172,6 +172,7 @@ export const DatePickerDDMMYYYY: React.FC<DatePickerDDMMYYYYProps> = ({
       <button
         ref={buttonRef}
         type="button"
+        data-form-nav="true"
         onClick={() => {
           setIsOpen(!isOpen);
         }}

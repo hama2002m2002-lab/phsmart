@@ -10,13 +10,13 @@ export interface TranslationDict {
 
 export const uiTranslations: TranslationDict = {
   // Navigation & Tabs
-  dashboard: { ar: 'لوحة التحكم', en: 'Dashboard', ku: 'پێڕست / داشبۆرد' },
+  dashboard: { ar: 'داشبورد', en: 'Dashboard', ku: 'داشبۆرد' },
   analytics: { ar: 'التحليلات الإحصائية', en: 'Analytics', ku: 'شیکاری و ئامار' },
-  reports: { ar: 'التقارير المالية', en: 'Reports', ku: 'ڕاپۆرتە داراییەکان' },
-  accountsHub: { ar: 'الحسابات والجهات', en: 'Accounts & Relations', ku: 'هەژمارەکان و لایەنەکان' },
+  reports: { ar: 'تقرير', en: 'Reports', ku: 'ڕاپۆرت' },
+  accountsHub: { ar: 'الحسابات', en: 'Accounts', ku: 'هەژمارەکان' },
   permissions: { ar: 'صلاحيات وحسابات المستخدمين', en: 'Permissions & Accounts', ku: 'دەسەڵاتەکان و بەکارهێنەران' },
-  cashierAccounts: { ar: 'كشف حسابات الكاشيرية', en: 'Cashier Accounts', ku: 'کەشف حیسابی کاشێرەکان' },
-  vouchers: { ar: 'وصلات', en: 'Vouchers & Invoices', ku: 'پسوولەکان (وەسڵەکان)' },
+  cashierAccounts: { ar: 'كاشير', en: 'Cashier', ku: 'کاشێر' },
+  vouchers: { ar: 'وصلات', en: 'Invoices', ku: 'پسولەكان' },
   pos: { ar: 'الكاشير والبيع السريع (POS)', en: 'POS & Cashier', ku: 'کاشێر و فرۆشتنی خێرا (POS)' },
   products: { ar: 'المخزن', en: 'Warehouse & Inventory', ku: 'کۆگا' },
   purchases: { ar: 'قسم الشراء وتوريد البضائع', en: 'Purchases & Restock', ku: 'کڕین و دابینکردن' },
@@ -24,7 +24,7 @@ export const uiTranslations: TranslationDict = {
   customers: { ar: 'العملاء وبرنامج الولاء', en: 'Customers & Loyalty', ku: 'کڕیاران و بەرنامەی دڵسۆزی' },
   orders: { ar: 'الطلبات والتوصيل', en: 'Orders & Deliveries', ku: 'داواکارییەکان و گەیاندن' },
   invoices: { ar: 'الفواتير والمبيعات', en: 'Invoices & History', ku: 'پسوڵەکان و فرۆشتن' },
-  settings: { ar: 'إعدادات المنظومة', en: 'Settings', ku: 'ڕێکخستنەکانی سیستم' },
+  settings: { ar: 'الإعدادات', en: 'Settings', ku: 'ڕێکخستن' },
   notifications: { ar: 'الإشعارات', en: 'Notifications', ku: 'ئاگادارییەکان' },
   overview: { ar: 'نظرة عامة', en: 'Overview', ku: 'تێڕوانینی گشتی' },
 
@@ -49,7 +49,7 @@ export const uiTranslations: TranslationDict = {
   filter: { ar: 'تصفية', en: 'Filter', ku: 'فلتەر' },
   export: { ar: 'تصدير', en: 'Export', ku: 'ڕەوانەکردن' },
   import: { ar: 'استيراد', en: 'Import', ku: 'هێنانەژوورەوە' },
-  print: { ar: 'مركز الطباعة والملصقات', en: 'Printing Center', ku: 'ناوەندی چاپکردن' },
+  print: { ar: 'الطباعة', en: 'Print', ku: 'چاپ' },
   back: { ar: 'رجوع', en: 'Back', ku: 'گەڕانەوە' },
   confirm: { ar: 'تأكيد', en: 'Confirm', ku: 'پشتڕاستکردنەوە' },
   clearCart: { ar: 'تفريغ السلة', en: 'Clear Cart', ku: 'خاڵیکردنی سەبەتە' },

@@ -18,7 +18,8 @@ import {
   Thermometer,
   Pill,
   ChevronDown,
-  Trash2
+  Trash2,
+  BellRing
 } from 'lucide-react';
 import { Product, StoreSettings, Supplier } from '../types';
 import { formatNumber } from '../lib/formatUtils';
@@ -176,6 +177,101 @@ export const saveCustomDosageFormToStorage = (newForm: string) => {
   }
 };
 
+export const getSavedCountries = (): string[] => {
+  try {
+    const saved = localStorage.getItem('pharma_custom_countries');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...DEFAULT_ORIGIN_COUNTRIES, ...parsed]));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse custom countries', e);
+  }
+  return DEFAULT_ORIGIN_COUNTRIES;
+};
+
+export const saveCustomCountryToStorage = (newCountry: string) => {
+  if (!newCountry || !newCountry.trim()) return;
+  const trimmed = newCountry.trim();
+  const current = getSavedCountries();
+  if (!current.includes(trimmed)) {
+    const updated = [...current, trimmed];
+    try {
+      localStorage.setItem('pharma_custom_countries', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save custom country', e);
+    }
+  }
+};
+
+export const getSavedManufacturers = (): string[] => {
+  try {
+    const saved = localStorage.getItem('pharma_custom_manufacturers');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...DEFAULT_MANUFACTURERS, ...parsed]));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse custom manufacturers', e);
+  }
+  return DEFAULT_MANUFACTURERS;
+};
+
+export const saveCustomManufacturerToStorage = (newMfr: string) => {
+  if (!newMfr || !newMfr.trim()) return;
+  const trimmed = newMfr.trim();
+  const current = getSavedManufacturers();
+  if (!current.includes(trimmed)) {
+    const updated = [...current, trimmed];
+    try {
+      localStorage.setItem('pharma_custom_manufacturers', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save custom manufacturer', e);
+    }
+  }
+};
+
+export const DEFAULT_PHARMA_CLASSES = [
+  'OTC - بدون وصفة (مباشر)',
+  'Rx - بوصفة طبية فقط',
+  'Controlled - أدوية مراقبة',
+  'Supplies - مستلزمات طبية',
+  'Cosmetics - عناية وتجميل'
+];
+
+export const getSavedPharmaClasses = (): string[] => {
+  try {
+    const saved = localStorage.getItem('pharma_custom_classes');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...DEFAULT_PHARMA_CLASSES, ...parsed]));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse custom pharma classes', e);
+  }
+  return DEFAULT_PHARMA_CLASSES;
+};
+
+export const saveCustomPharmaClassToStorage = (newCls: string) => {
+  if (!newCls || !newCls.trim()) return;
+  const trimmed = newCls.trim();
+  const current = getSavedPharmaClasses();
+  if (!current.includes(trimmed)) {
+    const updated = [...current, trimmed];
+    try {
+      localStorage.setItem('pharma_custom_classes', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save custom pharma class', e);
+    }
+  }
+};
+
 export const ProductModal: React.FC<ProductModalProps> = ({
   isOpen,
   onClose,
@@ -213,9 +309,47 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     }
   });
 
+  const [countriesList, setCountriesList] = useState<string[]>(() => {
+    try {
+      return getSavedCountries();
+    } catch {
+      return DEFAULT_ORIGIN_COUNTRIES;
+    }
+  });
+
+  const [manufacturersList, setManufacturersList] = useState<string[]>(() => {
+    try {
+      return getSavedManufacturers();
+    } catch {
+      return DEFAULT_MANUFACTURERS;
+    }
+  });
+
+  const [pharmaClassesList, setPharmaClassesList] = useState<string[]>(() => {
+    try {
+      return getSavedPharmaClasses();
+    } catch {
+      return DEFAULT_PHARMA_CLASSES;
+    }
+  });
+
   // Modal for adding a new dosage form
   const [showAddDosageModal, setShowAddDosageModal] = useState(false);
   const [newDosageFormInput, setNewDosageFormInput] = useState('');
+
+  // Modals for adding custom Country, Manufacturer, and Pharma Class
+  const [showAddCountryModal, setShowAddCountryModal] = useState(false);
+  const [newCountryInput, setNewCountryInput] = useState('');
+
+  const [showAddManufacturerModal, setShowAddManufacturerModal] = useState(false);
+  const [newManufacturerInput, setNewManufacturerInput] = useState('');
+
+  const [showAddPharmaClassModal, setShowAddPharmaClassModal] = useState(false);
+  const [newPharmaClassInput, setNewPharmaClassInput] = useState('');
+
+  // Continuous entry states: Success notification message & barcode ref
+  const [successSavedMessage, setSuccessSavedMessage] = useState<string | null>(null);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   // Basic Product State
   const [barcode, setBarcode] = useState('');
@@ -231,7 +365,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [dosageStrength, setDosageStrength] = useState('500mg'); // التركيز (e.g. 500mg, 100ml)
   const [countryOfOrigin, setCountryOfOrigin] = useState(''); // الدولة المصنعة للدواء
   const [manufacturer, setManufacturer] = useState(''); // الشركة المصنعة
-  const [pharmaCategory, setPharmaCategory] = useState<'OTC' | 'Rx' | 'Controlled' | 'Supplies' | 'Cosmetics'>('OTC'); // الفئة والترميز
+  const [pharmaCategory, setPharmaCategory] = useState<string>('OTC - بدون وصفة (مباشر)'); // الفئة والترميز
   const [batchNumber, setBatchNumber] = useState(''); // رقم التشغيلة (Batch/Lot No)
   const [expiryAlertMonths, setExpiryAlertMonths] = useState<number>(6); // تنبيه قبل 6 أشهر
   const [storageCondition, setStorageCondition] = useState<string>('room_temp'); // ظروف الحفظ والتخزين
@@ -249,6 +383,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [purchasePrice, setPurchasePrice] = useState<number | ''>(''); // سعر شراء الباكت
   const [singleRetailPrice, setSingleRetailPrice] = useState<number | ''>(''); // سعر بيع الباكت للزبون
   const [blisterPrice, setBlisterPrice] = useState<number | ''>(''); // سعر بيع الشيت / الشريط الواحد
+  const [minStock, setMinStock] = useState<number | ''>(5); // أقل عدد في المخزن قبل تنبيه شراء جديد (الحد الأدنى للطلب)
 
   // Blurred / Touched states for price validation on exit
   const [singleRetailBlurred, setSingleRetailBlurred] = useState(false);
@@ -277,9 +412,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
       const currentCategories = getSavedCategories();
       const currentDosageForms = getSavedDosageForms();
+      const currentCountries = getSavedCountries();
+      const currentManufacturers = getSavedManufacturers();
+      const currentPharmaClasses = getSavedPharmaClasses();
       setBarcodeError(null);
       setSingleRetailBlurred(false);
       setBlisterPriceBlurred(false);
+      setSuccessSavedMessage(null);
 
       if (productToEdit) {
         const prodCategory = productToEdit.categoryAr || productToEdit.category || 'أدوية ومسكنات (OTC / Rx)';
@@ -294,6 +433,24 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         }
         setDosageFormsList(Array.from(new Set(currentDosageForms)));
 
+        const prodCountry = productToEdit.countryOfOrigin || '';
+        if (prodCountry && !currentCountries.includes(prodCountry)) {
+          currentCountries.push(prodCountry);
+        }
+        setCountriesList(Array.from(new Set(currentCountries)));
+
+        const prodMfr = productToEdit.manufacturer || '';
+        if (prodMfr && !currentManufacturers.includes(prodMfr)) {
+          currentManufacturers.push(prodMfr);
+        }
+        setManufacturersList(Array.from(new Set(currentManufacturers)));
+
+        const prodPharmaClass = productToEdit.pharmaCategory || 'OTC - بدون وصفة (مباشر)';
+        if (prodPharmaClass && !currentPharmaClasses.includes(prodPharmaClass)) {
+          currentPharmaClasses.push(prodPharmaClass);
+        }
+        setPharmaClassesList(Array.from(new Set(currentPharmaClasses)));
+
         setBarcode(productToEdit.barcode || '');
         setNameAr(productToEdit.nameAr || productToEdit.name || '');
         setSupplierDelegate(productToEdit.supplierDelegate || productToEdit.supplierName || '');
@@ -302,9 +459,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         // Pharma fields populate
         setScientificName(productToEdit.scientificName || '');
         setDosageForm(prodDosageForm);
-        setCountryOfOrigin(productToEdit.countryOfOrigin || '');
-        setManufacturer(productToEdit.manufacturer || '');
-        setPharmaCategory((productToEdit.pharmaCategory as any) || 'OTC');
+        setCountryOfOrigin(prodCountry);
+        setManufacturer(prodMfr);
+        setPharmaCategory(prodPharmaClass);
         setBatchNumber(productToEdit.batchNumber || '');
         setExpiryAlertMonths(productToEdit.expiryAlertMonths || 6);
         setStorageCondition(productToEdit.storageCondition || 'room_temp');
@@ -320,9 +477,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         setPurchasePrice(productToEdit.costPerUnit ?? productToEdit.cost ?? (productToEdit.cartonPurchasePrice && productToEdit.unitsPerCarton ? productToEdit.cartonPurchasePrice / productToEdit.unitsPerCarton : ''));
         setSingleRetailPrice(productToEdit.singleRetailPrice || productToEdit.price || '');
         setBlisterPrice(productToEdit.blisterPrice || '');
+        setMinStock(productToEdit.minStock !== undefined && productToEdit.minStock !== null ? productToEdit.minStock : (settings?.lowStockThresholdDefault || 5));
       } else {
         setCategoriesList(Array.from(new Set(currentCategories)));
         setDosageFormsList(Array.from(new Set(currentDosageForms)));
+        setCountriesList(Array.from(new Set(currentCountries)));
+        setManufacturersList(Array.from(new Set(currentManufacturers)));
+        setPharmaClassesList(Array.from(new Set(currentPharmaClasses)));
         const uniqueBar = generateUniqueBarcode200245(existingProducts);
         const randBatch = `BATCH-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
         
@@ -333,9 +494,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         
         setScientificName('');
         setDosageForm(currentDosageForms[0] || DEFAULT_DOSAGE_FORMS[0]);
-        setCountryOfOrigin('العراق (Iraq)');
-        setManufacturer('سامراء SDI (Samarra)');
-        setPharmaCategory('OTC');
+        setCountryOfOrigin(currentCountries[0] || 'العراق (Iraq)');
+        setManufacturer(currentManufacturers[0] || 'سامراء SDI (Samarra)');
+        setPharmaCategory(currentPharmaClasses[0] || 'OTC - بدون وصفة (مباشر)');
         setBatchNumber(randBatch);
         setExpiryAlertMonths(6);
         setStorageCondition('room_temp');
@@ -351,9 +512,10 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         setPurchasePrice('');
         setSingleRetailPrice('');
         setBlisterPrice('');
+        setMinStock(settings?.lowStockThresholdDefault || 5);
       }
     }
-  }, [productToEdit, isOpen, initialSupplierName, todayStr, existingProducts]);
+  }, [productToEdit, isOpen, initialSupplierName, todayStr, existingProducts, settings]);
 
   // Derived Automatic Calculations
   const totalUnits = Number(packetsCount) || 0;
@@ -423,6 +585,48 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     setDosageForm(formName);
     setNewDosageFormInput('');
     setShowAddDosageModal(false);
+  };
+
+  // Add new custom country
+  const handleAddNewCountry = () => {
+    if (!newCountryInput.trim()) return;
+    const countryName = newCountryInput.trim();
+    saveCustomCountryToStorage(countryName);
+    setCountriesList(prev => {
+      if (prev.includes(countryName)) return prev;
+      return [...prev, countryName];
+    });
+    setCountryOfOrigin(countryName);
+    setNewCountryInput('');
+    setShowAddCountryModal(false);
+  };
+
+  // Add new custom manufacturer
+  const handleAddNewManufacturer = () => {
+    if (!newManufacturerInput.trim()) return;
+    const mfrName = newManufacturerInput.trim();
+    saveCustomManufacturerToStorage(mfrName);
+    setManufacturersList(prev => {
+      if (prev.includes(mfrName)) return prev;
+      return [...prev, mfrName];
+    });
+    setManufacturer(mfrName);
+    setNewManufacturerInput('');
+    setShowAddManufacturerModal(false);
+  };
+
+  // Add new custom pharma class
+  const handleAddNewPharmaClass = () => {
+    if (!newPharmaClassInput.trim()) return;
+    const className = newPharmaClassInput.trim();
+    saveCustomPharmaClassToStorage(className);
+    setPharmaClassesList(prev => {
+      if (prev.includes(className)) return prev;
+      return [...prev, className];
+    });
+    setPharmaCategory(className);
+    setNewPharmaClassInput('');
+    setShowAddPharmaClassModal(false);
   };
 
   // Expiry alert preview
@@ -583,16 +787,114 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       price: singleRetail,
       cost: Number(costPerUnit.toFixed(2)),
       stock: totalUnits,
-      minStock: 10,
+      minStock: minStock === '' ? (settings?.lowStockThresholdDefault || 5) : Number(minStock),
       unit: pharmacyUnit || 'باكت',
       supplierId: matchedSupplier ? matchedSupplier.id : (productToEdit?.supplierId || 'sup-1'),
       supplierName: supplierDelegate || (matchedSupplier ? matchedSupplier.nameAr : 'مذخر الأدوية الرئيسي'),
       imageIcon: '💊',
-      status: totalUnits === 0 ? 'out_of_stock' : totalUnits <= 10 ? 'low_stock' : 'in_stock'
+      status: totalUnits === 0 ? 'out_of_stock' : totalUnits <= (minStock === '' ? (settings?.lowStockThresholdDefault || 5) : Number(minStock)) ? 'low_stock' : 'in_stock'
     };
 
     onSave(finalProduct);
-    onClose();
+
+    if (!productToEdit) {
+      // In Add Product mode: keep modal open for continuous entry
+      setSuccessSavedMessage(
+        isKu
+          ? `✓ دەرمانی (${finalProduct.nameAr || finalProduct.name}) پاشەکەوتکرا! فۆڕمەکە ئامادەیە بۆ دەرمانی نوێ.`
+          : isAr
+          ? `✓ تم حفظ مادة "${finalProduct.nameAr || finalProduct.name}" بنجاح في قاعدة البيانات! يمكنك الآن إدخال المادة التالية مباشرة.`
+          : `✓ Product "${finalProduct.nameAr || finalProduct.name}" saved successfully! Ready for next product.`
+      );
+
+      // Reset product-specific fields for the next entry
+      setNameAr('');
+      setScientificName('');
+      const newBar = generateUniqueBarcode200245([...existingProducts, finalProduct]);
+      setBarcode(newBar);
+      setPacketsCount('');
+      setPurchasePrice('');
+      setBlisterPrice('');
+      setSingleRetailPrice('');
+      setSingleRetailBlurred(false);
+      setBlisterPriceBlurred(false);
+      setBarcodeError(null);
+      handleGenerateBatch();
+
+      // Focus barcode input for rapid scanning of next product
+      setTimeout(() => {
+        if (barcodeInputRef.current) {
+          barcodeInputRef.current.focus();
+          barcodeInputRef.current.select();
+        }
+      }, 60);
+    } else {
+      // In Edit mode: close modal
+      onClose();
+    }
+  };
+
+  // Sequential Enter Key navigation across all form fields from first to last
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter') {
+      const target = e.target as HTMLElement;
+
+      // Allow natural submit if Enter is pressed while focused directly on the submit button
+      if (target.getAttribute('type') === 'submit') {
+        return;
+      }
+
+      // Do not hijack textareas
+      if (target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Do not hijack auxiliary helper buttons (like Generate Barcode, Gen Batch, New Dosage, Close, etc.)
+      if (target.tagName === 'BUTTON' && !target.hasAttribute('data-form-nav')) {
+        return;
+      }
+
+      e.preventDefault();
+
+      // Find all navigable form controls in sequential DOM order
+      const form = e.currentTarget;
+      const navElements = Array.from(
+        form.querySelectorAll<HTMLElement>(
+          'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]), [data-form-nav="true"], button[type="submit"]'
+        )
+      ).filter(el => {
+        // Exclude non-nav buttons that aren't submit or marked with data-form-nav
+        if (el.tagName === 'BUTTON' && el.getAttribute('type') !== 'submit' && !el.hasAttribute('data-form-nav')) {
+          return false;
+        }
+        return el.offsetParent !== null; // only visible elements
+      });
+
+      const currentIndex = navElements.indexOf(target);
+
+      if (e.shiftKey) {
+        // Shift + Enter: Navigate backward to previous field
+        if (currentIndex > 0) {
+          const prevEl = navElements[currentIndex - 1];
+          prevEl.focus();
+          if (prevEl instanceof HTMLInputElement) {
+            prevEl.select();
+          }
+        }
+      } else {
+        // Enter: Navigate forward to next field
+        if (currentIndex >= 0 && currentIndex < navElements.length - 1) {
+          const nextEl = navElements[currentIndex + 1];
+          nextEl.focus();
+          if (nextEl instanceof HTMLInputElement) {
+            nextEl.select();
+          }
+        } else if (currentIndex === navElements.length - 1) {
+          // If on the last element (submit button), submit the form
+          handleSubmit(e as any);
+        }
+      }
+    }
   };
 
   if (!isOpen) return null;
@@ -664,8 +966,35 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       )}
 
       {/* Main Scrollable Form Body */}
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3.5 space-y-3 custom-scrollbar flex flex-col justify-between">
+      <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="flex-1 overflow-y-auto p-3.5 space-y-3 custom-scrollbar flex flex-col justify-between">
         <div className="space-y-3">
+
+          {/* Success Banner when saving consecutive products without closing */}
+          {successSavedMessage && (
+            <div className="p-3 rounded-xl bg-emerald-950/80 border-2 border-emerald-500/80 text-emerald-200 flex items-center justify-between shadow-xl animate-fadeIn gap-3">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div>
+                  <p className="text-xs sm:text-sm font-bold text-emerald-300">{successSavedMessage}</p>
+                  <p className="text-[11px] text-emerald-400/80">
+                    {isKu
+                      ? 'پەڕەکە بە کراوەیی ماوەتەوە بۆ بەردەوامبوونی داخڵکردن، نیشاندەری نووسین ڕاستەوخۆ لەسەر بارکۆد دانراوە.'
+                      : isAr
+                      ? 'الواجهة مفتوحة الآن لإدخال المادة التالية مباشرة، والمؤشر بانتظارك في حقل الباركود.'
+                      : 'The form remains open for instant sequential entry. Barcode is focused.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessSavedMessage(null)}
+                className="text-emerald-300 hover:text-white px-2 py-1 rounded-lg bg-emerald-900/60 hover:bg-emerald-900 border border-emerald-500/40 text-xs shrink-0 cursor-pointer"
+                title={isAr ? 'إخفاء' : 'Dismiss'}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           
           {/* TOP SPLIT ROW: Yellow Region (Pharma details) & Red Region (Batch, Expiry & Alert) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
@@ -691,6 +1020,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   </label>
                   <div className="flex gap-1">
                     <input
+                      ref={barcodeInputRef}
                       type="text"
                       required
                       value={barcode}
@@ -757,10 +1087,21 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 items-start">
                 {/* 🌍 الدولة المصنعة للدواء (Country of Origin) */}
                 <div>
-                  <label className="text-cyan-200 mb-1 block font-bold text-[14px] flex items-center gap-1">
-                    <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>{isKu ? 'دەوڵەتی دروستکەر' : isAr ? 'الدولة المصنعة للدواء' : 'Origin'}</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-cyan-200 font-bold text-[14px] flex items-center gap-1">
+                      <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>{isKu ? 'دەوڵەتی دروستکەر' : isAr ? 'الدولة المصنعة للدواء' : 'Origin'}</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCountryModal(true)}
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-500/40 cursor-pointer active:scale-95 transition-all"
+                      title={isAr ? 'إضافة دولة جديدة' : 'Add country'}
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAr ? 'جديد' : 'New'}</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     list="countries-datalist"
@@ -770,7 +1111,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
                   />
                   <datalist id="countries-datalist">
-                    {DEFAULT_ORIGIN_COUNTRIES.map(c => (
+                    {countriesList.map(c => (
                       <option key={c} value={c} />
                     ))}
                   </datalist>
@@ -778,10 +1119,21 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
                 {/* 🏢 اسم الشركة المصنعة (Manufacturer) */}
                 <div>
-                  <label className="text-cyan-200 mb-1 block font-bold text-[14px] flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>{isKu ? 'کۆمپانیای دروستکەر' : isAr ? 'الشركة المصنعة' : 'Manufacturer'}</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-cyan-200 font-bold text-[14px] flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>{isKu ? 'کۆمپانیای دروستکەر' : isAr ? 'الشركة المصنعة' : 'Manufacturer'}</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddManufacturerModal(true)}
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-500/40 cursor-pointer active:scale-95 transition-all"
+                      title={isAr ? 'إضافة شركة مصنعة جديدة' : 'Add manufacturer'}
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAr ? 'جديد' : 'New'}</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     list="manufacturers-datalist"
@@ -791,7 +1143,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-semibold"
                   />
                   <datalist id="manufacturers-datalist">
-                    {DEFAULT_MANUFACTURERS.map(m => (
+                    {manufacturersList.map(m => (
                       <option key={m} value={m} />
                     ))}
                   </datalist>
@@ -826,19 +1178,28 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
                 {/* Pharma Classification */}
                 <div>
-                  <label className="text-slate-200 mb-1 block font-bold text-[14px]">
-                    {isKu ? 'پۆلێن و کۆد' : isAr ? 'الفئة والترميز الدوائي' : 'Pharma Class'}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-200 font-bold text-[14px]">
+                      {isKu ? 'پۆلێن و کۆد' : isAr ? 'الفئة والترميز الدوائي' : 'Pharma Class'}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddPharmaClassModal(true)}
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-500/40 cursor-pointer active:scale-95 transition-all"
+                      title={isAr ? 'إضافة فئة وترميز جديد' : 'Add class'}
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAr ? 'جديد' : 'New'}</span>
+                    </button>
+                  </div>
                   <select
                     value={pharmaCategory}
-                    onChange={(e) => setPharmaCategory(e.target.value as any)}
+                    onChange={(e) => setPharmaCategory(e.target.value)}
                     className="w-full bg-[#0a1120] text-slate-100 h-8 px-2 rounded-lg border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-xs font-bold cursor-pointer"
                   >
-                    <option value="OTC">OTC - بدون وصفة (مباشر)</option>
-                    <option value="Rx">Rx - بوصفة طبية فقط</option>
-                    <option value="Controlled">Controlled - أدوية مراقبة</option>
-                    <option value="Supplies">Supplies - مستلزمات طبية</option>
-                    <option value="Cosmetics">Cosmetics - عناية وتجميل</option>
+                    {pharmaClassesList.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -924,12 +1285,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
             </div>
 
-            {/* 🔴 RED CONTAINER: Batch, Expiry & Alert (رقم التشغيلة، تاريخ الصلاحية والتنبيه المبكر) */}
+            {/* 🔴 RED CONTAINER: Batch & Expiry (رقم التشغيلة وتاريخ الصلاحية) */}
             <div className="lg:col-span-4 bg-[#0f172a] p-3 rounded-xl border border-rose-500/40 space-y-2.5 shadow-md flex flex-col justify-between">
               <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
                 <h3 className="text-sm font-black text-rose-300 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-rose-400" />
-                  <span>{isKu ? '٢. وەجبە و بەرواری بەسەرچوون' : isAr ? '2. التشغيلة وتاريخ الصلاحية والتنبيه' : '2. Batch & Expiry System'}</span>
+                  <span>{isKu ? '٢. وەجبە و بەرواری بەسەرچوون' : isAr ? '2. رقم التشغيلة وتاريخ الصلاحية' : '2. Batch & Expiry Date'}</span>
                 </h3>
                 {expiryStatusInfo && (
                   <div className={`py-0.5 px-2 rounded-md border text-[11px] font-bold flex items-center gap-1 ${expiryStatusInfo.color}`}>
@@ -939,7 +1300,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 )}
               </div>
 
-              <div className="space-y-2 flex-1 flex flex-col justify-around">
+              <div className="space-y-2.5 flex-1 flex flex-col justify-center">
                 {/* 1. Batch Number / رقم التشغيلة */}
                 <div>
                   <label className="text-amber-200 mb-1 block font-bold text-[14px]">
@@ -977,22 +1338,29 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   />
                 </div>
 
-                {/* 3. Alert Threshold / مدة التنبيه المبكر */}
+                {/* 3. مدة التنبيه المبكر قبل انتهاء الصلاحية (تم نقله إلى هذا المكان بناءً على السهم) */}
                 <div>
-                  <label className="text-slate-200 mb-1 block font-bold text-[14px] whitespace-nowrap">
-                    {isKu ? 'ئاگاداری پێشوەختە (مانگ)' : isAr ? 'مدة التنبيه المبكر قبل الانتهاء (بالأشهر)' : 'Alert Before (Months)'}
-                  </label>
-                  <div className="flex items-center gap-1 bg-[#0a1120] border border-amber-500/40 rounded-lg px-2.5 h-8 focus-within:border-amber-400">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-200 block font-bold text-[14px] flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-rose-400" />
+                      <span>{isKu ? 'ئاگاداری بەسەرچوون پێشوەختە' : isAr ? 'تنبيه انتهاء الصلاحية المبكر' : 'Early Expiry Alert'}</span>
+                    </label>
+                    <span className="text-[11px] text-amber-300/80 font-semibold">{isAr ? 'قبل الانتهاء بـ' : 'Months before'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-[#0a1120] border border-amber-500/40 rounded-lg px-2.5 h-8 focus-within:border-amber-400" style={{ fontSize: '21px' }}>
                     <input
                       type="number"
                       min="1"
                       max="36"
                       value={expiryAlertMonths}
                       onChange={(e) => setExpiryAlertMonths(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full bg-transparent text-amber-300 font-mono font-bold text-xs text-center focus:outline-none"
+                      className="w-full bg-transparent text-amber-300 font-mono font-bold text-center focus:outline-none"
+                      style={{ fontSize: '19px' }}
                       placeholder="6"
                     />
-                    <span className="text-xs text-slate-400 font-bold shrink-0">{isKu ? 'مانگ' : isAr ? 'أشهر' : 'mo'}</span>
+                    <span className="text-xs text-slate-300 font-bold shrink-0 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/60">
+                      {isKu ? 'مانگ' : isAr ? 'أشهر' : 'months'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1000,14 +1368,14 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
           </div>
 
-          {/* 🟢 GREEN CONTAINER: Full-Width Quantities, Packaging Units, Selling Prices & Real-Time Profits */}
-          <div className="bg-[#0f172a] p-3 rounded-xl border border-emerald-500/40 space-y-2.5 shadow-md">
+          {/* 🟢 GREEN CONTAINER: Full-Width Quantities, Packaging Units, Min Stock Alert, Selling Prices & Real-Time Profits */}
+          <div className="bg-[#0f172a] p-3 rounded-xl border border-emerald-500/50 space-y-3 shadow-md">
             
             {/* Header with Base Unit Selector */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 flex-wrap gap-2">
               <h3 className="text-sm font-black text-emerald-300 flex items-center gap-2">
                 <Boxes className="w-4 h-4 text-emerald-400" />
-                <span>{isKu ? '٣. ژمارە و بڕی دەرمان، نرخەکان و قازانج (باکەت / شیت)' : isAr ? '3. إدخال الأعداد، أسعار الشراء والبيع واحتساب الأرباح (باكت / شيت)' : '3. Quantities, Pricing & Margins (Box / Sheet)'}</span>
+                <span>{isKu ? '٣. ژمارە، بڕی کۆگا، ئاگاداری کڕین، نرخ و قازانج' : isAr ? '3. إدخال الأعداد، تنبيه الشراء، أسعار البيع واحتساب الأرباح' : '3. Quantities, Stock Limits & Pricing'}</span>
               </h3>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-300 font-bold">{isAr ? 'الوحدة الأساسية:' : 'Base Unit:'}</span>
@@ -1030,11 +1398,11 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               </div>
             </div>
 
-            {/* ROW 1: 5 INPUT FIELDS (باكت, شيت, سعر شراء الباكت, سعر بيع الباكت, سعر بيع الشيت) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 items-end">
-              {/* 1. باكت (عدد الباكتات / الكمية) */}
+            {/* ROW 1: QUANTITIES, PACKAGING UNITS & MIN STOCK ALERT (داخل الخط الأخضر) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+              {/* 1. باكت (عدد الباكتات / الكمية بالمخزن) */}
               <div>
-                <label className="text-emerald-300 mb-1 block text-[14px] font-black">
+                <label className="text-emerald-300 mb-1 block font-black text-center" style={{ fontSize: '18px', textAlign: 'center' }}>
                   {isKu ? 'باکەت (ژمارەی باکەت)' : isAr ? 'باكت (عدد الباكتات / الكمية)' : 'Box / Packets'} <span className="text-rose-400">*</span>
                 </label>
                 <input
@@ -1044,13 +1412,14 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   value={packetsCount}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setPacketsCount(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[#0a1120] text-emerald-400 font-black h-8 px-2 text-center rounded-lg border border-emerald-500/40 text-xs focus:outline-none focus:border-emerald-300"
+                  className="w-full bg-[#0a1120] text-emerald-400 h-8 px-2 rounded-lg border border-emerald-500/40 focus:outline-none focus:border-emerald-300"
+                  style={{ fontSize: '16px', textAlign: 'center', fontWeight: 'bold', fontStyle: 'normal', fontFamily: 'system-ui' }}
                 />
               </div>
 
               {/* 2. شيت (عدد الشيتات داخل الباكت) */}
               <div>
-                <label className="text-cyan-300 mb-1 block text-[14px] font-black">
+                <label className="text-cyan-300 mb-1 block font-black text-center" style={{ fontSize: '18px', textAlign: 'center' }}>
                   {isKu ? 'شیت (ژمارەی شیت لە باکەت)' : isAr ? 'شيت (عدد الشيت بالباكت)' : 'Sheets / Box'} <span className="text-rose-400">*</span>
                 </label>
                 <input
@@ -1060,13 +1429,38 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   value={blistersPerBox}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setBlistersPerBox(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[#0a1120] text-cyan-300 font-black h-8 px-2 text-center rounded-lg border border-cyan-500/50 text-xs focus:outline-none focus:border-cyan-300"
+                  className="w-full bg-[#0a1120] text-cyan-300 font-black h-8 px-2 text-center rounded-lg border border-cyan-500/50 focus:outline-none focus:border-cyan-300"
+                  style={{ fontSize: '16px' }}
                 />
               </div>
 
-              {/* 3. سعر شراء الباكت */}
+              {/* 3. أقل عدد في مخزن قبل تنبيه شراء جديد (الحقل المضاف للحد الأدنى للنواقص) */}
               <div>
-                <label className="text-amber-200 mb-1 block text-[14px] font-bold">
+                <label className="text-amber-300 mb-1 block font-black flex items-center justify-center gap-1 text-center" style={{ fontSize: '18px', textAlign: 'center' }}>
+                  <BellRing className="w-3.5 h-3.5 text-amber-400" />
+                  <span style={{ fontSize: '18px', textAlign: 'center' }}>{isKu ? 'کەمترین کۆگا پێش کڕینی نوێ' : isAr ? 'أقل عدد بمخزن قبل تنبيه شراء جديد' : 'Min Stock Alert'}</span>
+                  <span className="text-amber-400">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="5"
+                    value={minStock}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setMinStock(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-[#0a1120] text-amber-300 font-black h-8 px-2 text-center rounded-lg border border-amber-500/50 focus:outline-none focus:border-amber-300"
+                    style={{ fontSize: '16px' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ROW 2: 3 PRICING FIELDS (سعر شراء الباكت, سعر بيع الشيت, سعر بيع الباكت) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end pt-1 border-t border-slate-800/60">
+              {/* 1. سعر شراء الباكت */}
+              <div>
+                <label className="text-amber-200 mb-1 block font-bold text-center" style={{ fontSize: '18px', textAlign: 'center' }}>
                   {isKu ? 'کڕینی باکەت' : isAr ? 'سعر شراء الباكت' : 'Box Cost'} ({currencySymbol})
                 </label>
                 <input
@@ -1077,13 +1471,43 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   value={purchasePrice}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setPurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[#0a1120] text-amber-300 font-bold h-8 px-2 text-center rounded-lg border border-amber-500/40 text-xs focus:outline-none focus:border-amber-300"
+                  className="w-full bg-[#0a1120] text-amber-300 font-bold h-8 px-2 text-center rounded-lg border border-amber-500/40 focus:outline-none focus:border-amber-300"
+                  style={{ fontSize: '16px' }}
                 />
               </div>
 
-              {/* 4. سعر بيع الباكت للزبون */}
+              {/* 2. سعر بيع الشيت / الشريط (تم تبديل مكانه ليكون قبل بيع الباكت) */}
               <div>
-                <label className="text-emerald-300 mb-1 block font-bold text-[14px]">
+                <label className="text-cyan-200 mb-1 block font-bold text-center" style={{ fontSize: '18px', textAlign: 'center' }}>
+                  {isKu ? 'فرۆشتنی شیت (شریت)' : isAr ? 'سعر بيع الشيت' : 'Sheet Sale Price'} ({currencySymbol})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={costPerBlister > 0 ? (costPerBlister * 1.3).toFixed(2) : '0.00'}
+                  value={blisterPrice}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => setBlisterPriceBlurred(true)}
+                  onChange={(e) => setBlisterPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className={`w-full font-bold h-8 px-2.5 text-center rounded-lg transition-all focus:outline-none ${
+                    isBlisterPriceBelowCost && blisterPriceBlurred
+                      ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
+                      : 'bg-[#0a1120] text-cyan-300 border border-cyan-500/40 focus:border-cyan-400'
+                  }`}
+                  style={{ fontSize: '16px' }}
+                />
+                {isBlisterPriceBelowCost && blisterPriceBlurred && (
+                  <div className="mt-1 p-1 rounded bg-rose-500/25 border border-rose-500/50 text-[11px] font-bold text-rose-300 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>{isAr ? `أقل من تكلفة الشيت (${formatNumber(costPerBlister)})!` : `Below sheet cost!`}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. سعر بيع الباكت للزبون */}
+              <div>
+                <label className="text-emerald-300 mb-1 block font-bold text-center" style={{ fontSize: '18px', textAlign: 'center' }}>
                   {isKu ? 'فرۆشتنی باکەت' : isAr ? 'سعر بيع الباكت' : 'Box Sale Price'} ({currencySymbol}) <span className="text-rose-400">*</span>
                 </label>
                 <input
@@ -1096,11 +1520,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   onFocus={(e) => e.target.select()}
                   onBlur={() => setSingleRetailBlurred(true)}
                   onChange={(e) => setSingleRetailPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                  className={`w-full font-bold h-8 px-2.5 text-center rounded-lg text-xs transition-all focus:outline-none ${
+                  className={`w-full font-bold h-8 px-2.5 text-center rounded-lg transition-all focus:outline-none ${
                     isSingleRetailBelowCost && singleRetailBlurred
                       ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
                       : 'bg-[#0a1120] text-emerald-400 border border-emerald-500/40 focus:border-emerald-400'
                   }`}
+                  style={{ fontSize: '16px' }}
                 />
                 {isSingleRetailBelowCost && singleRetailBlurred && (
                   <div className="mt-1 p-1 rounded bg-rose-500/25 border border-rose-500/50 text-[11px] font-bold text-rose-300 flex items-center gap-1">
@@ -1109,44 +1534,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   </div>
                 )}
               </div>
-
-              {/* 5. سعر بيع الشيت / الشريط */}
-              <div>
-                <label className="text-cyan-200 mb-1 block font-bold text-[14px]">
-                  {isKu ? 'فرۆشتنی شیت (شریت)' : isAr ? 'سعر بيع الشيت' : 'Sheet Sale Price'} ({currencySymbol})
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder={costPerBlister > 0 ? (costPerBlister * 1.3).toFixed(2) : '0.00'}
-                  value={blisterPrice}
-                  onFocus={(e) => e.target.select()}
-                  onBlur={() => setBlisterPriceBlurred(true)}
-                  onChange={(e) => setBlisterPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                  className={`w-full font-bold h-8 px-2.5 text-center rounded-lg text-xs transition-all focus:outline-none ${
-                    isBlisterPriceBelowCost && blisterPriceBlurred
-                      ? 'bg-rose-950/60 text-rose-300 border-2 border-rose-500 ring-1 ring-rose-500/40'
-                      : 'bg-[#0a1120] text-cyan-300 border border-cyan-500/40 focus:border-cyan-400'
-                  }`}
-                />
-                {isBlisterPriceBelowCost && blisterPriceBlurred && (
-                  <div className="mt-1 p-1 rounded bg-rose-500/25 border border-rose-500/50 text-[11px] font-bold text-rose-300 flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                    <span>{isAr ? `أقل من تكلفة الشيت (${formatNumber(costPerBlister)})!` : `Below sheet cost!`}</span>
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* ROW 2: AUTOMATIC METRICS & REAL-TIME PROFIT DISPLAY CARDS */}
+            {/* ROW 3: AUTOMATIC METRICS & REAL-TIME PROFIT DISPLAY CARDS */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
               {/* 1. تكلفة الشيت التلقائية */}
               <div className="bg-[#070e1c] p-2 rounded-xl border border-cyan-500/30 flex flex-col justify-center items-center text-center">
                 <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
                   {isKu ? 'تێچووی شیت' : isAr ? 'تكلفة الشيت التلقائية' : 'Sheet Cost'}
                 </span>
-                <span className="text-xs font-black text-cyan-300 font-mono">
+                <span className="font-black text-cyan-300 font-mono" style={{ fontSize: '20px' }}>
                   {currencySymbol} {formatNumber(costPerBlister)}
                 </span>
               </div>
@@ -1156,36 +1553,51 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
                   {isKu ? 'کۆی کۆگا' : isAr ? 'إجمالي المخزون' : 'Total Stock'}
                 </span>
-                <span className="text-xs font-black text-blue-300 font-mono">
-                  {totalUnits} <span className="text-[11px] text-slate-300 font-normal">{pharmacyUnit}</span>
+                <div className="font-black text-blue-300 font-mono" style={{ fontSize: '20px' }}>
+                  {totalUnits} <span className="text-slate-300 font-normal" style={{ fontSize: '20px' }}>{pharmacyUnit}</span>
                   {numBlistersPerBox > 1 && (
-                    <span className="text-[11px] text-amber-300 font-bold mr-1">({totalBlisters} شيت)</span>
+                    <span className="text-amber-300 font-bold mr-1" style={{ fontSize: '20px' }}>({totalBlisters} شيت)</span>
                   )}
-                </span>
+                </div>
+                <div className="mt-0.5">
+                  {totalUnits <= (minStock === '' ? 5 : Number(minStock)) && totalUnits > 0 ? (
+                    <span className="text-[10px] text-amber-400 font-bold bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-500/30">
+                      {isAr ? '⚠️ دون حد الشراء' : 'Low stock'}
+                    </span>
+                  ) : totalUnits > 0 ? (
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-500/30">
+                      {isAr ? '✅ كمية كافية' : 'Safe stock'}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-rose-400 font-bold bg-rose-950/60 px-1.5 py-0.2 rounded border border-rose-500/30">
+                      {isAr ? 'نفد المخزون' : 'Out of stock'}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* 3. صافي ربح الباكت */}
-              <div className="bg-[#070e1c] p-2 rounded-xl border border-emerald-500/30 flex flex-col justify-center items-center text-center">
-                <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
-                  {isKu ? 'قازانجی باکەت' : isAr ? 'صافي ربح الباكت' : 'Box Profit'}
-                </span>
-                <span className={`text-xs font-black font-mono block ${singleProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {currencySymbol} {formatNumber(singleProfit)}
-                  {singleProfit > 0 && costPerUnit > 0 && (
-                    <span className="text-[10px] text-emerald-300/80 mr-1 font-normal">({packetProfitPercent}%)</span>
-                  )}
-                </span>
-              </div>
-
-              {/* 4. صافي ربح الشيت */}
+              {/* 3. صافي ربح الشيت (تم نقله إلى هذا المكان ليكون قبل ربح الباكت متطابقاً مع الأسعار) */}
               <div className="bg-[#070e1c] p-2 rounded-xl border border-cyan-500/30 flex flex-col justify-center items-center text-center">
                 <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
                   {isKu ? 'قازانجی شیت' : isAr ? 'صافي ربح الشيت' : 'Sheet Profit'}
                 </span>
-                <span className={`text-xs font-black font-mono block ${blisterProfit >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                <span className={`font-black font-mono block ${blisterProfit >= 0 ? 'text-cyan-400' : 'text-rose-400'}`} style={{ fontSize: '20px' }}>
                   {currencySymbol} {formatNumber(blisterProfit)}
                   {blisterProfit > 0 && costPerBlister > 0 && (
                     <span className="text-[10px] text-cyan-300/80 mr-1 font-normal">({blisterProfitPercent}%)</span>
+                  )}
+                </span>
+              </div>
+
+              {/* 4. صافي ربح الباكت */}
+              <div className="bg-[#070e1c] p-2 rounded-xl border border-emerald-500/30 flex flex-col justify-center items-center text-center">
+                <span className="text-[12px] text-slate-300 font-bold block mb-0.5">
+                  {isKu ? 'قازانجی باکەت' : isAr ? 'صافي ربح الباكت' : 'Box Profit'}
+                </span>
+                <span className={`font-black font-mono block ${singleProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} style={{ fontSize: '20px' }}>
+                  {currencySymbol} {formatNumber(singleProfit)}
+                  {singleProfit > 0 && costPerUnit > 0 && (
+                    <span className="text-[10px] text-emerald-300/80 mr-1 font-normal">({packetProfitPercent}%)</span>
                   )}
                 </span>
               </div>
@@ -1204,6 +1616,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               <span className="text-amber-300 font-bold font-mono">({totalBlisters} شيت)</span>
             )}
             <span className="text-slate-500">|</span>
+            <span className="text-amber-300 font-bold font-mono">{isAr ? 'تنبيه النواقص:' : 'Alert At:'} {minStock || 0}</span>
+            <span className="text-slate-500">|</span>
             <span className="text-slate-400">{isAr ? 'البيع:' : 'Sell:'}</span>
             <span className="text-emerald-400 font-black font-mono">{currencySymbol} {formatNumber(singleRetail)}</span>
           </div>
@@ -1214,7 +1628,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               onClick={onClose}
               className="px-5 h-8.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-700 transition-colors cursor-pointer border border-slate-700"
             >
-              {isKu ? 'پەشیمانبوونەوە' : isAr ? 'إلغاء' : 'Cancel'}
+              {!productToEdit ? (isKu ? 'تەواوکردن و داخستن' : isAr ? 'إنهاء وإغلاق' : 'Done & Close') : (isKu ? 'پەشیمانبوونەوە' : isAr ? 'إلغاء' : 'Cancel')}
             </button>
 
             <button
@@ -1222,7 +1636,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               className="px-8 h-8.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-black text-xs shadow-lg shadow-cyan-500/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95 border border-cyan-400/50"
             >
               <Package className="w-4 h-4" />
-              <span>{isKu ? 'پاشەکەوتکردنی دەرمان' : isAr ? 'حفظ وتأكيد بيانات الصنف الدوائي' : 'Save Medicine Record'}</span>
+              <span>
+                {!productToEdit 
+                  ? (isKu ? 'پاشەکەوتکردن (مانەوە لە فۆڕم)' : isAr ? 'حفظ الصنف (متابعة الإدخال)' : 'Save & Add Next')
+                  : (isKu ? 'پاشەکەوتکردنی دەرمان' : isAr ? 'حفظ التعديلات' : 'Save Changes')
+                }
+              </span>
             </button>
           </div>
         </div>
@@ -1256,6 +1675,14 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 autoFocus
                 value={newDosageFormInput}
                 onChange={(e) => setNewDosageFormInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddNewDosageForm();
+                  } else if (e.key === 'Escape') {
+                    setShowAddDosageModal(false);
+                  }
+                }}
                 placeholder={isAr ? 'مثال: لصقات جلدية، غسول فموي، رغوة' : isKu ? 'نموونە: لەزگەی پێست' : 'e.g. Mouthwash, Foam spray'}
                 className="w-full bg-[#070D1C] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 text-xs focus:outline-none focus:border-cyan-300"
               />
@@ -1272,6 +1699,186 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               <button
                 type="button"
                 onClick={handleAddNewDosageForm}
+                className="px-4 py-1 text-xs font-bold rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer"
+              >
+                {isAr ? 'إضافة واعتماد' : isKu ? 'زیادکردن' : 'Add & Select'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD CUSTOM COUNTRY OF ORIGIN */}
+      {showAddCountryModal && (
+        <div className="fixed inset-0 z-60 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0B1120] p-4 rounded-2xl border border-cyan-500/50 max-w-sm w-full space-y-3.5 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <span>{isAr ? 'إضافة دولة منشأ جديدة' : isKu ? 'زیادکردنی دەوڵەتی نوێ' : 'Add New Origin Country'}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddCountryModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-semibold block">
+                {isAr ? 'اسم الدولة المصنعة للدواء:' : isKu ? 'ناوی دەوڵەت:' : 'Country Name:'}
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={newCountryInput}
+                onChange={(e) => setNewCountryInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddNewCountry();
+                  } else if (e.key === 'Escape') {
+                    setShowAddCountryModal(false);
+                  }
+                }}
+                placeholder={isAr ? 'مثال: سويسرا (Switzerland) / اليابان' : isKu ? 'نموونە: سویسرا' : 'e.g. Switzerland'}
+                className="w-full bg-[#070D1C] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 text-xs focus:outline-none focus:border-cyan-300"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAddCountryModal(false)}
+                className="px-3.5 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+              >
+                {isAr ? 'إلغاء' : isKu ? 'داخستن' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNewCountry}
+                className="px-4 py-1 text-xs font-bold rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer"
+              >
+                {isAr ? 'إضافة واعتماد' : isKu ? 'زیادکردن' : 'Add & Select'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD CUSTOM MANUFACTURER */}
+      {showAddManufacturerModal && (
+        <div className="fixed inset-0 z-60 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0B1120] p-4 rounded-2xl border border-cyan-500/50 max-w-sm w-full space-y-3.5 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-cyan-400" />
+                <span>{isAr ? 'إضافة شركة دوائية مصنعة جديدة' : isKu ? 'زیادکردنی کۆمپانیای دروستکەر' : 'Add New Manufacturer'}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddManufacturerModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-semibold block">
+                {isAr ? 'اسم الشركة المصنعة للمنتج:' : isKu ? 'ناوی کۆمپانیا:' : 'Manufacturer Name:'}
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={newManufacturerInput}
+                onChange={(e) => setNewManufacturerInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddNewManufacturer();
+                  } else if (e.key === 'Escape') {
+                    setShowAddManufacturerModal(false);
+                  }
+                }}
+                placeholder={isAr ? 'مثال: ساندوز Sandoz / أستلاس Astellas' : isKu ? 'نموونە: ساندۆز' : 'e.g. Sandoz, Astellas'}
+                className="w-full bg-[#070D1C] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 text-xs focus:outline-none focus:border-cyan-300"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAddManufacturerModal(false)}
+                className="px-3.5 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+              >
+                {isAr ? 'إلغاء' : isKu ? 'داخستن' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNewManufacturer}
+                className="px-4 py-1 text-xs font-bold rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer"
+              >
+                {isAr ? 'إضافة واعتماد' : isKu ? 'زیادکردن' : 'Add & Select'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD CUSTOM PHARMA CLASS & CODE */}
+      {showAddPharmaClassModal && (
+        <div className="fixed inset-0 z-60 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0B1120] p-4 rounded-2xl border border-cyan-500/50 max-w-sm w-full space-y-3.5 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                <Tag className="w-4 h-4 text-cyan-400" />
+                <span>{isAr ? 'إضافة فئة وترميز دوائي جديد' : isKu ? 'زیادکردنی پۆلێن و کۆدی دەرمان' : 'Add New Pharma Class & Code'}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddPharmaClassModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-semibold block">
+                {isAr ? 'الفئة والترميز الدوائي:' : isKu ? 'پۆلێن و کۆد:' : 'Pharma Class & Code:'}
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={newPharmaClassInput}
+                onChange={(e) => setNewPharmaClassInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddNewPharmaClass();
+                  } else if (e.key === 'Escape') {
+                    setShowAddPharmaClassModal(false);
+                  }
+                }}
+                placeholder={isAr ? 'مثال: Psychotropic - أدوية نفسية وعصبية' : isKu ? 'نموونە: دەرمانی دەروونی' : 'e.g. Psychotropic, Vaccines'}
+                className="w-full bg-[#070D1C] text-slate-100 h-8 px-2.5 rounded-lg border border-cyan-500/40 text-xs focus:outline-none focus:border-cyan-300"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAddPharmaClassModal(false)}
+                className="px-3.5 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+              >
+                {isAr ? 'إلغاء' : isKu ? 'داخستن' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNewPharmaClass}
                 className="px-4 py-1 text-xs font-bold rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer"
               >
                 {isAr ? 'إضافة واعتماد' : isKu ? 'زیادکردن' : 'Add & Select'}
