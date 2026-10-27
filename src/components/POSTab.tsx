@@ -63,6 +63,7 @@ import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../
 import { getProductExpirySummary, calculateBatchAllocations, deductProductBatchesFEFO } from '../lib/expiryUtils';
 import { DamagedItemsModal } from './DamagedItemsModal';
 import { KioskPrintModal } from './KioskPrintModal';
+import { CompletedReceiptsModal } from './CompletedReceiptsModal';
 import { broadcastCustomerDisplay, openCustomerDisplayWindow } from '../lib/customerDisplayBroadcast';
 import { CustomerDisplayScreen } from './CustomerDisplayScreen';
 import { FastSearchInput } from './FastSearchInput';
@@ -105,6 +106,9 @@ interface POSTabProps {
   onOpenSalesReturn?: () => void;
   onOpenDelegateReturns?: () => void;
   onOpenCustomerDisplay?: () => void;
+  onOpenCompletedReceipts?: () => void;
+  onOpenCashDrawer?: () => void;
+  onOpenShiftReport?: () => void;
   currentUser?: UserAccount | null;
   isActive?: boolean;
 }
@@ -223,6 +227,9 @@ export const POSTab: React.FC<POSTabProps> = ({
   onOpenSalesReturn,
   onOpenDelegateReturns,
   onOpenCustomerDisplay: externalOnOpenCustomerDisplay,
+  onOpenCompletedReceipts,
+  onOpenCashDrawer,
+  onOpenShiftReport,
   currentUser,
   isActive = true,
 }) => {
@@ -230,6 +237,16 @@ export const POSTab: React.FC<POSTabProps> = ({
   const lang = settings.language;
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
+
+  // Internal completed receipts modal state
+  const [internalShowCompletedReceipts, setInternalShowCompletedReceipts] = useState<boolean>(false);
+  const handleOpenReceipts = () => {
+    if (onOpenCompletedReceipts) {
+      onOpenCompletedReceipts();
+    } else {
+      setInternalShowCompletedReceipts(true);
+    }
+  };
 
   // Customer display side panel state
   const [showCustomerDisplaySidePanel, setShowCustomerDisplaySidePanel] = useState<boolean>(false);
@@ -561,7 +578,8 @@ export const POSTab: React.FC<POSTabProps> = ({
     showPrescriptionModal ||
     showAlternativesModal ||
     isDamagedModalOpen ||
-    showKioskModal
+    showKioskModal ||
+    internalShowCompletedReceipts
   );
 
   const focusBarcodeIfEnabled = (delay = 50) => {
@@ -662,39 +680,117 @@ export const POSTab: React.FC<POSTabProps> = ({
         }
       }
 
-      if (matchShortcut(posShortcuts.newWindow)) {
+      // F1 or posShortcuts.newWindow: New sales window tab
+      if (matchShortcut(posShortcuts.newWindow) || (!e.ctrlKey && !e.altKey && e.key === 'F1')) {
         e.preventDefault();
         handleAddWindow();
-      } else if (matchShortcut(posShortcuts.completeSale)) {
-        e.preventDefault();
-        if (cart.length > 0) {
-          handleCompleteCheckout();
-        }
-      } else if (matchShortcut(posShortcuts.focusBarcode)) {
-        e.preventDefault();
-        setIsBarcodePaused(false);
-        focusBarcodeIfEnabled(50);
-      } else if (matchShortcut(posShortcuts.openInventory)) {
+      } 
+      // F2 or posShortcuts.openInventory: Store Catalog / Inventory
+      else if (matchShortcut(posShortcuts.openInventory) || (!e.ctrlKey && !e.altKey && e.key === 'F2')) {
         e.preventDefault();
         setShowInventory(true);
-      } else if (matchShortcut(posShortcuts.clearCart)) {
+      }
+      // F3 or posShortcuts.toggleReturn: Toggle Sales Returns Mode
+      else if (matchShortcut(posShortcuts.toggleReturn) || (!e.ctrlKey && !e.altKey && e.key === 'F3')) {
+        e.preventDefault();
+        setIsReturnMode(prev => {
+          const nextState = !prev;
+          setScanAlert({
+            msg: nextState
+              ? (isKu ? '⚡ دۆخی گەڕاندنەوە چالاککرا (F3)' : isAr ? '⚡ تم تفعيل وضع الإرجاع (اختصار F3)' : '⚡ Return mode enabled (F3)')
+              : (isKu ? '✅ دۆخی فرۆشتنی ئاسایی چالاککرایەوە (F3)' : isAr ? '✅ تم العودة إلى وضع البيع العادي (اختصار F3)' : '✅ Normal sale restored (F3)'),
+            type: nextState ? 'error' : 'success'
+          });
+          focusBarcodeIfEnabled(50);
+          return nextState;
+        });
+      }
+      // F4 or posShortcuts.viewReceipts: Previous Completed Receipts & Invoices (وصلات البيع السابقة)
+      else if (matchShortcut(posShortcuts.viewReceipts) || (!e.ctrlKey && !e.altKey && e.key === 'F4')) {
+        e.preventDefault();
+        handleOpenReceipts();
+      }
+      // F5 or posShortcuts.cashPayment or Alt+1: Cash Payment
+      else if (matchShortcut(posShortcuts.cashPayment) || (!e.ctrlKey && !e.altKey && e.key === 'F5') || (e.altKey && e.key === '1')) {
+        e.preventDefault();
+        setPaymentMethod('cash');
+      }
+      // F6 or posShortcuts.debtPayment or Alt+2: Debt / Account Payment
+      else if (matchShortcut(posShortcuts.debtPayment) || (!e.ctrlKey && !e.altKey && e.key === 'F6') || (e.altKey && e.key === '2')) {
+        e.preventDefault();
+        setPaymentMethod('debt');
+      }
+      // F7 or posShortcuts.cardPayment or Alt+3: Card Payment
+      else if (matchShortcut(posShortcuts.cardPayment) || (!e.ctrlKey && !e.altKey && e.key === 'F7') || (e.altKey && e.key === '3')) {
+        e.preventDefault();
+        setPaymentMethod('card');
+      }
+      // Alt+4: NFC / Contactless Payment
+      else if (e.altKey && e.key === '4') {
+        e.preventDefault();
+        setPaymentMethod('nfc');
+      }
+      // F8 or posShortcuts.clearCart: Clear Cart
+      else if (matchShortcut(posShortcuts.clearCart) || (!e.ctrlKey && !e.altKey && e.key === 'F8')) {
         e.preventDefault();
         if (cart.length > 0) {
           clearCart();
         }
-      } else if (matchShortcut(posShortcuts.switchNextWindow)) {
+      }
+      // F9 or posShortcuts.completeSale: Fast Sale (Without Receipt)
+      else if (matchShortcut(posShortcuts.completeSale) || (!e.ctrlKey && !e.altKey && e.key === 'F9')) {
+        e.preventDefault();
+        if (cart.length > 0) {
+          handleCompleteCheckout({ shouldPrintReceipt: false });
+        }
+      }
+      // F10 or posShortcuts.printReceipt: Sale & Direct Thermal Print
+      else if (matchShortcut(posShortcuts.printReceipt) || (!e.ctrlKey && !e.altKey && e.key === 'F10')) {
+        e.preventDefault();
+        if (cart.length > 0) {
+          handleCompleteCheckout({ shouldPrintReceipt: true });
+        }
+      }
+      // F11 or posShortcuts.openCashDrawer: Open Cash Safe / Drawer
+      else if (matchShortcut(posShortcuts.openCashDrawer) || (!e.ctrlKey && !e.altKey && e.key === 'F11')) {
+        e.preventDefault();
+        if (onOpenCashDrawer) {
+          onOpenCashDrawer();
+        }
+      }
+      // F12 or Customer Display
+      else if (!e.ctrlKey && !e.altKey && e.key === 'F12') {
+        e.preventDefault();
+        if (externalOnOpenCustomerDisplay) {
+          externalOnOpenCustomerDisplay();
+        } else {
+          openCustomerDisplayWindow();
+        }
+      }
+      // Focus barcode scanner input
+      else if (matchShortcut(posShortcuts.focusBarcode)) {
+        e.preventDefault();
+        setIsBarcodePaused(false);
+        focusBarcodeIfEnabled(50);
+      } 
+      // Switch next window
+      else if (matchShortcut(posShortcuts.switchNextWindow)) {
         e.preventDefault();
         if (windows.length > 1) {
           const nextIdx = (activeWindowIndex + 1) % windows.length;
           setActiveWindowId(windows[nextIdx].id);
         }
-      } else if (matchShortcut(posShortcuts.switchPrevWindow)) {
+      } 
+      // Switch previous window
+      else if (matchShortcut(posShortcuts.switchPrevWindow)) {
         e.preventDefault();
         if (windows.length > 1) {
           const prevIdx = (activeWindowIndex - 1 + windows.length) % windows.length;
           setActiveWindowId(windows[prevIdx].id);
         }
-      } else if (matchShortcut(posShortcuts.closeActiveWindow)) {
+      } 
+      // Close active window
+      else if (matchShortcut(posShortcuts.closeActiveWindow)) {
         e.preventDefault();
         if (windows.length > 1) {
           handleRemoveWindow(undefined, activeWindow.id);
@@ -704,7 +800,20 @@ export const POSTab: React.FC<POSTabProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, windows, activeWindowIndex, activeWindow.id, posShortcuts, isBarcodeDisabled, lastAddedId, isActive]);
+  }, [
+    cart, 
+    windows, 
+    activeWindowIndex, 
+    activeWindow.id, 
+    posShortcuts, 
+    isBarcodeDisabled, 
+    lastAddedId, 
+    isActive,
+    onOpenCompletedReceipts,
+    onOpenCashDrawer,
+    externalOnOpenCustomerDisplay,
+    isReturnMode
+  ]);
 
   useEffect(() => {
     // If any modal is open or barcode is paused (e.g. typing discount or interacting with UI), blur and stop focus
@@ -1918,56 +2027,80 @@ export const POSTab: React.FC<POSTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-between gap-1 border transition-all cursor-pointer ${
                     paymentMethod === 'cash'
                       ? 'bg-emerald-600 border-emerald-400 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)] scale-102'
                       : 'bg-[#070D1C] border-slate-800 text-slate-300 hover:text-white'
                   }`}
+                  title={isAr ? `نقداً (${posShortcuts.cashPayment || 'F5'})` : `Cash (${posShortcuts.cashPayment || 'F5'})`}
                 >
-                  <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                  <span>{isAr ? 'نقداً' : isKu ? 'نەختینە (کاش)' : 'Cash'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                    <span>{isAr ? 'نقداً' : isKu ? 'نەختینە' : 'Cash'}</span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded bg-slate-900/80 text-emerald-300 font-mono text-[9px] border border-emerald-500/40 font-bold">
+                    {posShortcuts.cashPayment || 'F5'}
+                  </span>
                 </button>
 
                 {/* Debt / Account - دين / آجل */}
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('debt')}
-                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-between gap-1 border transition-all cursor-pointer ${
                     paymentMethod === 'debt'
                       ? 'bg-amber-600 border-amber-400 text-white shadow-[0_0_12px_rgba(245,158,11,0.4)] scale-102'
                       : 'bg-[#070D1C] border-slate-800 text-slate-300 hover:text-white'
                   }`}
+                  title={isAr ? `دين / آجل (${posShortcuts.debtPayment || 'F6'})` : `Debt (${posShortcuts.debtPayment || 'F6'})`}
                 >
-                  <User className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>{isAr ? 'دين / آجل' : isKu ? 'قەرز / ئەژمێر' : 'Debt/Account'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>{isAr ? 'دين / آجل' : isKu ? 'قەرز' : 'Debt'}</span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded bg-slate-900/80 text-amber-300 font-mono text-[9px] border border-amber-500/40 font-bold">
+                    {posShortcuts.debtPayment || 'F6'}
+                  </span>
                 </button>
 
                 {/* Card - بطاقة */}
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('card')}
-                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-between gap-1 border transition-all cursor-pointer ${
                     paymentMethod === 'card'
                       ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)] scale-102'
                       : 'bg-[#070D1C] border-slate-800 text-slate-300 hover:text-white'
                   }`}
+                  title={isAr ? `بطاقة (${posShortcuts.cardPayment || 'F7'})` : `Card (${posShortcuts.cardPayment || 'F7'})`}
                 >
-                  <CreditCard className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                  <span>{isAr ? 'بطاقة' : isKu ? 'کارت' : 'Card'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+                    <span>{isAr ? 'بطاقة' : isKu ? 'کارت' : 'Card'}</span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded bg-slate-900/80 text-blue-300 font-mono text-[9px] border border-blue-500/40 font-bold">
+                    {posShortcuts.cardPayment || 'F7'}
+                  </span>
                 </button>
 
                 {/* NFC / Mada */}
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('nfc')}
-                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                  className={`py-1.5 px-2 rounded-xl text-xs font-black flex items-center justify-between gap-1 border transition-all cursor-pointer ${
                     paymentMethod === 'nfc'
                       ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.4)] scale-102'
                       : 'bg-[#070D1C] border-slate-800 text-slate-300 hover:text-white'
                   }`}
+                  title="NFC / مدى (Alt+4)"
                 >
-                  <Smartphone className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-                  <span>{isAr ? 'NFC / مدى' : isKu ? 'NFC / بێ بەرکەوتن' : 'NFC / Contactless'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <Smartphone className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                    <span>{isAr ? 'NFC / مدى' : isKu ? 'NFC' : 'NFC'}</span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded bg-slate-900/80 text-purple-300 font-mono text-[9px] border border-purple-500/40 font-bold">
+                    Alt+4
+                  </span>
                 </button>
               </div>
             </div>
@@ -2372,13 +2505,16 @@ export const POSTab: React.FC<POSTabProps> = ({
                       ? 'bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-600/30' 
                       : 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 border border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
                   }`}
-                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد بدون وصل' : isKu ? 'پشتڕاستکردنەوەی گەڕاندنەوە بێ پسوولە' : 'Return without receipt') : (isAr ? 'حفظ المبيعات فوراً بدون إظهار أو طباعة وصل (سريع جداً)' : isKu ? 'فرۆشتنی خێرا بێ پسوولە' : 'Fast Sale without receipt')}
+                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد بدون وصل (F9)' : isKu ? 'پشتڕاستکردنەوە بێ پسوولە (F9)' : 'Return without receipt (F9)') : (isAr ? 'حفظ المبيعات فوراً بدون إظهار أو طباعة وصل (اختصار: F9)' : isKu ? 'فرۆشتنی خێرا بێ پسوولە (F9)' : 'Fast Sale without receipt (F9)')}
                 >
                   {isReturnMode ? <RotateCcw className="w-4 h-4 text-rose-100 shrink-0 animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />}
                   <span className="truncate">
                     {isReturnMode 
-                      ? (isAr ? 'تأكيد إرجاع (بدون وصل)' : isKu ? 'پشتڕاستکردنەوە (بێ پسوولە)' : 'Confirm Return') 
-                      : (isAr ? 'بيع (بدون وصل)' : isKu ? 'فرۆشتن (بێ پسوولە)' : 'Sale (No Receipt)')}
+                      ? (isAr ? 'إرجاع (بدون وصل)' : isKu ? 'گەڕاندنەوە' : 'Return') 
+                      : (isAr ? 'بيع (بدون وصل)' : isKu ? 'فرۆشتن' : 'Sale')}
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-200 font-mono text-[10px] font-bold border border-emerald-400/40">
+                    {posShortcuts.completeSale || 'F9'}
                   </span>
                 </button>
 
@@ -2397,13 +2533,16 @@ export const POSTab: React.FC<POSTabProps> = ({
                       ? 'bg-gradient-to-r from-cyan-600 to-blue-600 shadow-cyan-600/30' 
                       : 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 border border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]'
                   }`}
-                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد وطباعة وصل مرتجع' : isKu ? 'گەڕاندنەوە و چاپی پسوولە' : 'Return & print receipt') : (isAr ? 'إتمام البيع وطباعة الوصل مباشرة بدون إظهار شاشة الطباعة' : isKu ? 'فرۆشتن و چاپی ڕاستەوخۆی پسوولە' : 'Sale with direct print')}
+                  title={isReturnMode ? (isAr ? 'تأكيد إرجاع المواد وطباعة وصل مرتجع (F10)' : isKu ? 'گەڕاندنەوە و چاپ (F10)' : 'Return & print receipt (F10)') : (isAr ? 'إتمام البيع وطباعة الوصل مباشرة (اختصار: F10)' : isKu ? 'فرۆشتن و چاپ (F10)' : 'Sale & Direct Print (F10)')}
                 >
                   <Printer className="w-4 h-4 text-cyan-200 shrink-0" />
                   <span className="truncate">
                     {isReturnMode 
-                      ? (isAr ? 'إرجاع وطباعة وصل' : isKu ? 'گەڕاندنەوە و چاپ' : 'Return & Print') 
+                      ? (isAr ? 'إرجاع وطباعة' : isKu ? 'گەڕاندنەوە و چاپ' : 'Return & Print') 
                       : (isAr ? 'بيع وطباعة وصل' : isKu ? 'فرۆشتن و چاپ' : 'Sale & Print')}
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-200 font-mono text-[10px] font-bold border border-cyan-400/40">
+                    {posShortcuts.printReceipt || 'F10'}
                   </span>
                 </button>
               </div>
@@ -2595,8 +2734,34 @@ export const POSTab: React.FC<POSTabProps> = ({
             </form>
 
             {/* ACTION BUTTONS INSIDE YELLOW LINE CONTAINER */}
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              {/* RETURN MODE / RETURNS HUB BUTTON */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 overflow-x-auto py-0.5 custom-scrollbar">
+              {/* 1. زر فواتير ووصلات البيع السابقة - بارز بالاسم الكامل والرمز والاختصار */}
+              <button
+                type="button"
+                onClick={handleOpenReceipts}
+                className="px-3 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:brightness-110 text-white font-black text-xs shrink-0 shadow-[0_0_20px_rgba(147,51,234,0.45)] border-2 border-purple-400/60 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 group"
+                title={isAr ? `عرض وبحث فواتير ووصلات البيع السابقة (${posShortcuts.viewReceipts || 'F4'})` : isKu ? `پسوولەکانی فرۆشتنی پێشوو (${posShortcuts.viewReceipts || 'F4'})` : `Sales Receipts & Invoices (${posShortcuts.viewReceipts || 'F4'})`}
+              >
+                <div className="p-1 rounded-lg bg-purple-950/80 border border-purple-400/40 text-purple-200">
+                  <Receipt className="w-4 h-4 text-purple-200" />
+                </div>
+                <div className="flex flex-col text-right rtl:text-right ltr:text-left">
+                  <span className="text-[11.5px] font-black leading-tight text-white drop-shadow-sm">
+                    {isAr ? 'فواتير ووصلات البيع' : isKu ? 'پسوولەکانی فرۆشتن' : 'Sales Receipts'}
+                  </span>
+                  <span className="text-[9.5px] text-purple-200/90 font-mono">
+                    {isAr ? 'سجل الوصولات' : isKu ? 'مێژووی پسوولەکان' : 'Receipt History'}
+                  </span>
+                </div>
+                <span className="bg-purple-950 text-amber-300 px-2 py-0.5 rounded-lg text-[10px] font-mono font-black border border-amber-400/50 shadow-inner">
+                  {posShortcuts.viewReceipts || 'F4'}
+                </span>
+                <span className="bg-purple-950/90 text-cyan-300 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border border-cyan-400/40">
+                  {salesHistory?.length ?? 0}
+                </span>
+              </button>
+
+              {/* 2. زر وضع إرجاع المواد (المرتجع) */}
               <button
                 type="button"
                 onClick={() => {
@@ -2605,50 +2770,66 @@ export const POSTab: React.FC<POSTabProps> = ({
                     setScanAlert({
                       msg: nextState
                         ? (isKu 
-                            ? '⚡ دۆخی گەڕاندنەوە چالاککرا (هەر بارکۆدێک یان کاڵایەک هەڵبژێری دەگەڕێندرێتەوە بۆ کۆگا)' 
+                            ? '⚡ دۆخی گەڕاندنەوە چالاککرا (F3)' 
                             : isAr 
-                            ? '⚡ تم تفعيل وضع الإرجاع (امسح الباركود أو أضف المواد لإرجاعها للمخزن)' 
-                            : '⚡ Return mode enabled (Scan barcode or select item to restock & refund)')
+                            ? '⚡ تم تفعيل وضع الإرجاع (اختصار F3)' 
+                            : '⚡ Return mode enabled (F3)')
                         : (isKu 
-                            ? '✅ دۆخی فرۆشتنی ئاسایی چالاککرایەوە' 
+                            ? '✅ دۆخی فرۆشتنی ئاسایی چالاککرایەوە (F3)' 
                             : isAr 
-                            ? '✅ تم العودة إلى وضع البيع العادي' 
-                            : '✅ Normal sale mode restored'),
+                            ? '✅ تم العودة إلى وضع البيع العادي (اختصار F3)' 
+                            : '✅ Normal sale mode restored (F3)'),
                       type: nextState ? 'error' : 'success'
                     });
                     focusBarcodeIfEnabled(50);
                     return nextState;
                   });
                 }}
-                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border ${
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs shrink-0 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border-2 ${
                   isReturnMode
-                    ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 ring-2 ring-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.6)] animate-pulse'
-                    : 'bg-[#0B1120] hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
+                    ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-300 ring-2 ring-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.7)] animate-pulse'
+                    : 'bg-[#0B1120] hover:bg-slate-800 text-slate-200 hover:text-white border-slate-700 hover:border-slate-600'
                 }`}
-                title={isAr ? 'تفعيل / إيقاف وضع إرجاع المواد' : isKu ? 'چالاککردن / ناچالاککردنی دۆخی گەڕاندنەوەی کاڵا' : 'Toggle Return Mode'}
+                title={isAr ? `تفعيل / إيقاف وضع إرجاع المواد (${posShortcuts.toggleReturn || 'F3'})` : isKu ? `گەڕاندنەوەی کاڵا (${posShortcuts.toggleReturn || 'F3'})` : `Toggle Return Mode (${posShortcuts.toggleReturn || 'F3'})`}
               >
-                <RotateCcw className={`w-3.5 h-3.5 ${isReturnMode ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">
-                  {isReturnMode ? (isAr ? 'وضع المرتجعات (نشط)' : isKu ? 'دۆخی گەڕاندنەوە (چالاک)' : 'Returns Mode (Active)') : (isAr ? 'إرجاع مواد' : isKu ? 'گەڕاندنەوەی کاڵا' : 'Returns')}
+                <RotateCcw className={`w-3.5 h-3.5 ${isReturnMode ? 'animate-spin text-white' : 'text-rose-400'}`} />
+                <span>
+                  {isReturnMode ? (isAr ? 'وضع المرتجع' : isKu ? 'دۆخی گەڕاندنەوە' : 'Returns Mode') : (isAr ? 'إرجاع مواد' : isKu ? 'گەڕاندنەوە' : 'Return Mode')}
                 </span>
-                <span className="sm:hidden">{isAr ? 'مرتجع' : isKu ? 'گەڕاندنەوە' : 'Return'}</span>
+                <span className="bg-rose-950/90 text-rose-300 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold border border-rose-500/40">
+                  {posShortcuts.toggleReturn || 'F3'}
+                </span>
               </button>
 
-              {/* STORE INVENTORY BUTTON */}
+              {/* 3. زر استعراض المخزن والأدوية */}
               <button
                 type="button"
                 onClick={() => setShowInventory(true)}
-                className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/50 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                title={isAr ? `عرض مواد المخزن (${posShortcuts.openInventory})` : isKu ? `پیشاندانی کۆگا (${posShortcuts.openInventory})` : `Show Store Inventory (${posShortcuts.openInventory})`}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.35)] border-2 border-emerald-400/50 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                title={isAr ? `استعراض أدوية ومواد المخزن (${posShortcuts.openInventory || 'F2'})` : isKu ? `پیشاندانی کۆگا (${posShortcuts.openInventory || 'F2'})` : `Show Store Inventory (${posShortcuts.openInventory || 'F2'})`}
               >
                 <Package className="w-3.5 h-3.5 text-emerald-200" />
-                <span className="hidden sm:inline">{isAr ? 'المخزن' : isKu ? 'کۆگا' : getTranslation(lang, 'showInventory')}</span>
-                <span className="sm:hidden">{isAr ? 'المخزن' : isKu ? 'کۆگا' : 'Inventory'}</span>
-                <span className="bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded text-[10px] font-mono border border-emerald-500/40">
-                  {posShortcuts.openInventory}
+                <span>{isAr ? 'المخزن والأدوية' : isKu ? 'کۆگا و دەرمان' : 'Store Catalog'}</span>
+                <span className="bg-emerald-950 text-amber-300 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold border border-emerald-500/50">
+                  {posShortcuts.openInventory || 'F2'}
                 </span>
-                <span className="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-mono border" style={{ borderColor: '#ff05b8' }}>
+                <span className="bg-emerald-950 text-emerald-200 px-2 py-0.5 rounded-full text-[10px] font-mono border border-emerald-500/50">
                   {products?.length ?? 0}
+                </span>
+              </button>
+
+              {/* 4. زر تفريغ السلة */}
+              <button
+                type="button"
+                onClick={clearCart}
+                disabled={cart.length === 0}
+                className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                title={isAr ? `تفريغ السلة بالكامل (${posShortcuts.clearCart || 'F8'})` : isKu ? `بەتاڵکردنی سەبەتە (${posShortcuts.clearCart || 'F8'})` : `Clear Cart (${posShortcuts.clearCart || 'F8'})`}
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span className="hidden xl:inline">{isAr ? 'تفريغ' : isKu ? 'بەتاڵکردن' : 'Clear'}</span>
+                <span className="bg-rose-950 text-rose-300 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold border border-rose-500/40">
+                  {posShortcuts.clearCart || 'F8'}
                 </span>
               </button>
             </div>
@@ -3728,6 +3909,21 @@ export const POSTab: React.FC<POSTabProps> = ({
           onClose={() => setShowKioskModal(false)}
           lang={lang}
           settings={settings}
+        />
+      )}
+
+      {/* COMPLETED RECEIPTS MODAL (وصلات وفواتير البيع السابقة) */}
+      {internalShowCompletedReceipts && (
+        <CompletedReceiptsModal
+          isOpen={internalShowCompletedReceipts}
+          onClose={() => setInternalShowCompletedReceipts(false)}
+          salesHistory={salesHistory}
+          settings={settings}
+          onViewReceipt={(sale) => {
+            if (onViewReceipt) onViewReceipt(sale);
+          }}
+          onOpenReturnForSale={onOpenSalesReturn}
+          onOpenCashDrawer={onOpenCashDrawer}
         />
       )}
 

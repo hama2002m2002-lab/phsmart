@@ -36,6 +36,7 @@ import {
 import { Product, SaleTransaction, StoreSettings, SaleUnitType } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { getTranslation } from '../lib/translations';
+import { getReturnedItemProfit } from '../lib/financialUtils';
 
 interface SalesReturnModalProps {
   isOpen: boolean;
@@ -317,8 +318,16 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     setDirectItems(prev => prev.filter(item => item.id !== id));
   };
 
-  // Direct Return Total
+  // Direct Return Total Value & Deducted Profit Calculation
   const directTotalAmount = directItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  
+  // Real-time calculation of profits reversed by returning these items
+  const directReturnedProfit = useMemo(() => {
+    return directItems.reduce((acc, item) => {
+      const prod = products.find(p => p.id === item.productId || (p.barcode && item.barcode && p.barcode.trim() === item.barcode.trim()));
+      return acc + getReturnedItemProfit(item, prod);
+    }, 0);
+  }, [directItems, products]);
 
   // Process Direct Return and automatically increment stock in inventory
   const handleConfirmDirectReturn = () => {
@@ -357,13 +366,21 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       });
     });
 
-    // 2. Log a return transaction in sales history
+    // 2. Log a return transaction in sales history with items populated
     const returnInvoiceNo = `RET-${Math.floor(100000 + Math.random() * 900000)}`;
     const returnTransaction: SaleTransaction = {
       id: `ret_${Date.now()}`,
       invoiceNumber: returnInvoiceNo,
       timestamp: new Date().toLocaleString(isAr ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }),
-      items: [],
+      items: directItems.map(i => ({
+        productId: i.productId,
+        productName: i.productName,
+        productNameAr: i.productNameAr,
+        price: i.price,
+        quantity: i.quantity,
+        saleType: i.saleType,
+        total: i.price * i.quantity
+      })),
       subtotal: -directTotalAmount,
       discount: 0,
       tax: 0,
@@ -911,16 +928,30 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                         </tbody>
                         <tfoot className="bg-[#131d30] border-t border-slate-700/80 font-bold text-slate-200">
                           <tr>
-                            <td colSpan={4} className="py-3 px-3 text-right">
-                              <span className="text-emerald-400">
-                                {t(
-                                  `إجمالي المواد المحددة للإرجاع: (${directItems.length} صنف / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} قطعة)`,
-                                  `سەرجەمی کاڵا دیاریکراوەکان: (${directItems.length} جۆر / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} دانە)`,
-                                  `Total items for return: (${directItems.length} items / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} pcs)`
+                            <td colSpan={4} className="py-2.5 px-3 text-right">
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span className="text-emerald-400">
+                                  {t(
+                                    `إجمالي المواد المحددة للإرجاع: (${directItems.length} صنف / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} قطعة)`,
+                                    `سەرجەمی کاڵا دیاریکراوەکان: (${directItems.length} جۆر / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} دانە)`,
+                                    `Total items for return: (${directItems.length} items / ${directItems.reduce((acc, i) => acc + i.quantity, 0)} pcs)`
+                                  )}
+                                </span>
+                                {directReturnedProfit > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-mono font-bold flex items-center gap-1">
+                                    <span>🔄</span>
+                                    <span>
+                                      {t(
+                                        `خصم أرباح: -${settings.currencySymbol}${formatNumber(directReturnedProfit)}`,
+                                        `داشکاندنی قازانج: -${settings.currencySymbol}${formatNumber(directReturnedProfit)}`,
+                                        `Deducted profit: -${settings.currencySymbol}${formatNumber(directReturnedProfit)}`
+                                      )}
+                                    </span>
+                                  </span>
                                 )}
-                              </span>
+                              </div>
                             </td>
-                            <td colSpan={3} className="py-3 px-3 text-center text-rose-400 font-mono text-sm sm:text-base font-black">
+                            <td colSpan={3} className="py-2.5 px-3 text-center text-rose-400 font-mono text-sm sm:text-base font-black">
                               {settings.currencySymbol}{formatNumber(directTotalAmount)}
                             </td>
                           </tr>
@@ -1204,14 +1235,22 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
             </button>
           </div>
 
-          {/* Total Direct Return Amount Display on Right (in RTL) */}
-          <div className="flex items-center gap-2 text-right">
-            <span className="text-lg sm:text-2xl font-black text-rose-400 font-mono">
-              {settings.currencySymbol}{formatNumber(directTotalAmount)}
-            </span>
-            <span className="text-xs text-slate-300 font-bold">
-              {isKu ? 'کۆی بڕی گەڕێنراوەی ڕاستەوخۆ:' : isAr ? 'إجمالي مبلغ الإرجاع المباشر:' : 'Total Direct Return Amount:'}
-            </span>
+          {/* Total Direct Return Amount & Profit Deduction Display on Right (in RTL) */}
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 text-right">
+            {directReturnedProfit > 0 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-950/60 border border-rose-500/40 text-[11px] font-mono text-rose-300">
+                <span className="font-sans font-bold text-slate-400">{isKu ? 'قازانجی کەمکراوە:' : isAr ? 'الأرباح المخصومة:' : 'Deducted Profit:'}</span>
+                <span className="font-black text-rose-400">-{settings.currencySymbol}{formatNumber(directReturnedProfit)}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="text-lg sm:text-2xl font-black text-rose-400 font-mono">
+                {settings.currencySymbol}{formatNumber(directTotalAmount)}
+              </span>
+              <span className="text-xs text-slate-300 font-bold">
+                {isKu ? 'کۆی بڕی گەڕێنراوەی ڕاستەوخۆ:' : isAr ? 'إجمالي مبلغ الإرجاع المباشر:' : 'Total Direct Return Amount:'}
+              </span>
+            </div>
           </div>
 
         </div>

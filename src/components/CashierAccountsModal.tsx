@@ -6,7 +6,8 @@ import {
   Trash2, AlertCircle, ShoppingCart, ArrowRight, Layers, Receipt, 
   ChevronRight, ArrowLeft, Download, CreditCard, Banknote, Clock, Sparkles
 } from 'lucide-react';
-import { UserAccount, StoreSettings, SaleTransaction, CartItem } from '../types';
+import { UserAccount, StoreSettings, SaleTransaction, CartItem, Product } from '../types';
+import { calculateStoreFinancialMetrics } from '../lib/financialUtils';
 
 export interface CashierAccountMetric {
   cashierName: string;
@@ -16,6 +17,8 @@ export interface CashierAccountMetric {
   discounts: number;
   grossSales: number;
   netSales: number;
+  profit?: number;
+  returnedProfits?: number;
   invoiceCount: number;
   avgInvoice: number;
   transactions: SaleTransaction[];
@@ -27,6 +30,7 @@ interface CashierAccountsModalProps {
   userAccounts: UserAccount[];
   salesHistory: SaleTransaction[];
   settings: StoreSettings;
+  products?: Product[];
   onPrintAccountStatement?: (accountData: CashierAccountMetric) => void;
   onViewReceipt?: (sale: SaleTransaction) => void;
   onOpenReturnForSale?: (sale: SaleTransaction) => void;
@@ -42,6 +46,7 @@ export const CashierAccountsModal: React.FC<CashierAccountsModalProps> = ({
   userAccounts,
   salesHistory,
   settings,
+  products = [],
   onPrintAccountStatement,
   onViewReceipt,
   onOpenReturnForSale,
@@ -94,49 +99,25 @@ export const CashierAccountsModal: React.FC<CashierAccountsModalProps> = ({
         return sName === targetName || sName.includes(targetName) || targetName.includes(sName);
       });
 
-      let cashSales = 0;
-      let cardSales = 0;
-      let refunds = 0;
-      let discounts = 0;
-      let grossSales = 0;
-
-      cashierTx.forEach(s => {
-        const isRefunded = s.status === 'refunded';
-        const tot = s.total || 0;
-        const sub = s.subtotal || tot;
-        const disc = s.discount || 0;
-
-        if (isRefunded) {
-          refunds += tot;
-        } else {
-          grossSales += sub;
-          discounts += disc;
-
-          if (s.paymentMethod === 'cash') {
-            cashSales += tot;
-          } else {
-            cardSales += tot;
-          }
-        }
-      });
-
-      const netSales = grossSales - discounts - refunds;
+      const metrics = calculateStoreFinancialMetrics(cashierTx, products);
       const invoiceCount = cashierTx.length;
 
       return {
         cashierName: name,
-        cashSales,
-        cardSales,
-        refunds,
-        discounts,
-        grossSales,
-        netSales,
+        cashSales: metrics.cashInHand,
+        cardSales: metrics.posCardTerminals,
+        refunds: metrics.totalRefundsValue,
+        discounts: metrics.totalDiscounts,
+        grossSales: metrics.grossSales,
+        netSales: metrics.netSales,
+        profit: metrics.grossProfit,
+        returnedProfits: metrics.returnedProfits,
         invoiceCount,
-        avgInvoice: invoiceCount > 0 ? Math.round(netSales / invoiceCount) : 0,
+        avgInvoice: invoiceCount > 0 ? Math.round(metrics.netSales / invoiceCount) : 0,
         transactions: cashierTx
       };
     });
-  }, [salesHistory, userAccounts]);
+  }, [salesHistory, userAccounts, products]);
 
   const filteredAccounts = useMemo(() => {
     return cashierAccountsData.filter(acc => {

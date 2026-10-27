@@ -38,6 +38,7 @@ import {
 } from 'recharts';
 import { Product, SaleTransaction, StoreSettings, UserAccount } from '../types';
 import { formatNumber } from '../lib/formatUtils';
+import { calculateStoreFinancialMetrics } from '../lib/financialUtils';
 
 interface OverviewTabProps {
   products: Product[];
@@ -124,10 +125,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const overallTotalRevenue = activeSales.reduce((sum, s) => sum + (s.total || 0), 0);
   const overallInvoicesCount = activeSales.length;
 
-  // Financial Analytics & Profit Estimates (دمج التحليلات المالية وهوامش الأرباح)
-  const totalRevenue = overallTotalRevenue;
-  const totalCostEstimate = overallTotalRevenue > 0 ? Math.round(overallTotalRevenue * 0.65) : 0;
-  const netProfitEstimate = overallTotalRevenue > 0 ? overallTotalRevenue - totalCostEstimate : 0;
+  // Accurate Financial Analytics & Profits (strictly deducting returned items & profit margin)
+  const overallMetrics = React.useMemo(() => {
+    return calculateStoreFinancialMetrics(salesHistory || [], products);
+  }, [salesHistory, products]);
+
+  const totalRevenue = overallMetrics.netSales;
+  const totalCostEstimate = overallMetrics.cogs;
+  const netProfitEstimate = overallMetrics.grossProfit;
   const netMarginPercent = totalRevenue > 0 ? Math.round((netProfitEstimate / totalRevenue) * 100) : 0;
 
   // 1. Category Breakdown Data (توزيع المبيعات حسب قسم المنتجات)

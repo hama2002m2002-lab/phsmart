@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, Zap, WifiOff } from 'lucide-react';
+import { FileText, RotateCcw, Vault, Printer, LogOut, Globe, Home, Sun, Moon, Menu, X, Tv, Zap, WifiOff, Receipt } from 'lucide-react';
 import { StoreSettings, UserAccount, Language } from '../types';
 import { getTranslation } from '../lib/translations';
 
@@ -217,48 +217,84 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right: Actions when in POS mode */}
           {isPOSMode && (
-            <div className="flex items-center space-x-1 sm:space-x-2 rtl:space-x-reverse overflow-x-auto custom-scrollbar py-0.5">
+            <div className="flex items-center space-x-1 sm:space-x-1.5 rtl:space-x-reverse overflow-x-auto custom-scrollbar py-0.5">
+              {/* زر وصلات البيع (وصلات / الفواتير السابقة) */}
+              {onOpenCompletedReceipts && (
+                <button
+                  type="button"
+                  onClick={onOpenCompletedReceipts}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:brightness-110 text-white text-[11px] sm:text-xs font-black transition-all shadow-[0_0_18px_rgba(147,51,234,0.4)] border border-purple-400/50 active:scale-95 cursor-pointer shrink-0"
+                  title={isAr ? 'عرض وبحث وصلات وفواتير البيع المكتملة وإعادة طباعتها (اختصار: F4)' : isKu ? 'بینینی پسوولەکانی فرۆشتن و چاپکردنەوە (F4)' : 'Sales Receipts & Invoices (F4)'}
+                >
+                  <Receipt className="w-3.5 h-3.5 text-purple-200 shrink-0" />
+                  <span className="inline">{isAr ? 'وصلات البيع' : isKu ? 'پسوولەکانی فرۆشتن' : 'Receipts'}</span>
+                  <span className="px-1.5 py-0.2 rounded bg-purple-950/90 text-purple-200 text-[10px] font-mono font-bold border border-purple-400/50">
+                    F4
+                  </span>
+                </button>
+              )}
+
+              {/* زر استرجاع المواد */}
               {onOpenSalesReturn && (
                 <button
+                  type="button"
                   onClick={onOpenSalesReturn}
-                  className="flex items-center space-x-1 rtl:space-x-reverse px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-600 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(244,63,94,0.35)] border border-rose-400/40 active:scale-95 cursor-pointer shrink-0"
-                  title={isAr ? 'استرجاع مواد مباعة بالباركود، رقم الوصل، أو الاسم' : 'Sales Return'}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-rose-700 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(244,63,94,0.35)] border border-rose-400/40 active:scale-95 cursor-pointer shrink-0"
+                  title={isAr ? 'استرجاع مواد مباعة بالباركود أو رقم الوصل (اختصار: F3)' : 'Sales Return (F3)'}
                 >
-                  <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-100" />
-                  <span className="hidden xs:inline">{isAr ? 'استرجاع' : isKu ? 'گەڕاندنەوە' : 'Return'}</span>
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-100 shrink-0" />
+                  <span className="inline">{isAr ? 'إرجاع مواد' : isKu ? 'گەڕاندنەوە' : 'Return'}</span>
+                  <span className="px-1.5 py-0.2 rounded bg-rose-950/90 text-rose-200 text-[10px] font-mono font-bold border border-rose-400/50">
+                    F3
+                  </span>
                 </button>
               )}
 
+              {/* زر الخزنة */}
               {onOpenCashDrawer && (
                 <button
+                  type="button"
                   onClick={onOpenCashDrawer}
-                  className="flex items-center space-x-1 rtl:space-x-reverse px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/40 active:scale-95 cursor-pointer shrink-0"
-                  title={isAr ? 'واجهة حركة الخزنة وصندوق الكاشير' : 'Cash Safe & Treasury'}
+                  className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] border border-emerald-400/40 active:scale-95 cursor-pointer shrink-0"
+                  title={isAr ? 'حركة الخزنة والدرج النقدي (اختصار: F11)' : 'Cash Drawer (F11)'}
                 >
-                  <Vault className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-200" />
-                  <span className="hidden xs:inline">{isAr ? 'الخزنة' : isKu ? 'سندوق' : 'Safe'}</span>
+                  <Vault className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                  <span className="hidden sm:inline">{isAr ? 'الخزنة' : isKu ? 'سندوق' : 'Safe'}</span>
+                  <span className="px-1.5 py-0.2 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-mono font-bold border border-emerald-400/50">
+                    F11
+                  </span>
                 </button>
               )}
 
+              {/* زر تقرير الوردية */}
               {onOpenShiftReport && (
                 <button
+                  type="button"
                   onClick={onOpenShiftReport}
-                  className="flex items-center space-x-1 rtl:space-x-reverse px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(245,158,11,0.35)] border border-amber-400/40 active:scale-95 cursor-pointer shrink-0"
-                  title={isAr ? 'طباعة تقرير ملخص وردية اليوم وإحصائيات الدرج' : 'Print Shift Report'}
+                  className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 hover:brightness-110 text-white text-[11px] sm:text-xs font-bold transition-all shadow-[0_0_15px_rgba(245,158,11,0.35)] border border-amber-400/40 active:scale-95 cursor-pointer shrink-0"
+                  title={isAr ? 'طباعة تقرير ملخص وردية اليوم (اختصار: Alt+W)' : 'Shift Report (Alt+W)'}
                 >
-                  <Printer className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-100" />
-                  <span className="hidden sm:inline">{isAr ? 'ملخص الورديات' : isKu ? 'ڕاپۆرت' : 'Report'}</span>
+                  <Printer className="w-3.5 h-3.5 text-amber-100 shrink-0" />
+                  <span className="hidden md:inline">{isAr ? 'ملخص الوردية' : isKu ? 'ڕاپۆرت' : 'Report'}</span>
+                  <span className="px-1.5 py-0.2 rounded bg-amber-950/90 text-amber-200 text-[10px] font-mono font-bold border border-amber-400/50">
+                    Alt+W
+                  </span>
                 </button>
               )}
 
+              {/* زر الرئيسية / الخروج */}
               {onExitPOS && (
                 <button
+                  type="button"
                   onClick={onExitPOS}
-                  className="flex items-center space-x-1 rtl:space-x-reverse px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-900/80 via-slate-900 to-slate-800 hover:from-rose-800 hover:to-slate-700 text-rose-100 border border-rose-500/50 text-[11px] sm:text-xs font-black transition-all shadow-[0_0_12px_rgba(244,63,94,0.3)] shrink-0 cursor-pointer active:scale-95"
-                  title={isAr ? 'الخروج من المبيعات والعودة للواجهة الرئيسية' : isKu ? 'دەرچوون بۆ لاپەڕەی سەرەکی' : 'Exit to Main Dashboard'}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] sm:text-xs font-black transition-all shadow-sm shrink-0 cursor-pointer active:scale-95"
+                  title={isAr ? 'الخروج والعودة للواجهة الرئيسية (اختصار: Esc)' : isKu ? 'دەرچوون بۆ لاپەڕەی سەرەکی (Esc)' : 'Exit to Dashboard (Esc)'}
                 >
-                  <Home className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-300 shrink-0" />
-                  <span>{isAr ? 'الرئيسية' : isKu ? 'سەرەکی' : 'Home'}</span>
+                  <Home className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                  <span className="inline">{isAr ? 'الرئيسية' : isKu ? 'سەرەکی' : 'Home'}</span>
+                  <span className="px-1.5 py-0.2 rounded bg-slate-950 text-slate-300 text-[10px] font-mono font-bold border border-slate-700">
+                    Esc
+                  </span>
                 </button>
               )}
             </div>

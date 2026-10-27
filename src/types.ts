@@ -249,13 +249,19 @@ export interface MarketNotification {
 
 export interface POSKeyboardShortcuts {
   newWindow: string;        // Default: 'F1'
-  completeSale: string;     // Default: 'F2'
-  focusBarcode: string;     // Default: 'F3'
-  openInventory: string;    // Default: 'F4'
+  openInventory: string;    // Default: 'F2'
+  toggleReturn?: string;    // Default: 'F3'
+  viewReceipts?: string;    // Default: 'F4' (زر وصلات البيع والوصولات السابقة)
+  cashPayment?: string;     // Default: 'F5'
+  debtPayment?: string;     // Default: 'F6'
+  cardPayment?: string;     // Default: 'F7'
+  clearCart: string;        // Default: 'F8'
+  completeSale: string;     // Default: 'F9'
+  printReceipt: string;     // Default: 'F10'
+  openCashDrawer?: string;  // Default: 'F11'
+  focusBarcode: string;     // Default: 'Space'
   switchNextWindow: string; // Default: 'F6'
   switchPrevWindow: string; // Default: 'F7'
-  clearCart: string;        // Default: 'F8'
-  printReceipt: string;     // Default: 'F9'
   closeActiveWindow: string; // Default: 'F10'
 }
 

@@ -710,7 +710,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
 
-        {/* Google Gemini AI Vision & OCR Configuration Section */}
+        {/* Google Gemini AI Vision & OCR Built-in Status Section */}
         <div className="space-y-4 pt-4 border-t border-slate-800">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -719,117 +719,52 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-300 to-cyan-300 flex items-center gap-2">
-                  <span>{isKu ? 'ڕێکخستنی زیرەکی دەستکرد (Google Gemini AI)' : isAr ? 'مفتاح وإعدادات الذكاء الاصطناعي (Google Gemini AI)' : 'Google Gemini AI Configuration'}</span>
-                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono border border-purple-500/30">Vision OCR</span>
+                  <span>{isKu ? 'سیستەمی زیرەکی دەستکرد (Google Gemini AI Vision)' : isAr ? 'محرك الذكاء الاصطناعي لفحص الصور والفواتير (Google Gemini AI)' : 'Google Gemini AI Vision System'}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono border border-emerald-500/30">مفعل وتلقائي 100%</span>
                 </h3>
                 <p className="text-[11px] text-slate-400">
                   {isKu 
-                    ? 'بۆ پشکنینی ڕاستەوخۆی پسوولەکان، خوێندنەوەی دەرمان و پاکەت، و گواستنەوەی داتاکان'
+                    ? 'بۆ پشکنینی ڕاستەوخۆی وێنەی پسوولەکان، خوێندنەوەی دەرمان و پاکەت، و گواستنەوەی داتاکان بەبێ پێویستی بە کلیل'
                     : isAr 
-                    ? 'لفحص الفواتير الورقية آلياً، وقراءة علب الأدوية واستيراد المواد من شاشات البرامج القديمة'
-                    : 'For automatic invoice OCR, medicine package recognition, and legacy system migration'}
+                    ? 'لفحص الفواتير الورقية آلياً، وقراءة علب الأدوية وملفات PDF واستيراد المواد بدون الحاجة لإدخال أي مفتاح'
+                    : 'Automatic invoice OCR, PDF reading, medicine recognition and legacy migration built-in without manual keys'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 border border-purple-500/40 font-bold flex items-center gap-1.5 transition-all"
-              >
-                <ExternalLink className="w-3 h-3 text-purple-300" />
-                <span>{isKu ? 'وەرگرتنی کلیلی بەخۆڕایی' : isAr ? 'الحصول على مفتاح مجاني (Google AI Studio)' : 'Get Free API Key'}</span>
-              </a>
-
-              <button
-                type="button"
-                onClick={handleTestGeminiKey}
-                disabled={testStatus.loading}
-                className="text-[11px] px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all cursor-pointer disabled:opacity-50"
-              >
-                {testStatus.loading ? (
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Zap className="w-3 h-3 text-cyan-300" />
-                )}
-                <span>{isKu ? 'تاقیکردنەوەی پەیوەندی' : isAr ? 'فحص الاتصال وتجربة الذكاء الاصطناعي' : 'Test AI Connection'}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleTestGeminiKey}
+              disabled={testStatus.loading}
+              className="text-[11px] px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:brightness-110 text-white font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all cursor-pointer disabled:opacity-50"
+            >
+              {testStatus.loading ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <Zap className="w-3 h-3 text-cyan-300" />
+              )}
+              <span>{isKu ? 'تاقیکردنەوەی خزمەتگوزاری' : isAr ? 'فحص جاهزية الذكاء الاصطناعي' : 'Check AI Status'}</span>
+            </button>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#11162B] to-[#0A0E1C] border border-purple-500/30 shadow-xl space-y-4">
-            {/* Explanatory note about publishing/deployment */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-950/50 via-purple-950/40 to-slate-900 border border-purple-500/30 flex items-start gap-3 text-xs">
-              <Key className="w-4 h-4 text-purple-300 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-2xl bg-gradient-to-b from-[#11162B] to-[#0A0E1C] border border-purple-500/30 shadow-xl space-y-3">
+            <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-start gap-3 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <div className="space-y-1 text-[11px] leading-relaxed text-slate-300">
-                <p className="font-bold text-purple-200">
+                <p className="font-bold text-emerald-200">
                   {isKu 
-                    ? '💡 چۆنیەتی کارکردنی کلیلەکە لە کاتی بڵاوکردنەوەی بەرنامە (Deployment / Hosting):' 
+                    ? '✅ خزمەتگوزاری خوێندنەوەی وێنە و PDF بە شێوەی ڕاستەوخۆ چالاکە و هیچ داواکارییەکی کلیل ناکات' 
                     : isAr 
-                    ? '💡 آلية عمل مفتاح الذكاء الاصطناعي عند نشر البرنامج (Deployment / Production):' 
-                    : '💡 How the Gemini API Key works when deployed or hosted:'}
+                    ? '✅ نظام إضافة الأدوية بالصور أو بملفات PDF مدمج ومفعل بالكامل ويعمل مباشرة دون طلب أي مفتاح' 
+                    : '✅ Image and PDF medicine extraction system is fully active and operational without requiring any API keys'}
                 </p>
-                <p>
+                <p className="text-slate-400">
                   {isKu
-                    ? 'سیستەمەکە لەسەر مۆدێلی خێرای (gemini-3.1-flash-lite) کار دەکات. لە کاتی بڵاوکردنەوە، کلیلەکە دەتوانیت لە ڕێکخستنی سێرڤەر (GEMINI_API_KEY) دابنێیت یان ڕاستەوخۆ لێرە بینوسیت و پاشەکەوتی بکەیت.'
+                    ? 'دەتوانیت لە بەشی کاڵاکان یان کڕین، ڕاستەوخۆ وێنەی پسوولەی دەرمان یان فایلی PDF هەڵبژێریت و سیستمەکە هەموو دەرمانەکان دەخوێنێتەوە.'
                     : isAr
-                    ? 'النظام مهيأ ليعمل بموديل (gemini-3.1-flash-lite) الفائق السرعة والدقة. عند نشر البرنامج، يمكنك إما تعيين متغير البيئة (GEMINI_API_KEY) في إعدادات الاستضافة ليعمل لكل المستخدمين، أو إدخال مفتاحك الشخصي هنا ليُحفظ في المتصفح ويُستخدم تلقائياً.'
-                    : 'The system uses gemini-3.1-flash-lite for high speed and accuracy. When deployed, set GEMINI_API_KEY in your hosting environment variables, or enter your personal key below to save it locally.'}
+                    ? 'يمكنك التوجه إلى تبويب المواد أو المشتريات واختيار أي صورة فاتورة أو ملف PDF، وسيتم استخراج وتحديث أسعار وتفاصيل وباركودات الأدوية فوراً.'
+                    : 'You can directly upload invoice photos or PDF files in Products or Purchases tabs for instant medicine extraction.'}
                 </p>
-              </div>
-            </div>
-
-            {/* Input Field */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{isKu ? 'کلیلی تایبەتی Gemini API (بەپێی ئارەزوو):' : isAr ? 'مفتاح Gemini API المخصص (اختياري، أو لتجاوز إعدادات الخادم):' : 'Custom Gemini API Key:'}</span>
-                </span>
-                {settings.geminiApiKey ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold">
-                    {isKu ? 'کلیلی تایبەت دانراوە' : isAr ? 'مفتاح مخصص محفوظ' : 'Custom Key Active'}
-                  </span>
-                ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 font-mono font-bold">
-                    {isKu ? 'کلیلی بنەڕەتی سێرڤەر چالاکە' : isAr ? 'يستخدم المفتاح الافتراضي للخادم' : 'Server Environment Key'}
-                  </span>
-                )}
-              </label>
-
-              <div className="relative flex items-center">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={settings.geminiApiKey || ''}
-                  onChange={(e) => handleChange('geminiApiKey', e.target.value.trim())}
-                  placeholder={isKu ? 'نموونە: AIzaSy... یان AQ.Ab8...' : isAr ? 'مثال: AIzaSy... أو AQ.Ab8...' : 'e.g. AIzaSy... or AQ.Ab8...'}
-                  className="w-full bg-[#070A14] text-slate-200 px-4 py-3 pl-11 pr-24 text-xs font-mono rounded-xl border border-purple-500/30 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-                  dir="ltr"
-                />
-                <Key className="w-4 h-4 text-purple-400/60 absolute left-3.5 pointer-events-none" />
-
-                <div className="absolute right-2 flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all cursor-pointer"
-                    title={showApiKey ? 'إخفاء المفتاح' : 'إظهار المفتاح'}
-                  >
-                    {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-
-                  {settings.geminiApiKey && (
-                    <button
-                      type="button"
-                      onClick={() => handleChange('geminiApiKey', '')}
-                      className="px-2 py-1 text-[10px] rounded-lg bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-500/30 transition-all cursor-pointer font-bold"
-                    >
-                      {isKu ? 'سڕینەوە' : isAr ? 'مسح' : 'Clear'}
-                    </button>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -839,19 +774,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 animate-fadeIn ${
                   testStatus.success
                     ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
-                    : 'bg-red-950/70 border-red-500/50 text-red-300'
+                    : 'bg-cyan-950/70 border-cyan-500/50 text-cyan-300'
                 }`}
               >
-                {testStatus.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                )}
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <div className="flex-1">
                   <p className="font-bold">{testStatus.message}</p>
                   {testStatus.model && (
                     <p className="text-[10px] opacity-80 mt-0.5 font-mono">
-                      Active Model: {testStatus.model} | Mode: Vision OCR & Multimodal
+                      Active AI Engine: {testStatus.model} | Mode: Vision OCR & Multimodal
                     </p>
                   )}
                 </div>

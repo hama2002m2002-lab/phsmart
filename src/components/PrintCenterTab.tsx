@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { 
-  Printer, Tag, Barcode, Search, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, RefreshCw, Layers, Zap, Download, Laptop
+  Printer, Tag, Barcode, Search, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, RefreshCw, Layers, Zap, Download, Laptop, ScanLine
 } from 'lucide-react';
 import { Product, StoreSettings } from '../types';
 import { BarcodePrintModal } from './BarcodePrintModal';
 import { KioskPrintModal } from './KioskPrintModal';
 import { downloadKioskPrintingBatchFile } from '../lib/thermalPrinter';
+import { generateUniqueBarcode200245 } from '../lib/barcodeUtils';
 
 interface PrintCenterTabProps {
   products: Product[];
@@ -45,13 +46,13 @@ export const PrintCenterTab: React.FC<PrintCenterTabProps> = ({
 
     if (!window.confirm(confirmMsg)) return;
 
-    const updated = products.map(p => {
-      if (!p.barcode || p.barcode.trim() === '') {
-        const randomNum = Math.floor(100000000000 + Math.random() * 900000000000);
-        return { ...p, barcode: randomNum.toString() };
+    const updated = [...products];
+    for (let i = 0; i < updated.length; i++) {
+      if (!updated[i].barcode || updated[i].barcode.trim() === '') {
+        const uniqueBar = generateUniqueBarcode200245(updated);
+        updated[i] = { ...updated[i], barcode: uniqueBar };
       }
-      return p;
-    });
+    }
 
     setProducts(updated);
     localStorage.setItem('supermarket_products_v1', JSON.stringify(updated));
@@ -203,15 +204,15 @@ export const PrintCenterTab: React.FC<PrintCenterTabProps> = ({
 
             <div className="p-3 rounded-2xl bg-[#10192D] border border-slate-800 text-xs text-slate-300 space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-[11px]">
-                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{isKu ? 'تایبەتمەندییەکان:' : isAr ? 'الميزات المتاحة:' : 'Features:'}</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isKu ? 'تایبەتمەندییەکانی خوێندنەوەی سکانەر:' : isAr ? 'ضمان القراءة بالسكانر (100% Scannable):' : 'Scanner Ready Features:'}</span>
               </div>
-              <p className="text-[10px] text-slate-400">
+              <p className="text-[10px] text-slate-300">
                 {isKu
-                  ? '• تەنها بارکۆد + ناوی کاڵا • قەبارەی گەورە بۆ سکانەری خێرا • گونجاو بۆ هەموو جۆرە چاپکەرێکی حەراری'
+                  ? '• ستانداردی پەسەندکراوی Code 128 / EAN-13 بۆ سەرجەم جۆرەکانی سکانەر • ناوچەی ئاسایشی سپی دەوروبەر • دروستکردنی هێڵی تەواو تیژ بۆ چاپکەرە گەرمییەکان'
                   : isAr
-                  ? '• باركود رقمي + اسم المادة فقط • خطوط واضحة للمسح السريع • مقاسات متعددة لطابعات الملصقات'
-                  : '• Barcode & name only • High scan reliability • Multiple label sizes'}
+                  ? '• تشفير قياسي Code 128 / EAN-13 مقروء فوراً بكافة أجهزة السكانر والليزر • هوامش أمان بيضاء (Quiet Zones) • خطوط حادة بدون تشويش للطابعات الحرارية'
+                  : '• Standard Code 128 / EAN-13 verified • Quiet zones for instant laser detection • Crisp thermal print edges'}
               </p>
             </div>
           </div>

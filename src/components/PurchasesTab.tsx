@@ -806,10 +806,11 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
           {onOpenAIInvoiceScanner && (
             <button
               onClick={onOpenAIInvoiceScanner}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs border border-purple-300/40 flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.4)] active:scale-95 transition-all cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs border-2 border-purple-300/50 flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.4)] active:scale-95 transition-all cursor-pointer"
+              title={t('إضافة أدوية ومواد جديدة بالصور أو ملفات PDF للوصل فوراً بالذكاء الاصطناعي وبدون مفتاح', 'زیادکردنی دەرمان بە وێنە یان فایلی PDFی پسوولە بێ کلیل', 'Scan Invoice Photos / PDF (AI)')}
             >
               <Camera className="w-4 h-4 text-purple-100" />
-              <span>{t('📸 فتح كاميرا / رفع صورة الوصل', '📸 وێنەگرتن / بەرزکردنەوەی پسوڵە', '📸 Open Camera / Upload Photo')}</span>
+              <span>{t('📸 إضافة أدوية بالصور أو PDF الوصل (AI)', '📸 زیادکردنی دەرمان بە وێنە یان فایلی PDF (AI)', '📸 Scan Invoice Photos / PDF (AI)')}</span>
             </button>
           )}
         </div>

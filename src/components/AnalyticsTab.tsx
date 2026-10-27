@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, PieChart as PieIcon, DollarSign, Layers, Flame }
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { Product, SaleTransaction, StoreSettings } from '../types';
 import { formatNumber } from '../lib/formatUtils';
+import { calculateStoreFinancialMetrics } from '../lib/financialUtils';
 
 interface AnalyticsTabProps {
   products: Product[];
@@ -40,9 +41,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const isAr = lang === 'ar';
   const isKu = lang === 'ku';
 
-  const totalRevenue = salesHistory.reduce((acc, s) => acc + s.total, 0);
-  const totalCostEstimate = totalRevenue * 0.65;
-  const netProfitEstimate = totalRevenue - totalCostEstimate;
+  const metrics = calculateStoreFinancialMetrics(salesHistory, products);
+  const totalRevenue = metrics.netSales;
+  const totalCostEstimate = metrics.cogs;
+  const netProfitEstimate = metrics.grossProfit;
+  const netProfitMargin = totalRevenue > 0 ? Math.round((netProfitEstimate / totalRevenue) * 100) : 0;
 
   return (
     <div className={`space-y-6 animate-fadeIn ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
@@ -89,7 +92,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
             {settings.currencySymbol}{formatNumber(netProfitEstimate)}
           </p>
-          <p className={`text-[10px] mt-1 ${isLight ? 'text-emerald-800 font-semibold' : 'text-emerald-300/80'}`}>35% {isKu ? 'ڕێژەی قازانجی پاک' : isAr ? 'هامش الربح الصافي' : 'net margin'}</p>
+          <p className={`text-[10px] mt-1 ${isLight ? 'text-emerald-800 font-semibold' : 'text-emerald-300/80'}`}>{netProfitMargin}% {isKu ? 'ڕێژەی قازانجی پاک' : isAr ? 'هامش الربح الصافي' : 'net margin'}</p>
         </div>
       </div>
 

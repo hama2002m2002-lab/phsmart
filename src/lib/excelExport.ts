@@ -14,7 +14,7 @@ import {
   MarketNotification, 
   OperatingExpenseItem 
 } from '../types';
-import { getItemUnitCost, getItemTotalCost, getItemTotalProfit } from './financialUtils';
+import { getItemUnitCost, getItemTotalCost, getItemTotalProfit, calculateStoreFinancialMetrics } from './financialUtils';
 
 export interface FullStoreBackup {
   products: Product[];
@@ -72,30 +72,25 @@ export async function exportStoreToExcel(data: FullStoreBackup, fileNamePrefix =
   // ----------------------------------------------------
   // 1. Sheet: Financial & Profit Summary Report (ملخص التقارير والأرباح)
   // ----------------------------------------------------
-  const totalGrossSales = sales.reduce((acc, s) => acc + (s.subtotal || s.total || 0), 0);
-  const totalNetSales = sales.reduce((acc, s) => acc + (s.total || 0), 0);
-  const totalDiscounts = sales.reduce((acc, s) => acc + (s.discount || 0), 0);
+  const metrics = calculateStoreFinancialMetrics(sales, products, expenses);
+  const totalGrossSales = metrics.grossSales;
+  const totalRefundsValue = metrics.totalRefundsValue;
+  const returnedProfits = metrics.returnedProfits;
+  const totalNetSales = metrics.netSales;
+  const totalDiscounts = metrics.totalDiscounts;
   const totalTax = sales.reduce((acc, s) => acc + (s.tax || 0), 0);
-  
-  // Calculate total Cost of Goods Sold (COGS) & Gross Profit
-  let totalCOGS = 0;
-  let totalSalesProfit = 0;
-  let totalItemsSoldQty = 0;
+  const totalCOGS = metrics.cogs;
+  const totalSalesProfit = metrics.grossProfit; // Gross profit after deducting returned profits
+  const totalExpensesAmount = metrics.totalOperatingExpenses;
+  const netOperationalProfit = metrics.netOperatingProfit;
+  const profitMarginPercent = totalNetSales > 0 ? ((totalSalesProfit / totalNetSales) * 100).toFixed(2) : '0';
 
+  let totalItemsSoldQty = 0;
   sales.forEach(sale => {
     (sale.items || []).forEach(item => {
-      const prod = prodMap.get(item.productId);
-      const cost = getItemTotalCost(item, prod);
-      const profit = getItemTotalProfit(item, prod);
-      totalCOGS += cost;
-      totalSalesProfit += profit;
       totalItemsSoldQty += (item.quantity || 0);
     });
   });
-
-  const totalExpensesAmount = expenses.reduce((acc, exp) => acc + (Number(exp.amount) || 0), 0);
-  const netOperationalProfit = totalSalesProfit - totalExpensesAmount;
-  const profitMarginPercent = totalNetSales > 0 ? ((totalSalesProfit / totalNetSales) * 100).toFixed(2) : '0';
 
   // Inventory Valuations
   const totalInventoryCostValue = products.reduce((acc, p) => acc + ((p.stock || p.totalUnits || 0) * (p.costPerUnit || p.cost || 0)), 0);
@@ -107,12 +102,14 @@ export async function exportStoreToExcel(data: FullStoreBackup, fileNamePrefix =
   const lowStockProductsCount = products.filter(p => (p.stock || p.totalUnits || 0) <= (p.minStock || 5)).length;
 
   const summarySheetData = [
-    { 'المؤشر المالي / الإحصائي': '📊 إجمالي المبيعات الإجمالية', 'القيمة ($)': totalGrossSales, 'ملاحظات وتفاصيل': 'مجموع مبالغ الفواتير قبل الخصومات' },
-    { 'المؤشر المالي / الإحصائي': '💵 إجمالي صافي المبيعات المحصلة', 'القيمة ($)': totalNetSales, 'ملاحظات وتفاصيل': 'المبالغ النهائية بعد الخصومات والضرائب' },
-    { 'المؤشر المالي / الإحصائي': '📦 إجمالي تكلفة البضاعة المباعة (COGS)', 'القيمة ($)': totalCOGS, 'ملاحظات وتفاصيل': 'تكلفة شراء المواد المباعة من الموردين' },
-    { 'المؤشر المالي / الإحصائي': '📈 إجمالي الأرباح الإجمالية (Gross Profit)', 'القيمة ($)': totalSalesProfit, 'ملاحظات وتفاصيل': 'أرباح المبيعات = الإيرادات - سعر الشراء' },
-    { 'المؤشر المالي / الإحصائي': '📉 إجمالي المصاريف التشغيلية والنثريات', 'القيمة ($)': totalExpensesAmount, 'ملاحظات وتفاصيل': 'مجموع مصاريف الإيجار، الرواتب، النثريات، والكهرباء' },
-    { 'المؤشر المالي / الإحصائي': '✨ صافي الربح التشغيلي الصافي (Net Profit)', 'القيمة ($)': netOperationalProfit, 'ملاحظات وتفاصيل': 'الأرباح الصافية بعد خصم كافة المصاريف التشغيلية' },
+    { 'المؤشر المالي / الإحصائي': '📊 إجمالي المبيعات الإجمالية (Gross Sales)', 'القيمة ($)': totalGrossSales, 'ملاحظات وتفاصيل': 'مجموع مبالغ الفواتير الصادرة قبل الخصومات' },
+    { 'المؤشر المالي / الإحصائي': '🔄 إجمالي المرتجعات والبدائل (Refunds)', 'القيمة ($)': totalRefundsValue, 'ملاحظات وتفاصيل': 'إجمالي قيمة المواد والفواتير المسترجعة' },
+    { 'المؤشر المالي / الإحصائي': '🔻 الأرباح المسترجعة المخصومة (Returned Profits)', 'القيمة ($)': returnedProfits, 'ملاحظات وتفاصيل': 'أرباح المواد المرجعة التي تم خصمها وإلغاؤها' },
+    { 'المؤشر المالي / الإحصائي': '💵 إجمالي صافي المبيعات المحصلة (Net Sales)', 'القيمة ($)': totalNetSales, 'ملاحظات وتفاصيل': 'المبالغ النهائية بعد الخصومات والمرتجعات' },
+    { 'المؤشر المالي / الإحصائي': '📦 إجمالي تكلفة البضاعة المباعة الصافية (Net COGS)', 'القيمة ($)': totalCOGS, 'ملاحظات وتفاصيل': 'تكلفة شراء المواد المباعة فعلياً بعد استرداد المرتجع' },
+    { 'المؤشر المالي / الإحصائي': '📈 إجمالي الأرباح الإجمالية الصافية (Gross Profit)', 'القيمة ($)': totalSalesProfit, 'ملاحظات وتفاصيل': 'أرباح المبيعات بعد خصم أرباح المواد المرجعة' },
+    { 'المؤشر المالي / الإحصائي': '📉 إجمالي المصاريف التشغيلية والنثريات (OPEX)', 'القيمة ($)': totalExpensesAmount, 'ملاحظات وتفاصيل': 'مجموع مصاريف الإيجار، الرواتب، النثريات، والكهرباء' },
+    { 'المؤشر المالي / الإحصائي': '✨ صافي الربح التشغيلي الصافي (Net Operating Profit)', 'القيمة ($)': netOperationalProfit, 'ملاحظات وتفاصيل': 'الأرباح الصافية بعد خصم المرتجعات وكافة المصاريف التشغيلية' },
     { 'المؤشر المالي / الإحصائي': '🎯 نسبة هامش الربح الإجمالي', 'القيمة ($)': `${profitMarginPercent}%`, 'ملاحظات وتفاصيل': 'نسبة الربح مقارنة بصافي المبيعات' },
     { 'المؤشر المالي / الإحصائي': '🏷️ إجمالي الخصومات الممنوحة للعملاء', 'القيمة ($)': totalDiscounts, 'ملاحظات وتفاصيل': 'قيمة التخفيضات والكوبونات الممنوحة' },
     { 'المؤشر المالي / الإحصائي': '🏛️ إجمالي الضريبة المحصلة', 'القيمة ($)': totalTax, 'ملاحظات وتفاصيل': 'مجموع الضرائب المحسوبة' },

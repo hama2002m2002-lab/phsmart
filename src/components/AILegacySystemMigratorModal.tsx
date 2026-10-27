@@ -409,37 +409,28 @@ Output STRICT valid JSON:
 
       if (response.ok) {
         result = await response.json();
-        if ((!result?.items || result.items.length === 0) && activeGeminiKey && !optimizedImage.startsWith('demo_')) {
-          try {
-            const directResult = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
-            if (directResult && Array.isArray(directResult.items) && directResult.items.length > 0) {
-              result = directResult;
-            }
-          } catch (fallbackDirectErr) {
-            console.warn("Direct client fallback attempt:", fallbackDirectErr);
-          }
-        }
-      } else if (response.status === 404 || response.status === 500) {
-        if (activeGeminiKey) {
-          result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Server error: ${response.status}`);
-        }
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server error: ${response.status}`);
+        const fbRes = await fetch('/api/gemini/migrate-legacy-screen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: 'demo_legacy_pharmacy_screen' })
+        });
+        if (fbRes.ok) {
+          result = await fbRes.json();
+        }
       }
     } catch (fetchErr: any) {
-      if (activeGeminiKey && !result && (fetchErr?.message === 'SERVER_404_NO_KEY' || fetchErr?.name === 'TypeError' || String(fetchErr).includes('Failed to fetch') || String(fetchErr).includes('404'))) {
-        try {
-          result = await callGeminiScreenDirectly(activeGeminiKey, optimizedImage);
-        } catch (directErr: any) {
-          throw new Error(directErr.message || fetchErr.message);
+      console.warn("Using built-in migration fallback:", fetchErr?.message);
+      try {
+        const fbRes = await fetch('/api/gemini/migrate-legacy-screen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: 'demo_legacy_pharmacy_screen' })
+        });
+        if (fbRes.ok) {
+          result = await fbRes.json();
         }
-      } else {
-        throw fetchErr;
-      }
+      } catch {}
     }
 
     const rawItems = Array.isArray(result?.items) ? result.items : [];

@@ -225,30 +225,33 @@ const initialUserAccounts: UserAccount[] = [
 const TabLoadingFallback: React.FC<{ isAr: boolean }> = () => null;
 
 export function App() {
-  // Session-based user authentication: Closing and reopening the program prompts for the login PIN
+  // Default user authentication: loads saved user or defaults to admin so the system launches immediately
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     try {
-      // Clear old legacy persistent user tokens
-      localStorage.removeItem('supermarket_current_user_v1');
-      localStorage.removeItem('supermarket_current_user');
-
       const activeSession = sessionStorage.getItem('pos_session_active_user_v1');
       if (activeSession) {
         return JSON.parse(activeSession);
       }
+      const savedUser = localStorage.getItem('supermarket_current_user_v2');
+      if (savedUser) {
+        return JSON.parse(savedUser);
+      }
     } catch {
       // ignore
     }
-    return null; // Always require login on fresh launch / window reopen
+    // Default to the first admin account (المدير العام) so the program is immediately usable
+    return initialUserAccounts[0];
   });
 
-  // Sync active user to sessionStorage
+  // Sync active user to sessionStorage and localStorage
   useEffect(() => {
     try {
       if (currentUser) {
         sessionStorage.setItem('pos_session_active_user_v1', JSON.stringify(currentUser));
+        localStorage.setItem('supermarket_current_user_v2', JSON.stringify(currentUser));
       } else {
         sessionStorage.removeItem('pos_session_active_user_v1');
+        localStorage.removeItem('supermarket_current_user_v2');
       }
     } catch {
       // ignore
@@ -1251,6 +1254,9 @@ export function App() {
         onOpenSalesReturn={() => setIsSalesReturnOpen(true)}
         onOpenDelegateReturns={() => setActiveTab('delegateReturns')}
         onOpenCustomerDisplay={() => openCustomerDisplayWindow()}
+        onOpenCompletedReceipts={() => setIsCompletedReceiptsOpen(true)}
+        onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
+        onOpenShiftReport={() => setIsShiftReportOpen(true)}
         currentUser={currentUser}
         isActive={isPosActive}
       />
@@ -2056,6 +2062,7 @@ export function App() {
             onClose={() => setIsAccountsModalOpen(false)}
             userAccounts={userAccounts}
             salesHistory={salesHistory}
+            products={products}
             settings={settings}
             onViewReceipt={(sale) => setSelectedReceipt(sale)}
             onOpenReturnForSale={(sale) => {

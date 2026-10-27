@@ -30,7 +30,7 @@ import {
 import { Product, SaleTransaction, Supplier, Customer, PurchaseInvoice, UserAccount, StoreSettings, OperatingExpenseItem, InventoryAuditSession } from '../types';
 import { formatNumber } from '../lib/formatUtils';
 import { parseDate, isToday, isThisWeek, isThisMonth, isThreeMonths, isThisYear, formatDisplayDate, formatDisplayTime, formatDisplayDateTime, formatDateDDMMYYYY } from '../lib/dateUtils';
-import { getItemUnitCost, getItemTotalProfit } from '../lib/financialUtils';
+import { getItemUnitCost, getItemTotalProfit, getItemTotalCost, getReturnedItemProfit, calculateStoreFinancialMetrics } from '../lib/financialUtils';
 import { exportDataToExcel } from '../lib/excelExport';
 import { DatePickerDDMMYYYY } from './DatePickerDDMMYYYY';
 
@@ -411,70 +411,21 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
         return sName === targetName || sName.includes(targetName) || targetName.includes(sName);
       });
 
-      let cashSales = 0;
-      let cardSales = 0;
-      let refunds = 0;
-      let discounts = 0;
-      let grossSales = 0;
-      let cogs = 0;
-
-      cashierTx.forEach(s => {
-        const isRefunded = s.status === 'refunded';
-        const rawTot = Math.abs(s.total || 0);
-        const sub = Math.abs(s.subtotal || rawTot);
-        const disc = s.discount || 0;
-
-        const returnedArr = Array.isArray(s.returnedItems)
-          ? s.returnedItems
-          : (typeof s.returnedItems === 'string' ? (JSON.parse(s.returnedItems || '[]') || []) : []);
-        const partialRefundsVal = returnedArr.reduce((rAcc: number, r: any) => rAcc + Math.abs(Number(r?.total || (Number(r?.price || 0) * Number(r?.quantity || 0))) || 0), 0);
-
-        if (isRefunded) {
-          grossSales += sub;
-          discounts += disc;
-          refunds += rawTot > 0 ? rawTot : partialRefundsVal;
-          // COGS is 0 for fully refunded items
-        } else {
-          grossSales += sub;
-          discounts += disc;
-          refunds += partialRefundsVal;
-
-          if (s.paymentMethod === 'cash') {
-            cashSales += Math.max(0, rawTot - partialRefundsVal);
-          } else {
-            cardSales += Math.max(0, rawTot - partialRefundsVal);
-          }
-
-          if (Array.isArray(s.items)) {
-            s.items.forEach(item => {
-              const prod = products.find(p => p.id === item.productId);
-              const costUnit = getItemUnitCost(item, prod);
-
-              const retItem = returnedArr.find((r: any) => r?.productId === item.productId || r?.barcode === item.barcode || r?.productName === item.productName);
-              const retQty = retItem ? (Number(retItem.quantity) || 0) : 0;
-              const netQty = Math.max(0, (item.quantity || 0) - retQty);
-
-              cogs += costUnit * netQty;
-            });
-          }
-        }
-      });
-
-      const netSales = grossSales - discounts - refunds;
-      const profit = netSales - cogs;
+      const cashierMetrics = calculateStoreFinancialMetrics(cashierTx, products);
       const invoiceCount = cashierTx.length;
 
       return {
         cashierName: name,
-        cashSales,
-        cardSales,
-        refunds,
-        discounts,
-        grossSales,
-        netSales,
-        profit,
+        cashSales: cashierMetrics.cashInHand,
+        cardSales: cashierMetrics.posCardTerminals,
+        refunds: cashierMetrics.totalRefundsValue,
+        discounts: cashierMetrics.totalDiscounts,
+        grossSales: cashierMetrics.grossSales,
+        netSales: cashierMetrics.netSales,
+        profit: cashierMetrics.grossProfit, // الأرباح المحققة بعد خصم مرتجعات الكاشير
+        returnedProfits: cashierMetrics.returnedProfits,
         invoiceCount,
-        avgInvoice: invoiceCount > 0 ? Math.round(netSales / invoiceCount) : 0,
+        avgInvoice: invoiceCount > 0 ? Math.round(cashierMetrics.netSales / invoiceCount) : 0,
         transactions: cashierTx
       };
     });
@@ -665,79 +616,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   // CALCULATED FINANCIAL METRICS
   // ----------------------------------------------------
   const financialMetrics = useMemo(() => {
-    let grossSales = 0;
-    let totalDiscounts = 0;
-    let totalRefundsValue = 0;
-    let cogs = 0;
-
-    filteredSales.forEach(s => {
-      const isRefunded = s.status === 'refunded';
-      const rawTot = Math.abs(s.total || 0);
-      const sub = Math.abs(s.subtotal || rawTot);
-      const disc = s.discount || 0;
-
-      const returnedArr = Array.isArray(s.returnedItems)
-        ? s.returnedItems
-        : (typeof s.returnedItems === 'string' ? (JSON.parse(s.returnedItems || '[]') || []) : []);
-      const partialRefundsVal = returnedArr.reduce((rAcc: number, r: any) => rAcc + Math.abs(Number(r?.total || (Number(r?.price || 0) * Number(r?.quantity || 0))) || 0), 0);
-
-      if (isRefunded) {
-        grossSales += sub;
-        totalDiscounts += disc;
-        totalRefundsValue += rawTot > 0 ? rawTot : partialRefundsVal;
-      } else {
-        grossSales += sub;
-        totalDiscounts += disc;
-        totalRefundsValue += partialRefundsVal;
-
-        if (Array.isArray(s.items)) {
-          s.items.forEach(item => {
-            const prod = products.find(p => p.id === item.productId);
-            const costUnit = getItemUnitCost(item, prod);
-
-            const retItem = returnedArr.find((r: any) => r?.productId === item.productId || r?.barcode === item.barcode || r?.productName === item.productName);
-            const retQty = retItem ? (Number(retItem.quantity) || 0) : 0;
-            const netQty = Math.max(0, (item.quantity || 0) - retQty);
-
-            cogs += costUnit * netQty;
-          });
-        }
-      }
-    });
-
-    const netSales = grossSales - totalDiscounts - totalRefundsValue;
-    const grossProfit = netSales - cogs;
-    const earnedProfit = grossProfit; // الأرباح المحققة المكتسبة الفعلية من المبيعات
-    const totalOperatingExpenses = opExpenseItems.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-    const netOperatingProfit = grossProfit - totalOperatingExpenses;
-
-    // Payment methods breakdown
-    const cashInHand = filteredSales
-      .filter(s => s.paymentMethod === 'cash' && s.status !== 'refunded')
-      .reduce((acc, s) => acc + s.total, 0);
-
-    const posCardTerminals = filteredSales
-      .filter(s => (s.paymentMethod === 'card' || s.paymentMethod === 'nfc') && s.status === 'completed')
-      .reduce((acc, s) => acc + s.total, 0);
-
-    const loyaltyWalletSales = filteredSales
-      .filter(s => s.paymentMethod === 'loyalty' && s.status === 'completed')
-      .reduce((acc, s) => acc + s.total, 0);
-
-    return {
-      grossSales,
-      totalDiscounts,
-      totalRefundsValue,
-      netSales,
-      cogs,
-      grossProfit,
-      earnedProfit,
-      totalOperatingExpenses,
-      netOperatingProfit,
-      cashInHand,
-      posCardTerminals,
-      loyaltyWalletSales
-    };
+    return calculateStoreFinancialMetrics(filteredSales, products, opExpenseItems);
   }, [filteredSales, products, opExpenseItems]);
 
   // ----------------------------------------------------
@@ -1837,22 +1716,36 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
               setCashierDrawerFilter(prev => ({ ...prev, [c.cashierName]: mode }));
             };
 
-            // Calculate aggregated sold items for this cashier
+            // Calculate aggregated sold items and returned items for this cashier
             const soldItemsMap: { [productId: string]: { name: string; quantity: number; totalRevenue: number; totalProfit: number } } = {};
             const returnedItemsMap: { [productId: string]: { name: string; quantity: number; totalRefunded: number; invoiceNo: string; timestamp: string } } = {};
 
             c.transactions.forEach(tx => {
+              const returnedArr: any[] = Array.isArray(tx.returnedItems)
+                ? tx.returnedItems
+                : (typeof tx.returnedItems === 'string' ? (JSON.parse(tx.returnedItems || '[]') || []) : []);
+
               if (tx.status === 'refunded') {
-                if (Array.isArray(tx.items)) {
-                  tx.items.forEach(it => {
-                    const id = it.productId || it.productName;
-                    if (!returnedItemsMap[id]) {
-                      returnedItemsMap[id] = { name: it.productNameAr || it.productName, quantity: 0, totalRefunded: 0, invoiceNo: tx.invoiceNumber, timestamp: tx.timestamp };
-                    }
-                    returnedItemsMap[id].quantity += it.quantity;
-                    returnedItemsMap[id].totalRefunded += (it.total || (it.price * it.quantity));
-                  });
-                }
+                const returnItemsList: any[] = returnedArr.length > 0 ? returnedArr : (Array.isArray(tx.items) ? tx.items : []);
+                returnItemsList.forEach(it => {
+                  const id = it.productId || it.productName;
+                  const prod = products.find(p => p.id === it.productId || (p.barcode && it.barcode && p.barcode.trim() === it.barcode.trim()));
+                  const itemProfit = getReturnedItemProfit(it, prod);
+                  const rev = Math.abs(Number(it.total || (it.price * it.quantity)) || 0);
+                  const qty = Math.abs(Number(it.quantity) || 1);
+
+                  if (!returnedItemsMap[id]) {
+                    returnedItemsMap[id] = { name: it.productNameAr || it.productName, quantity: 0, totalRefunded: 0, invoiceNo: tx.invoiceNumber, timestamp: tx.timestamp };
+                  }
+                  returnedItemsMap[id].quantity += qty;
+                  returnedItemsMap[id].totalRefunded += rev;
+
+                  if (soldItemsMap[id]) {
+                    soldItemsMap[id].quantity = Math.max(0, soldItemsMap[id].quantity - qty);
+                    soldItemsMap[id].totalRevenue = Math.max(0, soldItemsMap[id].totalRevenue - rev);
+                    soldItemsMap[id].totalProfit = soldItemsMap[id].totalProfit - itemProfit;
+                  }
+                });
               } else {
                 if (Array.isArray(tx.items)) {
                   tx.items.forEach(it => {
@@ -1866,6 +1759,28 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     soldItemsMap[id].quantity += it.quantity;
                     soldItemsMap[id].totalRevenue += (it.total || (it.price * it.quantity));
                     soldItemsMap[id].totalProfit += itemProfit;
+                  });
+                }
+
+                if (returnedArr.length > 0) {
+                  returnedArr.forEach(ret => {
+                    const id = ret.productId || ret.productName;
+                    const prod = products.find(p => p.id === ret.productId);
+                    const retProfit = getReturnedItemProfit(ret, prod);
+                    const rev = Math.abs(Number(ret.total || (ret.price * ret.quantity)) || 0);
+                    const qty = Math.abs(Number(ret.quantity) || 1);
+
+                    if (!returnedItemsMap[id]) {
+                      returnedItemsMap[id] = { name: ret.productNameAr || ret.productName, quantity: 0, totalRefunded: 0, invoiceNo: tx.invoiceNumber, timestamp: tx.timestamp };
+                    }
+                    returnedItemsMap[id].quantity += qty;
+                    returnedItemsMap[id].totalRefunded += rev;
+
+                    if (soldItemsMap[id]) {
+                      soldItemsMap[id].quantity = Math.max(0, soldItemsMap[id].quantity - qty);
+                      soldItemsMap[id].totalRevenue = Math.max(0, soldItemsMap[id].totalRevenue - rev);
+                      soldItemsMap[id].totalProfit = soldItemsMap[id].totalProfit - retProfit;
+                    }
                   });
                 }
               }
@@ -2844,6 +2759,20 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                         <td className="p-2.5 text-center text-slate-400">{t('الفواتير والأصناف المرجعة', 'پسوڵە و کاڵا گەڕێنراوەکان', 'Refunded sales & returned items')}</td>
                         <td className="p-2.5 text-center font-mono font-bold text-rose-400">- {currency} {financialMetrics.totalRefundsValue.toLocaleString('en-US')}</td>
                       </tr>
+                      {financialMetrics.returnedProfits > 0 && (
+                        <tr className="bg-rose-500/10 font-bold border-t border-rose-500/20">
+                          <td className="p-2.5 text-rose-300 flex items-center gap-1.5">
+                            <span>🔄</span>
+                            <span>{t('(-) الأرباح المسترجعة المخصومة (Returned Profits)', '(-) قازانجی گەڕێنراوەی دەرکراو', '(-) Returned Profits Deducted')}</span>
+                          </td>
+                          <td className="p-2.5 text-center text-rose-400">
+                            {t('أرباح المواد المرجعة التي تم إلغاؤها وخصمها من صافي الأرباح', 'قازانجی ئەو کاڵا گەڕێنراوانەی کە لە قازانجی پاک دەرکراون', 'Profits on returned items deducted from gross earnings')}
+                          </td>
+                          <td className="p-2.5 text-center font-mono text-rose-300 text-sm">
+                            - {currency} {financialMetrics.returnedProfits.toLocaleString('en-US')}
+                          </td>
+                        </tr>
+                      )}
                       <tr className="bg-emerald-500/10 font-bold">
                         <td className="p-2.5 text-emerald-300">{t('(=) صافي المبيعات (Net Sales)', '(=) پاکی فرۆشتن (Net Sales)', '(=) Net Sales')}</td>
                         <td className="p-2.5 text-center text-emerald-400">{t('المبيعات الإجمالية - الخصومات - المرتجعات', 'سەرجەمی فرۆشتن - داشکاندنەکان - گەڕێنراوەکان', 'Gross Sales - Discounts - Refunds')}</td>

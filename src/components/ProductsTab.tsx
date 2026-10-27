@@ -1077,25 +1077,27 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
               }}
             />
 
-            {canEditProducts && onOpenLegacyScreenMigrator && (
+            {canEditProducts && onOpenAIInvoiceScanner && (
               <button
-                onClick={onOpenLegacyScreenMigrator}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_15px_rgba(6,182,212,0.35)] hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border border-cyan-400/40"
-                title={t('نقل المواد من شاشات وجداول البرامج القديمة بالذكاء الاصطناعي (بارکۆد، نرخی پاکەت وشیت، کۆمپانیا)', 'هاوردەی کاڵا لە شاشەی سیستەمی کۆن بە AI', 'Migrate Legacy System Screen (AI)')}
+                type="button"
+                onClick={onOpenAIInvoiceScanner}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_20px_rgba(168,85,247,0.45)] hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border-2 border-purple-300/60"
+                title={t('إضافة أدوية ومواد جديدة بالصور أو بملفات PDF للوصل فوراً بالذكاء الاصطناعي وبدون مفتاح', 'زیادکردنی دەرمان بە وێنە یان فایلی PDFی پسوولە بێ کلیل', 'Add Medicines via Invoice Photos / PDF (AI)')}
               >
-                <Monitor className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
-                <span>{t('نقل من برنامج قديم (AI)', 'نقل لە سیستەمی کۆن (AI)', 'Legacy Screen (AI)')}</span>
+                <Sparkles className="w-4 h-4 text-purple-200 animate-pulse" />
+                <span>{t('📸 إضافة مواد بالصور أو PDF الوصل (AI)', '📸 زیادکردنی دەرمان بە وێنە یان PDF (AI)', '📸 Add Items via Photo / PDF (AI)')}</span>
               </button>
             )}
 
-            {canEditProducts && onOpenAIInvoiceScanner && (
+            {canEditProducts && onOpenLegacyScreenMigrator && (
               <button
-                onClick={onOpenAIInvoiceScanner}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_15px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border border-purple-400/40"
-                title={t('إدخال المواد عبر صورة الوصل بالذكاء الاصطناعي', 'خوێندنەوەی پسوولە بە وێنە و زیرەکی دەستکرد', 'AI Invoice Image Scanner')}
+                type="button"
+                onClick={onOpenLegacyScreenMigrator}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white text-xs font-black shadow-[0_0_20px_rgba(6,182,212,0.45)] hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 border-2 border-cyan-300/60"
+                title={t('نقل وتوليد الأدوية مباشرة من صور شاشات البرامج القديمة بالذكاء الاصطناعي وبدون مفتاح', 'هاوردەی دەرمان لە شاشەی سیستەمی کۆن بە AI بێ کلیل', 'Migrate Medicines from Legacy Screen (AI)')}
               >
-                <Sparkles className="w-3.5 h-3.5 text-purple-200 animate-pulse" />
-                <span>{t('مسح صورة الوصل (AI)', 'خوێندنەوەی پسوولە (AI)', 'AI Invoice Scan')}</span>
+                <Monitor className="w-4 h-4 text-cyan-200 animate-pulse" />
+                <span>{t('🖥️ نقل أدوية من شاشة برنامج قديم (AI)', '🖥️ گواستنەوەی دەرمان لە شاشەی کۆن (AI)', '🖥️ Legacy Screen Medicines (AI)')}</span>
               </button>
             )}
 

@@ -1,4 +1,4 @@
-import { Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, StoreSettings, PurchaseInvoice } from '../types';
+import { Product, SaleTransaction, Supplier, Customer, MarketOrder, MarketNotification, StoreSettings, PurchaseInvoice, POSKeyboardShortcuts } from '../types';
 
 export const initialProducts: Product[] = [];
 
@@ -14,15 +14,21 @@ export const initialNotifications: MarketNotification[] = [];
 
 export const initialPurchaseInvoices: PurchaseInvoice[] = [];
 
-export const defaultPOSShortcuts = {
+export const defaultPOSShortcuts: POSKeyboardShortcuts = {
   newWindow: 'F1',
-  completeSale: 'F2',
-  focusBarcode: 'F3',
-  openInventory: 'F4',
+  openInventory: 'F2',
+  toggleReturn: 'F3',
+  viewReceipts: 'F4',
+  cashPayment: 'F5',
+  debtPayment: 'F6',
+  cardPayment: 'F7',
+  clearCart: 'F8',
+  completeSale: 'F9',
+  printReceipt: 'F10',
+  openCashDrawer: 'F11',
+  focusBarcode: 'Space',
   switchNextWindow: 'F6',
   switchPrevWindow: 'F7',
-  clearCart: 'F8',
-  printReceipt: 'F9',
   closeActiveWindow: 'F10',
 };
 

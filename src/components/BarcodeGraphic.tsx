@@ -1,86 +1,108 @@
-import React from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import QRCode from 'qrcode';
+import { generateBarcodeSvgString } from '../lib/barcodeUtils';
 
-interface BarcodeGraphicProps {
+export interface BarcodeGraphicProps {
   value: string;
   className?: string;
   height?: number;
+  width?: number; // module width (usually 1.5 - 2.5)
   showText?: boolean;
+  fontSize?: number;
+  format?: 'CODE128' | 'EAN13' | 'CODE39' | 'QR';
+  margin?: number;
+  background?: string;
+  lineColor?: string;
 }
 
 export const BarcodeGraphic: React.FC<BarcodeGraphicProps> = ({
   value,
   className = '',
   height = 40,
+  width = 2,
   showText = true,
+  fontSize = 11,
+  format = 'CODE128',
+  margin = 10,
+  background = '#ffffff',
+  lineColor = '#000000',
 }) => {
-  // Generate a clean 1D barcode pattern from character codes
-  const generateBars = (text: string) => {
-    const bars: { width: number; isSpace: boolean }[] = [];
-    
-    // Start guard bars
-    bars.push({ width: 2, isSpace: false });
-    bars.push({ width: 1, isSpace: true });
-    bars.push({ width: 2, isSpace: false });
-    bars.push({ width: 2, isSpace: true });
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
-    for (let i = 0; i < text.length; i++) {
-      const code = text.charCodeAt(i);
-      const b1 = (code % 3) + 1;
-      const s1 = ((code >> 1) % 2) + 1;
-      const b2 = ((code >> 2) % 3) + 1;
-      const s2 = ((code >> 3) % 2) + 1;
+  const cleanVal = (value || '').trim();
 
-      bars.push({ width: b1, isSpace: false });
-      bars.push({ width: s1, isSpace: true });
-      bars.push({ width: b2, isSpace: false });
-      bars.push({ width: s2, isSpace: true });
+  useEffect(() => {
+    if (!cleanVal || format !== 'QR') {
+      setQrDataUrl(null);
+      return;
     }
 
-    // Stop guard bars
-    bars.push({ width: 2, isSpace: false });
-    bars.push({ width: 1, isSpace: true });
-    bars.push({ width: 3, isSpace: false });
-    bars.push({ width: 2, isSpace: true });
-    bars.push({ width: 2, isSpace: false });
+    let isMounted = true;
+    QRCode.toDataURL(cleanVal, {
+      width: Math.max(height * 2, 80),
+      margin: 1,
+      color: {
+        dark: lineColor,
+        light: background,
+      },
+    })
+      .then(url => {
+        if (isMounted) setQrDataUrl(url);
+      })
+      .catch(err => {
+        console.warn('QR Code generation failed:', err);
+      });
 
-    return bars;
-  };
+    return () => {
+      isMounted = false;
+    };
+  }, [cleanVal, height, format, background, lineColor]);
 
-  const bars = generateBars(value);
-  const totalWidth = bars.reduce((acc, b) => acc + b.width * 2, 0) + 20;
+  const svgMarkup = useMemo(() => {
+    if (!cleanVal || format === 'QR') return '';
+    return generateBarcodeSvgString(cleanVal, height, showText, {
+      format,
+      width,
+      margin,
+      fontSize,
+      background,
+      lineColor,
+    });
+  }, [cleanVal, height, showText, format, width, margin, fontSize, background, lineColor]);
 
-  let currentX = 10;
+  if (!cleanVal) {
+    return (
+      <div className={`flex flex-col items-center justify-center p-2 text-xs text-slate-400 ${className}`}>
+        [لا يوجد باركود]
+      </div>
+    );
+  }
+
+  if (format === 'QR' && qrDataUrl) {
+    return (
+      <div className={`flex flex-col items-center justify-center ${className}`}>
+        <img
+          src={qrDataUrl}
+          alt={`QR ${cleanVal}`}
+          style={{ width: `${height * 2}px`, height: `${height * 2}px` }}
+          className="object-contain"
+        />
+        {showText && (
+          <span
+            style={{ color: lineColor, fontSize: `${fontSize}px` }}
+            className="font-mono tracking-wider font-bold mt-1 text-center"
+          >
+            {cleanVal}
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex flex-col items-center justify-center ${className}`}>
-      <svg
-        viewBox={`0 0 ${totalWidth} ${height}`}
-        className="w-full h-auto max-h-12"
-        preserveAspectRatio="none"
-      >
-        <rect width={totalWidth} height={height} fill="white" />
-        {bars.map((bar, index) => {
-          const w = bar.width * 2;
-          const x = currentX;
-          currentX += w;
-          if (bar.isSpace) return null;
-          return (
-            <rect
-              key={index}
-              x={x}
-              y={2}
-              width={w}
-              height={height - 4}
-              fill="black"
-            />
-          );
-        })}
-      </svg>
-      {showText && (
-        <span className="font-mono text-xs tracking-widest font-bold text-slate-700 dark:text-slate-300 mt-1">
-          {value}
-        </span>
-      )}
-    </div>
+    <div
+      className={`flex flex-col items-center justify-center ${className}`}
+      dangerouslySetInnerHTML={{ __html: svgMarkup }}
+    />
   );
 };
